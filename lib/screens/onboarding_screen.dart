@@ -130,7 +130,7 @@ class OnboardingView extends StatelessWidget {
           }
 
           // Initial state
-          return const Scaffold(body: Center(child: Text('Welcome')));
+          return const Scaffold(body: Center(child: Text('Dashboard')));
         },
       ),
     );

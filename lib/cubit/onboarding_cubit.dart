@@ -42,13 +42,13 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
     // Navigate after 3 seconds
     _timer = Timer(const Duration(seconds: 3), () {
-      emit(OnboardingNavigation(nextRoute: '/welcome'));
+      emit(OnboardingNavigation(nextRoute: '/dashboard'));
     });
   }
 
   void skipOnboarding() {
     _timer?.cancel();
-    emit(OnboardingNavigation(nextRoute: '/welcome'));
+    emit(OnboardingNavigation(nextRoute: '/dashboard'));
   }
 
   @override
