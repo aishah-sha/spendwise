@@ -1,5 +1,9 @@
+// lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'screens/onboarding_screen.dart';
+import 'screens/welcome_screen.dart';
+import 'cubit/auth_cubit.dart';
 
 void main() {
   runApp(const MyApp());
@@ -13,34 +17,19 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: 'SpendWise',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(primarySwatch: Colors.green, useMaterial3: true),
+      theme: ThemeData(
+        primarySwatch: Colors.green,
+        useMaterial3: true,
+        fontFamily: 'Poppins',
+      ),
       initialRoute: '/',
       routes: {
         '/': (context) => const OnboardingScreen(),
-        '/home': (context) => const HomeScreen(),
-      },
-    );
-  }
-}
-
-// Home Screen
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('SpendWise'),
-        backgroundColor: const Color(0xFF2E7D32),
-        foregroundColor: Colors.white,
-      ),
-      body: const Center(
-        child: Text(
-          'Welcome to SpendWise!',
-          style: TextStyle(fontSize: 24, color: Color(0xFF2E7D32)),
+        '/welcome': (context) => BlocProvider(
+          create: (context) => AuthCubit(),
+          child: const WelcomeScreen(),
         ),
-      ),
+      },
     );
   }
 }
