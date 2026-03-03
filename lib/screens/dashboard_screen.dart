@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
+import '../cubit/add_expense_cubit.dart'; // Add this import
+import 'add_expense_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -36,8 +38,16 @@ class DashboardScreen extends StatelessWidget {
             side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
           ),
           onPressed: () {
-            // Navigate to add expense screen
-            // You can implement navigation here
+            // Navigate to add expense screen WITH the provider
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BlocProvider(
+                  create: (context) => AddExpenseCubit(),
+                  child: const AddExpenseScreen(),
+                ),
+              ),
+            );
           },
           child: const Icon(Icons.add, color: accentGreen, size: 45),
         ),
@@ -76,13 +86,19 @@ class DashboardScreen extends StatelessWidget {
                         children: [
                           _buildWelcomeSection(state),
                           const SizedBox(height: 20),
-                          _buildTotalBalanceCard(state),
+                          _buildTotalBalanceCard(
+                            state,
+                            context,
+                          ), // Pass context
                           const SizedBox(height: 20),
                           _buildStatsRow(state),
                           const SizedBox(height: 20),
                           _buildBudgetProgress(state),
                           const SizedBox(height: 25),
-                          _buildRecentExpensesSection(state),
+                          _buildRecentExpensesSection(
+                            state,
+                            context,
+                          ), // Pass context
                         ],
                       ),
                     );
@@ -171,7 +187,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTotalBalanceCard(ExpenseState state) {
+  Widget _buildTotalBalanceCard(ExpenseState state, BuildContext context) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(25),
@@ -212,7 +228,7 @@ class DashboardScreen extends StatelessWidget {
               // Add icon in total balance card - Clickable
               GestureDetector(
                 onTap: () {
-                  // Add money action
+                  // Navigate to add money screen or show dialog
                   print('Add money icon tapped');
                 },
                 child: Container(
@@ -354,18 +370,18 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentExpensesSection(ExpenseState state) {
+  Widget _buildRecentExpensesSection(ExpenseState state, BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildRecentExpensesHeader(),
+        _buildRecentExpensesHeader(context), // Pass context
         const SizedBox(height: 1),
         _buildRecentExpensesList(state),
       ],
     );
   }
 
-  Widget _buildRecentExpensesHeader() {
+  Widget _buildRecentExpensesHeader(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [

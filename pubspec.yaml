@@ -48,6 +48,13 @@ dev_dependencies:
   flutter_bloc: ^9.1.1
   equatable: ^2.0.8
   intl: ^0.20.2
+  image_picker: ^1.2.1
+  camera: 0.11.2+1
+  google_ml_kit: ^0.21.0
+  permission_handler: ^12.0.1
+  path_provider: ^2.1.5
+  path: ^1.9.1
+  image: ^4.8.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
