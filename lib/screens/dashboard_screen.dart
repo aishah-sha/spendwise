@@ -1,10 +1,12 @@
+// lib/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
-import '../cubit/add_expense_cubit.dart'; // Add this import
+import '../cubit/add_expense_cubit.dart';
 import 'add_expense_screen.dart';
+import 'expense_history_screen.dart'; // Add this import
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -52,7 +54,7 @@ class DashboardScreen extends StatelessWidget {
           child: const Icon(Icons.add, color: accentGreen, size: 45),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigation(),
+      bottomNavigationBar: _buildBottomNavigation(context), // Pass context
       body: Column(
         children: [
           _buildTopHeader(), // Custom top bar with logo
@@ -389,11 +391,19 @@ class DashboardScreen extends StatelessWidget {
           'Recent Expenses',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        // "See All" text is clickable
+        // "See All" text is clickable - Navigate to History Screen
         GestureDetector(
           onTap: () {
-            // Navigate to all expenses screen
-            print('See All tapped');
+            // Navigate to expense history screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BlocProvider.value(
+                  value: context.read<ExpenseCubit>(),
+                  child: const ExpenseHistoryScreen(),
+                ),
+              ),
+            );
           },
           child: const Text(
             'See All',
@@ -405,7 +415,12 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildRecentExpensesList(ExpenseState state) {
-    if (state.expenses.isEmpty) {
+    // Use allExpenses instead of expenses (which doesn't exist anymore)
+    final recentExpenses = state.allExpenses.length > 5
+        ? state.allExpenses.sublist(0, 5)
+        : state.allExpenses;
+
+    if (recentExpenses.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
@@ -424,9 +439,9 @@ class DashboardScreen extends StatelessWidget {
     return ListView.builder(
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
-      itemCount: state.expenses.length > 5 ? 5 : state.expenses.length,
+      itemCount: recentExpenses.length,
       itemBuilder: (context, index) {
-        final expense = state.expenses[index];
+        final expense = recentExpenses[index];
         return Container(
           margin: const EdgeInsets.only(bottom: 10),
           padding: const EdgeInsets.all(15),
@@ -443,7 +458,7 @@ class DashboardScreen extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // Category icon - NOT clickable for Food, Detergent, Stationery
+              // Category icon
               Container(
                 width: 45,
                 height: 45,
@@ -474,6 +489,19 @@ class DashboardScreen extends StatelessWidget {
                       expense.category,
                       style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                     ),
+                    // Show if it's income (optional)
+                    if (expense.isIncome ?? false)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Income',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: accentGreen,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -481,10 +509,13 @@ class DashboardScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    'RM${expense.amount.toStringAsFixed(2)}',
-                    style: const TextStyle(
+                    '${(expense.isIncome ?? false) ? '+' : '-'}RM${expense.amount.toStringAsFixed(2)}',
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
+                      color: (expense.isIncome ?? false)
+                          ? accentGreen
+                          : Colors.red,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -501,7 +532,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNavigation() {
+  Widget _buildBottomNavigation(BuildContext context) {
     return BottomAppBar(
       color: headerColor,
       notchMargin: 8,
@@ -513,20 +544,32 @@ class DashboardScreen extends StatelessWidget {
           children: [
             // Home nav item - Clickable
             _navItem(Icons.home, 'Home', true, () {
+              // Already on home screen, maybe scroll to top
               print('Home tapped');
             }),
-            // History nav item - Clickable
+            // History nav item - Clickable - NOW NAVIGATES TO HISTORY SCREEN
             _navItem(Icons.history, 'History', false, () {
-              print('History tapped');
+              // Navigate to expense history screen
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BlocProvider.value(
+                    value: context.read<ExpenseCubit>(),
+                    child: const ExpenseHistoryScreen(),
+                  ),
+                ),
+              );
             }),
-            const SizedBox(width: 40),
+            const SizedBox(width: 40), // Space for FAB
             // Budget nav item - Clickable
             _navItem(Icons.savings, 'Budget', false, () {
               print('Budget tapped');
+              // Navigate to budget screen when implemented
             }),
             // Profile nav item - Clickable
             _navItem(Icons.person, 'Profile', false, () {
               print('Profile tapped');
+              // Navigate to profile screen when implemented
             }),
           ],
         ),
@@ -546,7 +589,13 @@ class DashboardScreen extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: active ? Colors.black : Colors.black54),
-          Text(label, style: const TextStyle(fontSize: 12)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: active ? Colors.black : Colors.black54,
+            ),
+          ),
         ],
       ),
     );
@@ -560,6 +609,8 @@ class DashboardScreen extends StatelessWidget {
         return Icons.local_laundry_service;
       case 'stationery':
         return Icons.edit;
+      case 'supplies':
+        return Icons.inventory;
       case 'transport':
         return Icons.directions_car;
       case 'shopping':
@@ -579,6 +630,8 @@ class DashboardScreen extends StatelessWidget {
         return Colors.blue;
       case 'stationery':
         return Colors.purple;
+      case 'supplies':
+        return Colors.teal;
       case 'transport':
         return Colors.green;
       case 'shopping':

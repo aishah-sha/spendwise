@@ -3,15 +3,23 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../cubit/add_expense_cubit.dart';
+import '../cubit/expense_cubit.dart';
 import '../models/receipt_model.dart';
+import '../models/expense_model.dart';
 import 'add_expense_screen.dart';
-import 'dashboard_screen.dart'; // Add this import
-// Add other screen imports as needed
+import 'dashboard_screen.dart';
 
 class ManualEntryScreen extends StatefulWidget {
   final ReceiptModel? receipt;
+  final bool isEditing;
+  final ExpenseModel? expenseToEdit;
 
-  const ManualEntryScreen({super.key, this.receipt});
+  const ManualEntryScreen({
+    super.key,
+    this.receipt,
+    this.isEditing = false,
+    this.expenseToEdit,
+  });
 
   @override
   State<ManualEntryScreen> createState() => _ManualEntryScreenState();
@@ -26,6 +34,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   late TextEditingController _amountController;
   late TextEditingController _vendorController;
   late DateTime _selectedDate;
+  bool _isIncome = false;
 
   // List of items
   late List<ReceiptItem> _items;
@@ -44,6 +53,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     'Entertainment',
     'Groceries',
     'Utilities',
+    'Supplies',
     'Other',
   ];
 
@@ -51,32 +61,73 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   void initState() {
     super.initState();
 
-    // Initialize items from receipt or create empty list
-    if (widget.receipt?.items != null && widget.receipt!.items!.isNotEmpty) {
-      _items = List.from(widget.receipt!.items!);
+    // Check if we're editing an existing expense
+    if (widget.expenseToEdit != null) {
+      _initializeFromExpense(widget.expenseToEdit!);
+    }
+    // Check if we have a receipt from scan/upload
+    else if (widget.receipt != null) {
+      _initializeFromReceipt(widget.receipt!);
+    } else {
+      _initializeEmpty();
+    }
+
+    // Update the AddExpenseCubit form fields
+    _updateCubitFields();
+  }
+
+  void _initializeFromExpense(ExpenseModel expense) {
+    // Create a single item from the expense
+    _items = [
+      ReceiptItem(
+        name: expense.title,
+        price: expense.amount,
+        quantity: 1,
+        category: expense.category,
+      ),
+    ];
+
+    _initializeItemControllers();
+
+    _amountController = TextEditingController(
+      text: expense.amount.toStringAsFixed(2),
+    );
+
+    _vendorController = TextEditingController(text: expense.title);
+
+    _selectedDate = expense.date;
+    _isIncome = expense.isIncome ?? false;
+  }
+
+  void _initializeFromReceipt(ReceiptModel receipt) {
+    if (receipt.items != null && receipt.items!.isNotEmpty) {
+      _items = List.from(receipt.items!);
     } else {
       _items = [ReceiptItem(name: '', price: 0.0, quantity: 1)];
     }
 
-    // Initialize controllers for each item
     _initializeItemControllers();
 
     _amountController = TextEditingController(
-      text: widget.receipt != null
-          ? widget.receipt!.amount.toStringAsFixed(2)
-          : _calculateTotal().toStringAsFixed(2),
+      text: receipt.amount.toStringAsFixed(2),
     );
 
-    _vendorController = TextEditingController(
-      text: widget.receipt?.merchantName ?? '',
-    );
+    _vendorController = TextEditingController(text: receipt.merchantName ?? '');
 
-    _selectedDate = widget.receipt?.date ?? DateTime.now();
+    _selectedDate = receipt.date;
+  }
+
+  void _initializeEmpty() {
+    _items = [ReceiptItem(name: '', price: 0.0, quantity: 1)];
+    _initializeItemControllers();
+    _amountController = TextEditingController(text: '0.00');
+    _vendorController = TextEditingController();
+    _selectedDate = DateTime.now();
   }
 
   void _initializeItemControllers() {
     _itemNameControllers = _items
-        .map((item) => TextEditingController(text: item.name))
+        .map((item) => TextEditingController(text: item.name ?? ''))
         .toList();
 
     _itemPriceControllers = _items
@@ -95,6 +146,20 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     _itemCategoryControllers = _items
         .map((item) => TextEditingController(text: item.category ?? 'Food'))
         .toList();
+  }
+
+  void _updateCubitFields() {
+    final addExpenseCubit = context.read<AddExpenseCubit>();
+    addExpenseCubit.updateTitle(_vendorController.text);
+    addExpenseCubit.updateAmount(
+      double.tryParse(_amountController.text) ?? 0.0,
+    );
+    addExpenseCubit.updateDate(_selectedDate);
+    addExpenseCubit.updateIsIncome(_isIncome);
+
+    if (_items.isNotEmpty) {
+      addExpenseCubit.updateCategory(_itemCategories.first);
+    }
   }
 
   @override
@@ -133,6 +198,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     setState(() {
       _amountController.text = _calculateTotal().toStringAsFixed(2);
     });
+    context.read<AddExpenseCubit>().updateAmount(_calculateTotal());
   }
 
   void _addNewItem() {
@@ -166,75 +232,55 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final bool isEditing = widget.isEditing || widget.expenseToEdit != null;
+
     return Scaffold(
       backgroundColor: bgColor,
-      // Add FAB for consistency with other screens
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: Container(
-        margin: const EdgeInsets.only(top: 30),
+        margin: const EdgeInsets.only(top: 25),
         height: 70,
         width: 70,
-        child: FloatingActionButton(
-          backgroundColor: Colors.white,
-          elevation: 4,
-          shape: const CircleBorder(
-            side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
-          ),
-          onPressed: () {
-            // Navigate to add expense screen
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => BlocProvider(
-                  create: (context) => AddExpenseCubit(),
-                  child: const AddExpenseScreen(),
-                ),
-              ),
-            );
-          },
-          child: const Icon(Icons.add, color: accentGreen, size: 45),
-        ),
       ),
       appBar: PreferredSize(
         preferredSize: const Size.fromHeight(80),
         child: _buildTopHeader(context),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
+        padding: const EdgeInsets.all(16), // Reduced from 20 to 16
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header
-            const Text(
-              'Manual Entry',
-              style: TextStyle(
-                fontSize: 28,
+            // Header with dynamic title - REDUCED FONT SIZE
+            Text(
+              isEditing ? 'Edit Expense' : 'Manual Entry',
+              style: const TextStyle(
+                fontSize: 22, // Reduced from 28 to 22
                 fontWeight: FontWeight.bold,
                 color: darkText,
               ),
             ),
-            const SizedBox(height: 20),
-
-            // Receipt Image at the TOP - with placeholder if no image
+            const SizedBox(height: 16), // Reduced from 20 to 16
+            // Receipt Image
             _buildReceiptImage(),
 
-            const SizedBox(height: 24),
-
-            // EXPENSE DETAILS SECTION (at the top)
+            const SizedBox(height: 20), // Reduced from 24 to 20
+            // EXPENSE DETAILS SECTION
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(
+                vertical: 6,
+              ), // Reduced from 8 to 6
               child: const Text(
                 'EXPENSE DETAILS',
                 style: TextStyle(
-                  fontSize: 16,
+                  fontSize: 14, // Reduced from 16 to 14
                   fontWeight: FontWeight.w600,
                   color: darkText,
                 ),
               ),
             ),
 
-            const SizedBox(height: 8),
-
+            const SizedBox(height: 6), // Reduced from 8 to 6
             // Total Amount Field
             Container(
               decoration: BoxDecoration(
@@ -256,11 +302,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   labelText: 'Total Amount',
                   labelStyle: TextStyle(
                     color: darkText.withOpacity(0.6),
-                    fontSize: 14,
+                    fontSize: 13, // Reduced from 14 to 13
                   ),
                   prefixText: 'RM ',
                   prefixStyle: const TextStyle(
-                    fontSize: 16,
+                    fontSize: 15, // Reduced from 16 to 15
                     fontWeight: FontWeight.w500,
                     color: accentGreen,
                   ),
@@ -271,20 +317,19 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   filled: true,
                   fillColor: Colors.transparent,
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
+                    horizontal: 14, // Reduced from 16 to 14
+                    vertical: 14, // Reduced from 16 to 14
                   ),
                 ),
                 style: const TextStyle(
-                  fontSize: 16,
+                  fontSize: 15, // Reduced from 16 to 15
                   fontWeight: FontWeight.bold,
                   color: accentGreen,
                 ),
               ),
             ),
 
-            const SizedBox(height: 12),
-
+            const SizedBox(height: 10), // Reduced from 12 to 10
             // Date Field
             Container(
               decoration: BoxDecoration(
@@ -324,11 +369,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                     setState(() {
                       _selectedDate = picked;
                     });
+                    context.read<AddExpenseCubit>().updateDate(picked);
                   }
                 },
                 child: Container(
                   padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
+                    horizontal: 14, // Reduced from 16 to 14
                     vertical: 4,
                   ),
                   child: Row(
@@ -340,7 +386,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                             Text(
                               'Date',
                               style: TextStyle(
-                                fontSize: 14,
+                                fontSize: 13, // Reduced from 14 to 13
                                 color: darkText.withOpacity(0.6),
                               ),
                             ),
@@ -348,22 +394,25 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                             Text(
                               DateFormat('dd/MM/yy').format(_selectedDate),
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 15, // Reduced from 16 to 15
                                 color: darkText,
                               ),
                             ),
                           ],
                         ),
                       ),
-                      Icon(Icons.calendar_today, color: accentGreen, size: 20),
+                      Icon(
+                        Icons.calendar_today,
+                        color: accentGreen,
+                        size: 18,
+                      ), // Reduced from 20 to 18
                     ],
                   ),
                 ),
               ),
             ),
 
-            const SizedBox(height: 12),
-
+            const SizedBox(height: 10), // Reduced from 12 to 10
             // Vendor Field
             Container(
               decoration: BoxDecoration(
@@ -383,10 +432,13 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   labelText: 'Vendor',
                   labelStyle: TextStyle(
                     color: darkText.withOpacity(0.6),
-                    fontSize: 14,
+                    fontSize: 13, // Reduced from 14 to 13
                   ),
                   hintText: 'Store name',
-                  hintStyle: TextStyle(color: darkText.withOpacity(0.4)),
+                  hintStyle: TextStyle(
+                    color: darkText.withOpacity(0.4),
+                    fontSize: 13,
+                  ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -394,44 +446,81 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   filled: true,
                   fillColor: Colors.transparent,
                   contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 16,
+                    horizontal: 14, // Reduced from 16 to 14
+                    vertical: 14, // Reduced from 16 to 14
                   ),
                 ),
-                style: const TextStyle(fontSize: 16, color: darkText),
+                style: const TextStyle(
+                  fontSize: 15,
+                  color: darkText,
+                ), // Reduced from 16 to 15
+                onChanged: (value) {
+                  context.read<AddExpenseCubit>().updateTitle(value);
+                },
               ),
             ),
 
-            const SizedBox(height: 24),
-
-            // ITEMS LIST SECTION (below expense details)
+            const SizedBox(height: 10), // Reduced from 12 to 10
+            // Income/Expense Toggle
             Container(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              decoration: BoxDecoration(
+                color: headerColor,
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.05),
+                    blurRadius: 5,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 20), // Reduced from 24 to 20
+            // ITEMS LIST SECTION
+            Container(
+              padding: const EdgeInsets.symmetric(
+                vertical: 6,
+              ), // Reduced from 8 to 6
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   const Text(
                     'ITEMS',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 14, // Reduced from 16 to 14
                       fontWeight: FontWeight.w600,
                       color: darkText,
                     ),
                   ),
                   TextButton.icon(
                     onPressed: _addNewItem,
-                    icon: Icon(Icons.add_circle, color: accentGreen, size: 20),
+                    icon: Icon(
+                      Icons.add_circle,
+                      color: accentGreen,
+                      size: 18,
+                    ), // Reduced from 20 to 18
                     label: Text(
                       'Add Item',
-                      style: TextStyle(color: accentGreen),
+                      style: TextStyle(
+                        color: accentGreen,
+                        fontSize: 13,
+                      ), // Added fontSize
+                    ),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 0,
+                      ),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                     ),
                   ),
                 ],
               ),
             ),
 
-            const SizedBox(height: 8),
-
+            const SizedBox(height: 6), // Reduced from 8 to 6
             // Items List
             ListView.builder(
               shrinkWrap: true,
@@ -439,8 +528,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
               itemCount: _items.length,
               itemBuilder: (context, index) {
                 return Container(
-                  margin: const EdgeInsets.only(bottom: 16),
-                  padding: const EdgeInsets.all(16),
+                  margin: const EdgeInsets.only(
+                    bottom: 12,
+                  ), // Reduced from 16 to 12
+                  padding: const EdgeInsets.all(12), // Reduced from 16 to 12
                   decoration: BoxDecoration(
                     color: headerColor,
                     borderRadius: BorderRadius.circular(12),
@@ -461,26 +552,30 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                           Row(
                             children: [
                               Container(
-                                padding: const EdgeInsets.all(6),
+                                padding: const EdgeInsets.all(
+                                  4,
+                                ), // Reduced from 6 to 4
                                 decoration: BoxDecoration(
                                   color: _getCategoryColor(
                                     _itemCategories[index],
                                   ).withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(6),
+                                  borderRadius: BorderRadius.circular(
+                                    4,
+                                  ), // Reduced from 6 to 4
                                 ),
                                 child: Icon(
                                   _getCategoryIcon(_itemCategories[index]),
-                                  size: 14,
+                                  size: 12, // Reduced from 14 to 12
                                   color: _getCategoryColor(
                                     _itemCategories[index],
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(width: 6), // Reduced from 8 to 6
                               Text(
                                 'Item ${index + 1}',
                                 style: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 13, // Reduced from 14 to 13
                                   fontWeight: FontWeight.w600,
                                   color: darkText,
                                 ),
@@ -492,16 +587,17 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                               icon: Icon(
                                 Icons.delete_outline,
                                 color: Colors.red[400],
-                                size: 20,
+                                size: 18, // Reduced from 20 to 18
                               ),
                               onPressed: () => _removeItem(index),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
+                              visualDensity: VisualDensity
+                                  .compact, // Make button more compact
                             ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-
+                      const SizedBox(height: 8), // Reduced from 12 to 8
                       // Item Name Field
                       TextField(
                         controller: _itemNameControllers[index],
@@ -509,25 +605,31 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                           labelText: 'Item Name',
                           labelStyle: TextStyle(
                             color: darkText.withOpacity(0.6),
-                            fontSize: 12,
+                            fontSize: 11, // Reduced from 12 to 11
                           ),
-                          hintText: 'e.g., Imperial Roll Shrimp Springroll',
+                          hintText: 'e.g., Imperial Roll',
                           hintStyle: TextStyle(
                             color: darkText.withOpacity(0.4),
-                            fontSize: 12,
+                            fontSize: 11, // Reduced from 12 to 11
                           ),
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(
+                              6,
+                            ), // Reduced from 8 to 6
                             borderSide: BorderSide.none,
                           ),
                           filled: true,
                           fillColor: Colors.white.withOpacity(0.7),
                           contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 12,
+                            horizontal: 10, // Reduced from 12 to 10
+                            vertical: 10, // Reduced from 12 to 10
                           ),
+                          isDense: true, // Make text field more compact
                         ),
-                        style: const TextStyle(fontSize: 14, color: darkText),
+                        style: const TextStyle(
+                          fontSize: 13,
+                          color: darkText,
+                        ), // Reduced from 14 to 13
                         onChanged: (value) {
                           _items[index] = ReceiptItem(
                             name: value,
@@ -545,13 +647,14 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                           );
                         },
                       ),
-                      const SizedBox(height: 10),
-
+                      const SizedBox(height: 8), // Reduced from 10 to 8
                       // Category Dropdown for each item
                       Container(
                         decoration: BoxDecoration(
                           color: Colors.white.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(8),
+                          borderRadius: BorderRadius.circular(
+                            6,
+                          ), // Reduced from 8 to 6
                         ),
                         child: DropdownButtonFormField<String>(
                           value: _itemCategories[index],
@@ -559,16 +662,19 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                             labelText: 'Category',
                             labelStyle: TextStyle(
                               color: darkText.withOpacity(0.6),
-                              fontSize: 12,
+                              fontSize: 11, // Reduced from 12 to 11
                             ),
                             border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(
+                                6,
+                              ), // Reduced from 8 to 6
                               borderSide: BorderSide.none,
                             ),
                             contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 12,
-                              vertical: 4,
+                              horizontal: 10, // Reduced from 12 to 10
+                              vertical: 2, // Reduced from 4 to 2
                             ),
+                            isDense: true,
                           ),
                           items: _categories.map((category) {
                             return DropdownMenuItem(
@@ -577,14 +683,16 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                                 children: [
                                   Icon(
                                     _getCategoryIcon(category),
-                                    size: 14,
+                                    size: 12, // Reduced from 14 to 12
                                     color: _getCategoryColor(category),
                                   ),
-                                  const SizedBox(width: 6),
+                                  const SizedBox(
+                                    width: 4,
+                                  ), // Reduced from 6 to 4
                                   Text(
                                     category,
                                     style: const TextStyle(
-                                      fontSize: 13,
+                                      fontSize: 12, // Reduced from 13 to 12
                                       color: darkText,
                                     ),
                                   ),
@@ -593,36 +701,46 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                             );
                           }).toList(),
                           onChanged: (value) {
-                            setState(() {
-                              _itemCategories[index] = value!;
-                              _itemCategoryControllers[index].text = value;
-                              _items[index] = ReceiptItem(
-                                name: _itemNameControllers[index].text,
-                                price:
-                                    double.tryParse(
-                                      _itemPriceControllers[index].text,
-                                    ) ??
-                                    0.0,
-                                quantity:
-                                    int.tryParse(
-                                      _itemQuantityControllers[index].text,
-                                    ) ??
-                                    1,
-                                category: value,
-                              );
-                            });
+                            if (value != null) {
+                              setState(() {
+                                _itemCategories[index] = value;
+                                _itemCategoryControllers[index].text = value;
+                                _items[index] = ReceiptItem(
+                                  name: _itemNameControllers[index].text,
+                                  price:
+                                      double.tryParse(
+                                        _itemPriceControllers[index].text,
+                                      ) ??
+                                      0.0,
+                                  quantity:
+                                      int.tryParse(
+                                        _itemQuantityControllers[index].text,
+                                      ) ??
+                                      1,
+                                  category: value,
+                                );
+                              });
+                              // Update cubit with first item's category (for main expense)
+                              if (index == 0) {
+                                context.read<AddExpenseCubit>().updateCategory(
+                                  value,
+                                );
+                              }
+                            }
                           },
                           icon: Icon(
                             Icons.arrow_drop_down,
                             color: accentGreen,
-                            size: 18,
+                            size: 16, // Reduced from 18 to 16
                           ),
                           dropdownColor: headerColor,
-                          style: const TextStyle(fontSize: 13, color: darkText),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: darkText,
+                          ), // Reduced from 13 to 12
                         ),
                       ),
-                      const SizedBox(height: 10),
-
+                      const SizedBox(height: 8), // Reduced from 10 to 8
                       // Item Price and Quantity Row
                       Row(
                         children: [
@@ -635,21 +753,24 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                                 labelText: 'Qty',
                                 labelStyle: TextStyle(
                                   color: darkText.withOpacity(0.6),
-                                  fontSize: 12,
+                                  fontSize: 11, // Reduced from 12 to 11
                                 ),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(
+                                    6,
+                                  ), // Reduced from 8 to 6
                                   borderSide: BorderSide.none,
                                 ),
                                 filled: true,
                                 fillColor: Colors.white.withOpacity(0.7),
                                 contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 12,
+                                  horizontal: 10, // Reduced from 12 to 10
+                                  vertical: 8, // Reduced from 12 to 8
                                 ),
+                                isDense: true,
                               ),
                               style: const TextStyle(
-                                fontSize: 14,
+                                fontSize: 13, // Reduced from 14 to 13
                                 color: darkText,
                               ),
                               onChanged: (value) {
@@ -668,8 +789,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                               },
                             ),
                           ),
-                          const SizedBox(width: 8),
-
+                          const SizedBox(width: 6), // Reduced from 8 to 6
                           // Price
                           Expanded(
                             child: TextField(
@@ -679,26 +799,29 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                                 labelText: 'Price',
                                 labelStyle: TextStyle(
                                   color: darkText.withOpacity(0.6),
-                                  fontSize: 12,
+                                  fontSize: 11, // Reduced from 12 to 11
                                 ),
                                 prefixText: 'RM ',
                                 prefixStyle: TextStyle(
-                                  fontSize: 14,
+                                  fontSize: 13, // Reduced from 14 to 13
                                   color: accentGreen,
                                 ),
                                 border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(
+                                    6,
+                                  ), // Reduced from 8 to 6
                                   borderSide: BorderSide.none,
                                 ),
                                 filled: true,
                                 fillColor: Colors.white.withOpacity(0.7),
                                 contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 12,
-                                  vertical: 12,
+                                  horizontal: 10, // Reduced from 12 to 10
+                                  vertical: 8, // Reduced from 12 to 8
                                 ),
+                                isDense: true,
                               ),
                               style: const TextStyle(
-                                fontSize: 14,
+                                fontSize: 13, // Reduced from 14 to 13
                                 color: darkText,
                               ),
                               onChanged: (value) {
@@ -720,8 +843,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                         ],
                       ),
 
-                      const SizedBox(height: 8),
-
+                      const SizedBox(height: 6), // Reduced from 8 to 6
                       // Item Total
                       Row(
                         mainAxisAlignment: MainAxisAlignment.end,
@@ -729,23 +851,25 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                           Text(
                             'Item Total: ',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: 11, // Reduced from 12 to 11
                               color: darkText.withOpacity(0.6),
                             ),
                           ),
                           Container(
                             padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
+                              horizontal: 6, // Reduced from 8 to 6
+                              vertical: 1, // Reduced from 2 to 1
                             ),
                             decoration: BoxDecoration(
                               color: accentGreen.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(
+                                10,
+                              ), // Reduced from 12 to 10
                             ),
                             child: Text(
-                              'RM ${(double.tryParse(_itemPriceControllers[index].text) ?? 0.0) * (int.tryParse(_itemQuantityControllers[index].text) ?? 1)}',
+                              'RM ${((double.tryParse(_itemPriceControllers[index].text) ?? 0.0) * (int.tryParse(_itemQuantityControllers[index].text) ?? 1)).toStringAsFixed(2)}',
                               style: TextStyle(
-                                fontSize: 12,
+                                fontSize: 11, // Reduced from 12 to 11
                                 fontWeight: FontWeight.bold,
                                 color: accentGreen,
                               ),
@@ -759,12 +883,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
               },
             ),
 
-            const SizedBox(height: 24),
-
+            const SizedBox(height: 20), // Reduced from 24 to 20
             // Save Expense Button
             SizedBox(
               width: double.infinity,
-              height: 55,
+              height: 48, // Reduced from 55 to 48
               child: ElevatedButton(
                 onPressed: () {
                   _saveExpense(context);
@@ -774,75 +897,73 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   foregroundColor: Colors.white,
                   elevation: 2,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(
+                      10,
+                    ), // Reduced from 12 to 10
                   ),
                 ),
-                child: const Text(
-                  'Save Expense',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                child: Text(
+                  isEditing ? 'Update Expense' : 'Save Expense',
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                  ), // Reduced from 16 to 15
                 ),
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 16), // Reduced from 20 to 16
           ],
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigation(context),
     );
   }
 
-  // New method to build receipt image with placeholder
   Widget _buildReceiptImage() {
-    // Check if image path exists
     if (widget.receipt?.imagePath != null) {
-      // Try to load the image
       return Container(
         width: double.infinity,
-        height: 200,
+        height: 160, // Reduced from 200 to 160
         decoration: BoxDecoration(
           color: headerColor,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12), // Reduced from 16 to 12
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
+              blurRadius: 8, // Reduced from 10 to 8
               offset: const Offset(0, 2),
             ),
           ],
         ),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(12), // Reduced from 16 to 12
           child: Image.file(
             File(widget.receipt!.imagePath!),
             width: double.infinity,
-            height: 200,
+            height: 160, // Reduced from 200 to 160
             fit: BoxFit.cover,
             errorBuilder: (context, error, stackTrace) {
-              // Show placeholder if image fails to load
               return _buildNoImagePlaceholder();
             },
           ),
         ),
       );
     } else {
-      // Show placeholder if no image path
       return _buildNoImagePlaceholder();
     }
   }
 
-  // No Image Placeholder Widget
   Widget _buildNoImagePlaceholder() {
     return Container(
       width: double.infinity,
-      height: 200,
+      height: 160, // Reduced from 200 to 160
       decoration: BoxDecoration(
         color: headerColor.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12), // Reduced from 16 to 12
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
+            blurRadius: 8, // Reduced from 10 to 8
             offset: const Offset(0, 2),
           ),
         ],
@@ -852,22 +973,27 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
         children: [
           Icon(
             Icons.receipt_long,
-            size: 60,
+            size: 48, // Reduced from 60 to 48
             color: accentGreen.withOpacity(0.5),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 8), // Reduced from 12 to 8
           Text(
             'No Receipt Image',
             style: TextStyle(
-              fontSize: 16,
+              fontSize: 14, // Reduced from 16 to 14
               fontWeight: FontWeight.w500,
               color: darkText.withOpacity(0.5),
             ),
           ),
-          const SizedBox(height: 4),
+          const SizedBox(height: 2), // Reduced from 4 to 2
           Text(
-            'Receipt preview not available',
-            style: TextStyle(fontSize: 12, color: darkText.withOpacity(0.4)),
+            widget.expenseToEdit != null
+                ? 'Editing existing expense'
+                : 'Receipt preview not available',
+            style: TextStyle(
+              fontSize: 11,
+              color: darkText.withOpacity(0.4),
+            ), // Reduced from 12 to 11
           ),
         ],
       ),
@@ -906,21 +1032,16 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
             children: [
               GestureDetector(
                 onTap: () {
-                  // Navigate to statistics screen
-                  print('Chart icon tapped');
-                  // TODO: Navigate to statistics screen
+                  // Typically an X icon is used to close/pop the screen
+                  Navigator.pop(context);
+                  print('Close icon tapped');
                 },
-                child: const Icon(Icons.bar_chart, size: 28),
+                child: const Icon(
+                  Icons.close, // Changed from Icons.bar_chart to Icons.close
+                  size: 24,
+                ),
               ),
-              const SizedBox(width: 15),
-              GestureDetector(
-                onTap: () {
-                  // Navigate to notifications screen
-                  print('Notifications icon tapped');
-                  // TODO: Navigate to notifications screen
-                },
-                child: const Icon(Icons.notifications, size: 28),
-              ),
+              const SizedBox(width: 12),
             ],
           ),
         ],
@@ -928,68 +1049,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     );
   }
 
-  // Updated bottom navigation with working navigation
-  Widget _buildBottomNavigation(BuildContext context) {
-    return BottomAppBar(
-      color: headerColor,
-      notchMargin: 8,
-      shape: const CircularNotchedRectangle(),
-      child: SizedBox(
-        height: 60,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            // Home nav item
-            _navItem(Icons.home, 'Home', false, () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const DashboardScreen(),
-                ),
-                (route) => false,
-              );
-            }),
-            // History nav item
-            _navItem(Icons.history, 'History', false, () {
-              print('History tapped');
-              // TODO: Navigate to history screen
-            }),
-            const SizedBox(width: 40), // Space for FAB
-            // Budget nav item
-            _navItem(Icons.savings, 'Budget', false, () {
-              print('Budget tapped');
-              // TODO: Navigate to budget screen
-            }),
-            // Profile nav item
-            _navItem(Icons.person, 'Profile', false, () {
-              print('Profile tapped');
-              // TODO: Navigate to profile screen
-            }),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _navItem(
-    IconData icon,
-    String label,
-    bool active,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, color: active ? Colors.black : Colors.black54),
-          Text(label, style: const TextStyle(fontSize: 12)),
-        ],
-      ),
-    );
-  }
-
-  // Helper functions for category icons and colors
   IconData _getCategoryIcon(String category) {
     switch (category.toLowerCase()) {
       case 'food':
@@ -1008,6 +1067,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
         return Icons.shopping_cart;
       case 'utilities':
         return Icons.electrical_services;
+      case 'supplies':
+        return Icons.inventory;
       default:
         return Icons.receipt;
     }
@@ -1031,6 +1092,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
         return Colors.teal;
       case 'utilities':
         return Colors.brown;
+      case 'supplies':
+        return Colors.amber;
       default:
         return Colors.grey;
     }
@@ -1039,11 +1102,16 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   void _saveExpense(BuildContext context) {
     // Validate at least one item
     bool hasValidItem = false;
+    String firstCategory = 'Food';
+
     for (int i = 0; i < _items.length; i++) {
       if (_itemNameControllers[i].text.isNotEmpty &&
           double.tryParse(_itemPriceControllers[i].text) != null &&
           double.parse(_itemPriceControllers[i].text) > 0) {
         hasValidItem = true;
+        if (i == 0) {
+          firstCategory = _itemCategories[i];
+        }
         break;
       }
     }
@@ -1053,23 +1121,81 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
         const SnackBar(
           content: Text('Please add at least one valid item'),
           backgroundColor: Colors.red,
+          duration: Duration(seconds: 2),
         ),
       );
       return;
     }
 
-    // Save logic here
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Expense saved successfully'),
-        backgroundColor: accentGreen,
-        duration: const Duration(seconds: 2),
-      ),
+    // Create expense model
+    final expense = ExpenseModel(
+      id:
+          widget.expenseToEdit?.id ??
+          DateTime.now().millisecondsSinceEpoch.toString(),
+      title: _vendorController.text.isEmpty
+          ? 'Unknown Vendor'
+          : _vendorController.text,
+      category: firstCategory,
+      amount: _calculateTotal(),
+      date: _selectedDate,
+      isIncome: _isIncome,
+      note: _items.length > 1 ? '${_items.length} items' : _items.first.name,
     );
+
+    // Get cubits
+    final expenseCubit = context.read<ExpenseCubit>();
+    final addExpenseCubit = context.read<AddExpenseCubit>();
+
+    if (widget.isEditing || widget.expenseToEdit != null) {
+      // Update existing expense
+      expenseCubit.updateExpense(expense);
+
+      // Create receipt for recent uploads
+      final receipt = ReceiptModel(
+        id: expense.id,
+        date: expense.date,
+        amount: expense.amount,
+        receiptType: 'manual',
+        merchantName: expense.title,
+        items: _items,
+      );
+      addExpenseCubit.addReceipt(receipt);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Expense updated successfully'),
+          backgroundColor: accentGreen,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    } else {
+      // Add new expense
+      expenseCubit.addExpense(expense);
+
+      // Create receipt for recent uploads
+      final receipt = ReceiptModel(
+        id: expense.id,
+        date: expense.date,
+        amount: expense.amount,
+        receiptType: 'manual',
+        merchantName: expense.title,
+        items: _items,
+        imagePath: widget.receipt?.imagePath,
+      );
+      addExpenseCubit.addReceipt(receipt);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Expense saved successfully'),
+          backgroundColor: accentGreen,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+    }
 
     // Navigate back after save
     Future.delayed(const Duration(seconds: 2), () {
-      Navigator.pop(context);
+      Navigator.popUntil(context, (route) => route.isFirst);
     });
   }
 }
