@@ -11,13 +11,44 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       ..add(expense);
 
     final totalSpending = _calculateTotalSpending(updatedExpenses);
+    final totalBalance = _calculateTotalBalance(updatedExpenses, state.budget);
 
     final newState = state.copyWith(
       allExpenses: updatedExpenses,
       totalSpending: totalSpending,
+      totalBalance: totalBalance,
     );
 
     // Apply current filters to update filtered expenses
+    emit(_applyFilters(newState));
+  }
+
+  // Add income (separate method for clarity)
+  void addIncome(double amount) {
+    if (amount <= 0) return;
+
+    // Create an income expense
+    final income = ExpenseModel(
+      id: DateTime.now().toString(),
+      title: 'Income',
+      amount: amount,
+      category: 'Income',
+      date: DateTime.now(),
+      isIncome: true,
+    );
+
+    final updatedExpenses = List<ExpenseModel>.from(state.allExpenses)
+      ..add(income);
+
+    final totalSpending = _calculateTotalSpending(updatedExpenses);
+    final totalBalance = _calculateTotalBalance(updatedExpenses, state.budget);
+
+    final newState = state.copyWith(
+      allExpenses: updatedExpenses,
+      totalSpending: totalSpending,
+      totalBalance: totalBalance,
+    );
+
     emit(_applyFilters(newState));
   }
 
@@ -28,10 +59,12 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     }).toList();
 
     final totalSpending = _calculateTotalSpending(updatedExpenses);
+    final totalBalance = _calculateTotalBalance(updatedExpenses, state.budget);
 
     final newState = state.copyWith(
       allExpenses: updatedExpenses,
       totalSpending: totalSpending,
+      totalBalance: totalBalance,
     );
 
     emit(_applyFilters(newState));
@@ -44,10 +77,12 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         .toList();
 
     final totalSpending = _calculateTotalSpending(updatedExpenses);
+    final totalBalance = _calculateTotalBalance(updatedExpenses, state.budget);
 
     final newState = state.copyWith(
       allExpenses: updatedExpenses,
       totalSpending: totalSpending,
+      totalBalance: totalBalance,
     );
 
     emit(_applyFilters(newState));
@@ -98,7 +133,8 @@ class ExpenseCubit extends Cubit<ExpenseState> {
 
   // Update budget
   void updateBudget(double newBudget) {
-    emit(state.copyWith(budget: newBudget));
+    final totalBalance = _calculateTotalBalance(state.allExpenses, newBudget);
+    emit(state.copyWith(budget: newBudget, totalBalance: totalBalance));
   }
 
   // Set user name
@@ -106,7 +142,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     emit(state.copyWith(userName: name));
   }
 
-  // Update total balance
+  // Update total balance (manual override)
   void updateTotalBalance(double newBalance) {
     emit(state.copyWith(totalBalance: newBalance));
   }
@@ -114,11 +150,20 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   // Private helper methods
   double _calculateTotalSpending(List<ExpenseModel> expenses) {
     return expenses
-        .fold(
-          0.0,
-          (sum, item) => item.isIncome ? sum - item.amount : sum + item.amount,
-        )
-        .abs();
+        .where((e) => !e.isIncome)
+        .fold(0.0, (sum, item) => sum + item.amount);
+  }
+
+  double _calculateTotalBalance(List<ExpenseModel> expenses, double budget) {
+    double balance = budget;
+    for (var expense in expenses) {
+      if (expense.isIncome) {
+        balance += expense.amount;
+      } else {
+        balance -= expense.amount;
+      }
+    }
+    return balance;
   }
 
   ExpenseState _applyFilters(ExpenseState state) {

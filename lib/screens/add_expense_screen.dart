@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../cubit/add_expense_cubit.dart';
+import '../cubit/expense_cubit.dart';
 import '../models/receipt_model.dart';
+import 'budget_screen.dart';
 import 'manual_entry_screen.dart';
 import 'expense_history_screen.dart';
 import 'dashboard_screen.dart';
@@ -36,7 +38,11 @@ class AddExpenseScreen extends StatelessWidget {
           child: const Icon(Icons.add, color: accentGreen, size: 45),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigation(context),
+      bottomNavigationBar: _buildBottomNavigation(
+        context,
+        headerColor,
+        accentGreen,
+      ),
       body: Column(
         children: [
           _buildTopHeader(context),
@@ -254,8 +260,22 @@ class AddExpenseScreen extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: headerColor,
+          gradient: const LinearGradient(
+            colors: [
+              Color.fromARGB(255, 126, 223, 106),
+              Color.fromARGB(255, 24, 143, 0),
+            ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
           borderRadius: BorderRadius.circular(15),
+          boxShadow: [
+            BoxShadow(
+              color: const Color.fromARGB(255, 255, 255, 255).withOpacity(0.3),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            ),
+          ],
         ),
         child: Row(
           children: [
@@ -263,7 +283,7 @@ class AddExpenseScreen extends StatelessWidget {
               width: 50,
               height: 50,
               decoration: BoxDecoration(
-                color: color.withOpacity(0.2),
+                color: Colors.white.withOpacity(0.5),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(icon, color: color, size: 28),
@@ -278,7 +298,7 @@ class AddExpenseScreen extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: darkText,
+                      color: Color.fromARGB(255, 255, 255, 255),
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -286,13 +306,17 @@ class AddExpenseScreen extends StatelessWidget {
                     subtitle,
                     style: TextStyle(
                       fontSize: 13,
-                      color: darkText.withOpacity(0.6),
+                      color: const Color.fromARGB(255, 255, 255, 255),
                     ),
                   ),
                 ],
               ),
             ),
-            const Icon(Icons.arrow_forward_ios, size: 16, color: darkText),
+            const Icon(
+              Icons.arrow_forward_ios,
+              size: 16,
+              color: Color.fromARGB(255, 255, 255, 255),
+            ),
           ],
         ),
       ),
@@ -355,7 +379,7 @@ class AddExpenseScreen extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: headerColor,
+              color: const Color.fromARGB(255, 252, 252, 252),
               borderRadius: BorderRadius.circular(15),
             ),
             child: Row(
@@ -432,7 +456,12 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNavigation(BuildContext context) {
+  // FIXED Bottom Navigation Bar
+  Widget _buildBottomNavigation(
+    BuildContext context,
+    Color headerColor,
+    Color activeColor,
+  ) {
     return BottomAppBar(
       color: headerColor,
       notchMargin: 8,
@@ -442,26 +471,75 @@ class AddExpenseScreen extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _navItem(Icons.home, 'Home', false, () {
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const DashboardScreen(),
-                ),
-                (route) => false,
-              );
-            }),
-            _navItem(Icons.history, 'History', false, () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ExpenseHistoryScreen(),
-                ),
-              );
-            }),
-            const SizedBox(width: 40),
-            _navItem(Icons.savings, 'Budget', false, () {}),
-            _navItem(Icons.person, 'Profile', false, () {}),
+            _navItem(
+              Icons.home_outlined,
+              Icons.home,
+              'Home',
+              false,
+              activeColor,
+              () {
+                // Navigate to Dashboard
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: BlocProvider.of<ExpenseCubit>(context),
+                      child: const DashboardScreen(),
+                    ),
+                  ),
+                );
+              },
+            ),
+            _navItem(
+              Icons.history_outlined,
+              Icons.history,
+              'History',
+              false,
+              activeColor,
+              () {
+                // Navigate to History Screen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: BlocProvider.of<ExpenseCubit>(context),
+                      child: const ExpenseHistoryScreen(),
+                    ),
+                  ),
+                );
+              },
+            ),
+
+            const SizedBox(width: 40), // Gap for the FAB notch
+            _navItem(
+              Icons.pie_chart_outline,
+              Icons.pie_chart,
+              'Budget',
+              false, // Changed from true to false since we're on Add Expense screen
+              activeColor,
+              () {
+                // Navigate to Budget Screen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: BlocProvider.of<ExpenseCubit>(context),
+                      child: const BudgetScreen(),
+                    ),
+                  ),
+                );
+              },
+            ),
+            _navItem(
+              Icons.person_outline,
+              Icons.person,
+              'Profile',
+              false,
+              activeColor,
+              () {
+                print('Profile tapped');
+              },
+            ),
           ],
         ),
       ),
@@ -470,17 +548,31 @@ class AddExpenseScreen extends StatelessWidget {
 
   Widget _navItem(
     IconData icon,
+    IconData activeIcon,
     String label,
     bool active,
+    Color activeColor,
     VoidCallback onTap,
   ) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque, // Make entire area tappable
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: active ? Colors.black : Colors.black54),
-          Text(label, style: const TextStyle(fontSize: 12)),
+          Icon(
+            active ? activeIcon : icon,
+            color: active ? activeColor : Colors.black54,
+            size: 26,
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+              color: active ? activeColor : Colors.black54,
+            ),
+          ),
         ],
       ),
     );

@@ -1,14 +1,10 @@
-// lib/screens/expense_history_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
-import '../widgets/expense_tile.dart';
-import '../widgets/filter_chips.dart';
-import '../widgets/summary_cards.dart';
 import 'add_expense_screen.dart';
 import '../cubit/add_expense_cubit.dart';
+import 'budget_screen.dart';
 import 'dashboard_screen.dart';
 
 class ExpenseHistoryScreen extends StatelessWidget {
@@ -51,10 +47,14 @@ class ExpenseHistoryScreen extends StatelessWidget {
           child: const Icon(Icons.add, color: accentGreen, size: 45),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigation(context),
+      bottomNavigationBar: _buildBottomNavigation(
+        context,
+        headerColor,
+        accentGreen,
+      ),
       body: Column(
         children: [
-          _buildTopHeader(), // Same header as dashboard
+          _buildTopHeader(context), // Pass context for navigation
           // Title Section (below header)
           Container(
             width: double.infinity,
@@ -202,8 +202,8 @@ class ExpenseHistoryScreen extends StatelessWidget {
     );
   }
 
-  // EXACT SAME HEADER AS DASHBOARD
-  Widget _buildTopHeader() {
+  // EXACT SAME HEADER AS DASHBOARD - Added BuildContext parameter
+  Widget _buildTopHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
       decoration: const BoxDecoration(color: headerColor),
@@ -495,13 +495,25 @@ class ExpenseHistoryScreen extends StatelessWidget {
           margin: const EdgeInsets.symmetric(horizontal: 16),
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: headerColor, // Same as dashboard cards
-            borderRadius: BorderRadius.circular(16),
+            gradient: const LinearGradient(
+              colors: [
+                Color.fromARGB(255, 24, 143, 0),
+                Color.fromARGB(255, 126, 223, 106),
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
+            borderRadius: BorderRadius.circular(15),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.05),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: const Color.fromARGB(
+                  255,
+                  255,
+                  255,
+                  255,
+                ).withOpacity(0.3),
+                blurRadius: 20,
+                offset: const Offset(0, 10),
               ),
             ],
           ),
@@ -516,7 +528,12 @@ class ExpenseHistoryScreen extends StatelessWidget {
                       'TOTAL EXPENSES',
                       style: TextStyle(
                         fontSize: 12,
-                        color: darkText.withOpacity(0.7),
+                        color: const Color.fromARGB(
+                          255,
+                          255,
+                          255,
+                          255,
+                        ).withOpacity(0.7),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -526,7 +543,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: darkText,
+                        color: const Color.fromARGB(255, 255, 255, 255),
                       ),
                     ),
                   ],
@@ -534,7 +551,16 @@ class ExpenseHistoryScreen extends StatelessWidget {
               ),
 
               // Vertical Divider
-              Container(height: 40, width: 1, color: darkText.withOpacity(0.2)),
+              Container(
+                height: 40,
+                width: 1,
+                color: const Color.fromARGB(
+                  255,
+                  255,
+                  255,
+                  255,
+                ).withOpacity(0.2),
+              ),
 
               // TOTAL AMOUNT with dynamic color
               Expanded(
@@ -545,7 +571,12 @@ class ExpenseHistoryScreen extends StatelessWidget {
                       'TOTAL AMOUNT',
                       style: TextStyle(
                         fontSize: 12,
-                        color: darkText.withOpacity(0.7),
+                        color: const Color.fromARGB(
+                          255,
+                          255,
+                          255,
+                          255,
+                        ).withOpacity(0.7),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -714,8 +745,12 @@ class ExpenseHistoryScreen extends StatelessWidget {
     return result ?? false;
   }
 
-  // EXACT SAME BOTTOM NAVIGATION AS DASHBOARD
-  Widget _buildBottomNavigation(BuildContext context) {
+  // EXACT SAME BOTTOM NAVIGATION AS DASHBOARD - FIXED navigation
+  Widget _buildBottomNavigation(
+    BuildContext context,
+    Color headerColor,
+    Color activeColor,
+  ) {
     return BottomAppBar(
       color: headerColor,
       notchMargin: 8,
@@ -725,33 +760,67 @@ class ExpenseHistoryScreen extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            // Home nav item - Clickable
-            _navItem(Icons.home, 'Home', false, () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BlocProvider.value(
-                    value: context.read<ExpenseCubit>(),
-                    child: const DashboardScreen(),
+            _navItem(
+              Icons.home_outlined,
+              Icons.home,
+              'Home',
+              false,
+              activeColor,
+              () {
+                // Navigate to Dashboard
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: BlocProvider.of<ExpenseCubit>(context),
+                      child: const DashboardScreen(),
+                    ),
                   ),
-                ),
-              );
-            }),
-            // History nav item - Active
-            _navItem(Icons.history, 'History', true, () {
-              // Already on history screen
-            }),
-            const SizedBox(width: 40), // Space for FAB
-            // Budget nav item - Clickable
-            _navItem(Icons.savings, 'Budget', false, () {
-              print('Budget tapped');
-              // Navigate to budget screen when implemented
-            }),
-            // Profile nav item - Clickable
-            _navItem(Icons.person, 'Profile', false, () {
-              print('Profile tapped');
-              // Navigate to profile screen when implemented
-            }),
+                );
+              },
+            ),
+            _navItem(
+              Icons.history_outlined,
+              Icons.history,
+              'History',
+              true, // Set to true since we're on History screen
+              activeColor,
+              () {
+                // Already on History screen, maybe scroll to top
+                print('History tapped');
+              },
+            ),
+
+            const SizedBox(width: 40), // Gap for the FAB notch
+            _navItem(
+              Icons.pie_chart_outline,
+              Icons.pie_chart,
+              'Budget',
+              false,
+              activeColor,
+              () {
+                // Navigate to Budget screen
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: BlocProvider.of<ExpenseCubit>(context),
+                      child: const BudgetScreen(),
+                    ),
+                  ),
+                );
+              },
+            ),
+            _navItem(
+              Icons.person_outline,
+              Icons.person,
+              'Profile',
+              false,
+              activeColor,
+              () {
+                print('Profile tapped');
+              },
+            ),
           ],
         ),
       ),
@@ -760,21 +829,29 @@ class ExpenseHistoryScreen extends StatelessWidget {
 
   Widget _navItem(
     IconData icon,
+    IconData activeIcon,
     String label,
     bool active,
+    Color activeColor,
     VoidCallback onTap,
   ) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque, // Make the entire area tappable
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: active ? Colors.black : Colors.black54),
+          Icon(
+            active ? activeIcon : icon,
+            color: active ? activeColor : Colors.black54,
+            size: 26,
+          ),
           Text(
             label,
             style: TextStyle(
               fontSize: 12,
-              color: active ? Colors.black : Colors.black54,
+              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+              color: active ? activeColor : Colors.black54,
             ),
           ),
         ],

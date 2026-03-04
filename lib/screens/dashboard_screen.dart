@@ -1,4 +1,3 @@
-// lib/screens/dashboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
@@ -6,7 +5,12 @@ import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 import '../cubit/add_expense_cubit.dart';
 import 'add_expense_screen.dart';
-import 'expense_history_screen.dart'; // Add this import
+import 'budget_screen.dart';
+import 'expense_history_screen.dart';
+
+// Import budget cubit
+import '../cubit/budget_cubit.dart';
+import '../cubit/budget_cubit.dart' as budget_cubit;
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -51,60 +55,100 @@ class DashboardScreen extends StatelessWidget {
               ),
             );
           },
-          child: const Icon(Icons.add, color: accentGreen, size: 45),
+          child: const Icon(
+            Icons.add,
+            color: Color.fromRGBO(50, 186, 50, 1),
+            size: 45,
+          ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavigation(context), // Pass context
+      bottomNavigationBar: _buildBottomNavigation(
+        context,
+        headerColor,
+        accentGreen,
+      ),
       body: Column(
         children: [
-          _buildTopHeader(), // Custom top bar with logo
+          _buildTopHeader(context),
           Expanded(
             child: Stack(
               children: [
-                // 1. Background Image Layer
+                // Background Image Layer
                 Positioned(
                   top: -80,
                   right: -40,
                   child: Opacity(
-                    opacity:
-                        0.5, // Subtle transparency as seen in the interface
-                    child: Image.asset(
-                      'assets/FYP2.png',
-                      width: 400, // Adjust size to match the UI screenshot
-                    ),
+                    opacity: 0.5,
+                    child: Image.asset('assets/FYP2.png', width: 400),
                   ),
                 ),
+                // Foreground Content Layer - Listen to both cubits
+                MultiBlocListener(
+                  listeners: [
+                    BlocListener<BudgetCubit, budget_cubit.BudgetState>(
+                      listener: (context, budgetState) {
+                        // When budget changes, refresh expense cubit if needed
+                        if (budgetState is budget_cubit.BudgetLoaded) {
+                          // You can update expense cubit with budget data here
+                          // For example, update the budget amount in expense cubit
+                          context.read<ExpenseCubit>().updateBudget(
+                            budgetState.budget.monthlyLimit,
+                          );
+                        }
+                      },
+                    ),
+                  ],
+                  child: BlocBuilder<ExpenseCubit, ExpenseState>(
+                    builder: (context, expenseState) {
+                      return BlocBuilder<BudgetCubit, budget_cubit.BudgetState>(
+                        builder: (context, budgetState) {
+                          // Get budget data
+                          double monthlyBudget = expenseState.budget;
+                          double totalSpent = expenseState.totalSpending;
 
-                // 2. Foreground Content Layer
-                BlocBuilder<ExpenseCubit, ExpenseState>(
-                  builder: (context, state) {
-                    return SingleChildScrollView(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 20.0,
-                        vertical: 10,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildWelcomeSection(state),
-                          const SizedBox(height: 20),
-                          _buildTotalBalanceCard(
-                            state,
-                            context,
-                          ), // Pass context
-                          const SizedBox(height: 20),
-                          _buildStatsRow(state),
-                          const SizedBox(height: 20),
-                          _buildBudgetProgress(state),
-                          const SizedBox(height: 25),
-                          _buildRecentExpensesSection(
-                            state,
-                            context,
-                          ), // Pass context
-                        ],
-                      ),
-                    );
-                  },
+                          // If budget is loaded, use that data
+                          if (budgetState is budget_cubit.BudgetLoaded) {
+                            monthlyBudget = budgetState.budget.monthlyLimit;
+                            // You might want to calculate total spent from categories
+                            // or keep using expenseState.totalSpending
+                          }
+
+                          return SingleChildScrollView(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20.0,
+                              vertical: 10,
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildWelcomeSection(expenseState),
+                                const SizedBox(height: 20),
+                                _buildTotalBalanceCard(expenseState, context),
+                                const SizedBox(height: 20),
+                                _buildStatsRow(
+                                  expenseState,
+                                  context,
+                                  monthlyBudget,
+                                  totalSpent,
+                                ),
+                                const SizedBox(height: 20),
+                                _buildBudgetProgress(
+                                  expenseState,
+                                  monthlyBudget,
+                                  totalSpent,
+                                ),
+                                const SizedBox(height: 25),
+                                _buildRecentExpensesSection(
+                                  expenseState,
+                                  context,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ],
             ),
@@ -115,7 +159,7 @@ class DashboardScreen extends StatelessWidget {
   }
 
   // Header matching the brand bar at the top
-  Widget _buildTopHeader() {
+  Widget _buildTopHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
       decoration: const BoxDecoration(color: headerColor),
@@ -148,8 +192,7 @@ class DashboardScreen extends StatelessWidget {
               // Chart icon - Clickable
               GestureDetector(
                 onTap: () {
-                  // Navigate to statistics screen
-                  print('Chart icon tapped');
+                  _showStatisticsDialog(context);
                 },
                 child: const Icon(Icons.bar_chart, size: 28),
               ),
@@ -157,8 +200,7 @@ class DashboardScreen extends StatelessWidget {
               // Notifications icon - Clickable
               GestureDetector(
                 onTap: () {
-                  // Navigate to notifications screen
-                  print('Notifications icon tapped');
+                  _showNotificationsDialog(context);
                 },
                 child: const Icon(Icons.notifications, size: 28),
               ),
@@ -194,13 +236,20 @@ class DashboardScreen extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(25),
       decoration: BoxDecoration(
-        color: headerColor,
+        gradient: const LinearGradient(
+          colors: [
+            Color.fromARGB(255, 126, 223, 106),
+            Color.fromARGB(255, 24, 143, 0),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+            color: const Color.fromARGB(255, 255, 255, 255).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
@@ -212,7 +261,7 @@ class DashboardScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.w500,
-              color: Color.fromARGB(255, 22, 22, 22),
+              color: Color.fromARGB(255, 255, 255, 255),
             ),
           ),
           const SizedBox(height: 5),
@@ -224,14 +273,13 @@ class DashboardScreen extends StatelessWidget {
                 style: const TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
-                  color: Color.fromARGB(255, 24, 143, 0),
+                  color: Color.fromARGB(255, 255, 255, 255),
                 ),
               ),
               // Add icon in total balance card - Clickable
               GestureDetector(
                 onTap: () {
-                  // Navigate to add money screen or show dialog
-                  print('Add money icon tapped');
+                  _showAddMoneyDialog(context);
                 },
                 child: Container(
                   width: 45,
@@ -255,89 +303,124 @@ class DashboardScreen extends StatelessWidget {
     String value,
     IconData icon, {
     bool isClickable = false,
+    VoidCallback? onTap,
   }) {
     return Expanded(
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: headerColor,
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Row makes the Icon and Label sit side-by-side
-            Row(
-              children: [
-                if (isClickable)
-                  // Icon is clickable
-                  GestureDetector(
-                    onTap: () {
-                      print('$label icon tapped');
-                    },
-                    child: Icon(icon, size: 18, color: accentGreen),
-                  )
-                else
-                  // Icon is not clickable
+      child: GestureDetector(
+        onTap: isClickable ? onTap : null,
+        child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: headerColor,
+            borderRadius: BorderRadius.circular(15),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
                   Icon(icon, size: 18, color: accentGreen),
-                const SizedBox(width: 6), // Space between icon and text
-                Expanded(
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 10, // Slightly smaller to fit side-by-side
-                      fontWeight: FontWeight.w500,
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    overflow: TextOverflow
-                        .ellipsis, // Prevents text crashing if too long
                   ),
+                ],
+              ),
+              const SizedBox(height: 6),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.bold,
                 ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              value,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
-            ),
-          ],
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildStatsRow(ExpenseState state) {
+  Widget _buildStatsRow(
+    ExpenseState expenseState,
+    BuildContext context,
+    double monthlyBudget,
+    double totalSpent,
+  ) {
+    double remainingBudget = monthlyBudget - totalSpent;
+
     return Row(
       children: [
-        // Total Spending icon is NOT clickable (isClickable: false by default)
         _statItem(
           'Total Spending',
-          'RM${state.totalSpending.toStringAsFixed(2)}',
+          'RM${totalSpent.toStringAsFixed(2)}',
           Icons.trending_down,
         ),
         const SizedBox(width: 10),
-        // Budget icon is NOT clickable
+        // Budget icon - Clickable to navigate to budget screen
         _statItem(
           'Budget',
-          'RM${state.budget.toStringAsFixed(2)}',
+          'RM${monthlyBudget.toStringAsFixed(2)}',
           Icons.account_balance,
+          isClickable: true,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MultiBlocProvider(
+                  providers: [
+                    BlocProvider.value(value: context.read<ExpenseCubit>()),
+                    BlocProvider(create: (context) => BudgetCubit()),
+                  ],
+                  child: const BudgetScreen(),
+                ),
+              ),
+            );
+          },
         ),
         const SizedBox(width: 10),
-        // Remaining icon is NOT clickable
         _statItem(
           'Remaining',
-          'RM${(state.budget - state.totalSpending).toStringAsFixed(2)}',
+          'RM${remainingBudget.toStringAsFixed(2)}',
           Icons.wallet,
         ),
       ],
     );
   }
 
-  Widget _buildBudgetProgress(ExpenseState state) {
+  Widget _buildBudgetProgress(
+    ExpenseState expenseState,
+    double monthlyBudget,
+    double totalSpent,
+  ) {
+    double progress = monthlyBudget > 0 ? totalSpent / monthlyBudget : 0;
+
     return Container(
       padding: const EdgeInsets.all(15),
       decoration: BoxDecoration(
-        color: headerColor,
+        gradient: const LinearGradient(
+          colors: [
+            Color.fromARGB(255, 126, 223, 106),
+            Color.fromARGB(255, 24, 143, 0),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(15),
+        boxShadow: [
+          BoxShadow(
+            color: const Color.fromARGB(255, 255, 255, 255).withOpacity(0.3),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         children: [
@@ -346,15 +429,21 @@ class DashboardScreen extends StatelessWidget {
             children: [
               const Text(
                 'Budget Progress',
-                style: TextStyle(fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
-              Text('${(state.budgetProgress * 100).toInt()}%'),
+              Text(
+                '${(progress * 100).toInt()}%',
+                style: const TextStyle(color: Colors.white),
+              ),
             ],
           ),
           const SizedBox(height: 10),
           LinearProgressIndicator(
-            value: state.budgetProgress,
-            backgroundColor: Colors.white,
+            value: progress.clamp(0.0, 1.0),
+            backgroundColor: Colors.white.withOpacity(0.3),
             color: accentGreen,
             minHeight: 12,
             borderRadius: BorderRadius.circular(10),
@@ -363,8 +452,8 @@ class DashboardScreen extends StatelessWidget {
           Align(
             alignment: Alignment.centerRight,
             child: Text(
-              'RM${state.totalSpending.toStringAsFixed(2)} of RM${state.budget.toStringAsFixed(2)}',
-              style: const TextStyle(fontSize: 12),
+              'RM${totalSpent.toStringAsFixed(2)} of RM${monthlyBudget.toStringAsFixed(2)}',
+              style: const TextStyle(fontSize: 12, color: Colors.white),
             ),
           ),
         ],
@@ -376,9 +465,9 @@ class DashboardScreen extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildRecentExpensesHeader(context), // Pass context
+        _buildRecentExpensesHeader(context),
         const SizedBox(height: 1),
-        _buildRecentExpensesList(state),
+        _buildRecentExpensesList(state, context),
       ],
     );
   }
@@ -391,10 +480,8 @@ class DashboardScreen extends StatelessWidget {
           'Recent Expenses',
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
-        // "See All" text is clickable - Navigate to History Screen
         GestureDetector(
           onTap: () {
-            // Navigate to expense history screen
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -414,8 +501,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentExpensesList(ExpenseState state) {
-    // Use allExpenses instead of expenses (which doesn't exist anymore)
+  Widget _buildRecentExpensesList(ExpenseState state, BuildContext context) {
     final recentExpenses = state.allExpenses.length > 5
         ? state.allExpenses.sublist(0, 5)
         : state.allExpenses;
@@ -424,13 +510,24 @@ class DashboardScreen extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: headerColor,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(15),
         ),
         child: const Center(
-          child: Text(
-            'No expenses yet',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+          child: Column(
+            children: [
+              Icon(Icons.receipt_outlined, size: 40, color: Colors.grey),
+              SizedBox(height: 8),
+              Text(
+                'No expenses yet',
+                style: TextStyle(fontSize: 16, color: Colors.grey),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Tap the + button to add an expense',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
           ),
         ),
       );
@@ -443,10 +540,10 @@ class DashboardScreen extends StatelessWidget {
       itemBuilder: (context, index) {
         final expense = recentExpenses[index];
         return Container(
-          margin: const EdgeInsets.only(bottom: 10),
+          margin: const EdgeInsets.only(bottom: 15),
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
-            color: headerColor,
+            color: Colors.white,
             borderRadius: BorderRadius.circular(15),
             boxShadow: [
               BoxShadow(
@@ -463,7 +560,7 @@ class DashboardScreen extends StatelessWidget {
                 width: 45,
                 height: 45,
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.8),
+                  color: _getCategoryColor(expense.category).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
@@ -489,7 +586,6 @@ class DashboardScreen extends StatelessWidget {
                       expense.category,
                       style: TextStyle(fontSize: 13, color: Colors.grey[600]),
                     ),
-                    // Show if it's income (optional)
                     if (expense.isIncome ?? false)
                       Padding(
                         padding: const EdgeInsets.only(top: 2),
@@ -532,7 +628,11 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNavigation(BuildContext context) {
+  Widget _buildBottomNavigation(
+    BuildContext context,
+    Color headerColor,
+    Color activeColor,
+  ) {
     return BottomAppBar(
       color: headerColor,
       notchMargin: 8,
@@ -542,35 +642,66 @@ class DashboardScreen extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            // Home nav item - Clickable
-            _navItem(Icons.home, 'Home', true, () {
-              // Already on home screen, maybe scroll to top
-              print('Home tapped');
-            }),
-            // History nav item - Clickable - NOW NAVIGATES TO HISTORY SCREEN
-            _navItem(Icons.history, 'History', false, () {
-              // Navigate to expense history screen
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BlocProvider.value(
-                    value: context.read<ExpenseCubit>(),
-                    child: const ExpenseHistoryScreen(),
+            _navItem(
+              Icons.home_outlined,
+              Icons.home,
+              'Home',
+              true,
+              activeColor,
+              () {
+                // Already on home screen
+              },
+            ),
+            _navItem(
+              Icons.history_outlined,
+              Icons.history,
+              'History',
+              false,
+              activeColor,
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: context.read<ExpenseCubit>(),
+                      child: const ExpenseHistoryScreen(),
+                    ),
                   ),
-                ),
-              );
-            }),
-            const SizedBox(width: 40), // Space for FAB
-            // Budget nav item - Clickable
-            _navItem(Icons.savings, 'Budget', false, () {
-              print('Budget tapped');
-              // Navigate to budget screen when implemented
-            }),
-            // Profile nav item - Clickable
-            _navItem(Icons.person, 'Profile', false, () {
-              print('Profile tapped');
-              // Navigate to profile screen when implemented
-            }),
+                );
+              },
+            ),
+            const SizedBox(width: 40), // Gap for the FAB notch
+            _navItem(
+              Icons.pie_chart_outline,
+              Icons.pie_chart,
+              'Budget',
+              false,
+              activeColor,
+              () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider(create: (context) => BudgetCubit()),
+                      ],
+                      child: const BudgetScreen(),
+                    ),
+                  ),
+                );
+              },
+            ),
+            _navItem(
+              Icons.person_outline,
+              Icons.person,
+              'Profile',
+              false,
+              activeColor,
+              () {
+                _showProfileDialog(context);
+              },
+            ),
           ],
         ),
       ),
@@ -579,22 +710,239 @@ class DashboardScreen extends StatelessWidget {
 
   Widget _navItem(
     IconData icon,
+    IconData activeIcon,
     String label,
     bool active,
+    Color activeColor,
     VoidCallback onTap,
   ) {
     return GestureDetector(
       onTap: onTap,
+      behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, color: active ? Colors.black : Colors.black54),
+          Icon(
+            active ? activeIcon : icon,
+            color: active ? activeColor : Colors.black54,
+            size: 26,
+          ),
           Text(
             label,
             style: TextStyle(
               fontSize: 12,
-              color: active ? Colors.black : Colors.black54,
+              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+              color: active ? activeColor : Colors.black54,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Helper methods for dialogs
+  void _showStatisticsDialog(BuildContext context) {
+    final expenseState = context.read<ExpenseCubit>().state;
+    final budgetState = context.read<BudgetCubit>().state;
+
+    double monthlyBudget = expenseState.budget;
+    if (budgetState is budget_cubit.BudgetLoaded) {
+      monthlyBudget = budgetState.budget.monthlyLimit;
+    }
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Statistics'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.bar_chart, size: 60, color: accentGreen),
+            const SizedBox(height: 16),
+            _buildStatRow(
+              'Total Spending:',
+              'RM${expenseState.totalSpending.toStringAsFixed(2)}',
+            ),
+            _buildStatRow(
+              'Monthly Budget:',
+              'RM${monthlyBudget.toStringAsFixed(2)}',
+            ),
+            _buildStatRow(
+              'Budget Used:',
+              '${monthlyBudget > 0 ? (expenseState.totalSpending / monthlyBudget * 100).toInt() : 0}%',
+            ),
+            _buildStatRow(
+              'Transactions:',
+              '${expenseState.allExpenses.length}',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showNotificationsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Notifications'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.notifications_none, size: 60, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              'No new notifications',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Check back later for updates',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showAddMoneyDialog(BuildContext context) {
+    final TextEditingController amountController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Add Money'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: amountController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                prefixText: 'RM ',
+                hintText: '0.00',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: accentGreen, width: 2),
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (amountController.text.isNotEmpty) {
+                final amount = double.tryParse(amountController.text);
+                if (amount != null && amount > 0) {
+                  // Add to total balance using addIncome method
+                  context.read<ExpenseCubit>().addIncome(amount);
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Added RM${amount.toStringAsFixed(2)} to balance',
+                      ),
+                      backgroundColor: accentGreen,
+                    ),
+                  );
+                }
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: accentGreen,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showProfileDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Profile'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            CircleAvatar(
+              radius: 40,
+              backgroundColor: accentGreen.withOpacity(0.2),
+              child: const Icon(Icons.person, size: 40, color: accentGreen),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'User Name',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'user@example.com',
+              style: TextStyle(color: Colors.grey.shade600),
+            ),
+            const SizedBox(height: 16),
+            const Divider(),
+            const SizedBox(height: 8),
+            const ListTile(
+              leading: Icon(Icons.settings, color: accentGreen),
+              title: Text('Settings'),
+              dense: true,
+            ),
+            const ListTile(
+              leading: Icon(Icons.help, color: accentGreen),
+              title: Text('Help & Support'),
+              dense: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
         ],
       ),
