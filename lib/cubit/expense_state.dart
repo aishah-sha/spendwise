@@ -5,6 +5,8 @@ enum ExpenseFilter { all, income, expense }
 
 enum DateRangeFilter { all, today, yesterday, week, month, custom }
 
+enum AnalyticsPeriod { week, month, year }
+
 class ExpenseState extends Equatable {
   final String userName;
   final DateTime currentDate;
@@ -20,6 +22,10 @@ class ExpenseState extends Equatable {
   final DateTime? customEndDate;
   final String? selectedCategory;
 
+  // Analytics properties
+  final AnalyticsPeriod selectedAnalyticsPeriod;
+  final DateTime analyticsSelectedDate;
+
   const ExpenseState({
     required this.userName,
     required this.currentDate,
@@ -34,6 +40,8 @@ class ExpenseState extends Equatable {
     this.customStartDate,
     this.customEndDate,
     this.selectedCategory,
+    this.selectedAnalyticsPeriod = AnalyticsPeriod.month,
+    required this.analyticsSelectedDate,
   });
 
   factory ExpenseState.initial() {
@@ -76,6 +84,87 @@ class ExpenseState extends Equatable {
         date: twoDaysAgo,
         isIncome: false,
       ),
+      // Additional expenses for analytics
+      ExpenseModel(
+        id: '5',
+        title: 'Rent',
+        category: 'Rent',
+        amount: 50.00,
+        date: today.subtract(const Duration(days: 5)),
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '6',
+        title: 'Rent',
+        category: 'Rent',
+        amount: 100.00,
+        date: today.subtract(const Duration(days: 10)),
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '7',
+        title: 'Stationery',
+        category: 'Stationery',
+        amount: 50.00,
+        date: today.subtract(const Duration(days: 7)),
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '8',
+        title: 'Clothes',
+        category: 'Clothes',
+        amount: 450.00,
+        date: today.subtract(const Duration(days: 3)),
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '9',
+        title: 'Beverages',
+        category: 'Beverages',
+        amount: 90.00,
+        date: today.subtract(const Duration(days: 2)),
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '10',
+        title: 'Food',
+        category: 'Food',
+        amount: 100.00,
+        date: today.subtract(const Duration(days: 1)),
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '11',
+        title: 'Recent',
+        category: 'Others',
+        amount: 3.00,
+        date: today,
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '12',
+        title: 'Superb',
+        category: 'Others',
+        amount: 5.00,
+        date: today,
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '13',
+        title: 'Kompleks',
+        category: 'Others',
+        amount: 1.00,
+        date: today,
+        isIncome: false,
+      ),
+      ExpenseModel(
+        id: '14',
+        title: 'Groceries',
+        category: 'Groceries',
+        amount: 150.00,
+        date: today.subtract(const Duration(days: 4)),
+        isIncome: false,
+      ),
     ];
 
     final totalSpending = initialExpenses.fold(
@@ -91,22 +180,87 @@ class ExpenseState extends Equatable {
       budget: 2000.00,
       allExpenses: initialExpenses,
       filteredExpenses: initialExpenses,
+      analyticsSelectedDate: now,
     );
   }
 
-  // Computed properties
-  double get remaining => budget - totalSpending;
-  double get budgetProgress => totalSpending / budget;
-
-  int get totalExpensesCount => filteredExpenses.length;
-
-  double get totalAmount {
-    return filteredExpenses.fold(0.0, (sum, expense) {
-      return expense.isIncome ? sum + expense.amount : sum - expense.amount;
+  // Computed properties for analytics
+  double get totalSpent {
+    return getExpensesForAnalytics().fold(0.0, (sum, expense) {
+      return expense.isIncome ? sum : sum + expense.amount;
     });
   }
 
-  // Group expenses by date for display
+  double get lastMonthTotal {
+    return totalSpent * 1.1; // Simulate 10% more than current
+  }
+
+  double get percentageChange {
+    return ((totalSpent - lastMonthTotal) / lastMonthTotal) * 100;
+  }
+
+  Map<String, double> get categoryTotals {
+    final Map<String, double> totals = {};
+    final analyticsExpenses = getExpensesForAnalytics();
+
+    for (var expense in analyticsExpenses.where((e) => !e.isIncome)) {
+      totals[expense.category] =
+          (totals[expense.category] ?? 0) + expense.amount;
+    }
+    return totals;
+  }
+
+  List<MapEntry<String, double>> get sortedCategoryTotals {
+    final entries = categoryTotals.entries.toList();
+    entries.sort((a, b) => b.value.compareTo(a.value));
+    return entries;
+  }
+
+  Map<DateTime, double> get dailyTotals {
+    final Map<DateTime, double> totals = {};
+    final analyticsExpenses = getExpensesForAnalytics();
+
+    for (var expense in analyticsExpenses.where((e) => !e.isIncome)) {
+      final day = DateTime(
+        expense.date.year,
+        expense.date.month,
+        expense.date.day,
+      );
+      totals[day] = (totals[day] ?? 0) + expense.amount;
+    }
+    return totals;
+  }
+
+  List<ExpenseModel> get smallExpenses {
+    return getExpensesForAnalytics()
+        .where((e) => !e.isIncome && e.amount < 10)
+        .toList();
+  }
+
+  double get groceriesTotal {
+    return getExpensesForAnalytics()
+        .where((e) => !e.isIncome && e.category == 'Groceries')
+        .fold(0.0, (sum, e) => sum + e.amount);
+  }
+
+  // Helper method to get expenses based on selected analytics period
+  List<ExpenseModel> getExpensesForAnalytics() {
+    final now = analyticsSelectedDate;
+
+    switch (selectedAnalyticsPeriod) {
+      case AnalyticsPeriod.week:
+        final weekAgo = now.subtract(const Duration(days: 7));
+        return allExpenses.where((e) => e.date.isAfter(weekAgo)).toList();
+      case AnalyticsPeriod.month:
+        final monthAgo = now.subtract(const Duration(days: 30));
+        return allExpenses.where((e) => e.date.isAfter(monthAgo)).toList();
+      case AnalyticsPeriod.year:
+        final yearAgo = now.subtract(const Duration(days: 365));
+        return allExpenses.where((e) => e.date.isAfter(yearAgo)).toList();
+    }
+  }
+
+  // Existing methods (groupedByDate, copyWith, etc. remain the same)
   Map<String, List<ExpenseModel>> get groupedByDate {
     final grouped = <String, List<ExpenseModel>>{};
 
@@ -118,9 +272,7 @@ class ExpenseState extends Equatable {
       grouped[dateKey]!.add(expense);
     }
 
-    // Sort dates in descending order
     final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-
     final sortedGrouped = <String, List<ExpenseModel>>{};
     for (var key in sortedKeys) {
       sortedGrouped[key] = grouped[key]!;
@@ -137,13 +289,9 @@ class ExpenseState extends Equatable {
 
     if (expenseDate == today) return 'TODAY';
     if (expenseDate == yesterday) return 'YESTERDAY';
-
-    // Check if within last 7 days
     if (expenseDate.isAfter(today.subtract(const Duration(days: 7)))) {
       return 'THIS WEEK';
     }
-
-    // Return formatted date for older entries
     return '${_getMonthAbbreviation(expenseDate.month)} ${expenseDate.year}';
   }
 
@@ -165,6 +313,17 @@ class ExpenseState extends Equatable {
     return months[month - 1];
   }
 
+  // Computed properties
+  double get remaining => budget - totalSpending;
+  double get budgetProgress => totalSpending / budget;
+  int get totalExpensesCount => filteredExpenses.length;
+
+  double get totalAmount {
+    return filteredExpenses.fold(0.0, (sum, expense) {
+      return expense.isIncome ? sum + expense.amount : sum - expense.amount;
+    });
+  }
+
   ExpenseState copyWith({
     String? userName,
     DateTime? currentDate,
@@ -179,6 +338,8 @@ class ExpenseState extends Equatable {
     DateTime? customStartDate,
     DateTime? customEndDate,
     String? selectedCategory,
+    AnalyticsPeriod? selectedAnalyticsPeriod,
+    DateTime? analyticsSelectedDate,
   }) {
     return ExpenseState(
       userName: userName ?? this.userName,
@@ -194,6 +355,10 @@ class ExpenseState extends Equatable {
       customStartDate: customStartDate ?? this.customStartDate,
       customEndDate: customEndDate ?? this.customEndDate,
       selectedCategory: selectedCategory ?? this.selectedCategory,
+      selectedAnalyticsPeriod:
+          selectedAnalyticsPeriod ?? this.selectedAnalyticsPeriod,
+      analyticsSelectedDate:
+          analyticsSelectedDate ?? this.analyticsSelectedDate,
     );
   }
 
@@ -212,5 +377,7 @@ class ExpenseState extends Equatable {
     customStartDate,
     customEndDate,
     selectedCategory,
+    selectedAnalyticsPeriod,
+    analyticsSelectedDate,
   ];
 }

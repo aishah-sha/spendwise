@@ -5,6 +5,7 @@ import '../cubit/expense_state.dart';
 import '../cubit/profile_cubit.dart';
 import 'add_expense_screen.dart';
 import '../cubit/add_expense_cubit.dart';
+import 'analytics_screen.dart';
 import 'budget_screen.dart';
 import 'dashboard_screen.dart';
 import 'profile_screen.dart';
@@ -235,11 +236,18 @@ class ExpenseHistoryScreen extends StatelessWidget {
           ),
           Row(
             children: [
-              // Chart icon - Clickable
+              // Chart icon - Clickable - Now navigates to Analytics Screen
               GestureDetector(
                 onTap: () {
-                  // Navigate to statistics screen
-                  print('Chart icon tapped');
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BlocProvider.value(
+                        value: context.read<ExpenseCubit>(),
+                        child: const AnalyticsScreen(),
+                      ),
+                    ),
+                  );
                 },
                 child: const Icon(Icons.bar_chart, size: 28),
               ),
@@ -247,8 +255,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
               // Notifications icon - Clickable
               GestureDetector(
                 onTap: () {
-                  // Navigate to notifications screen
-                  print('Notifications icon tapped');
+                  _showNotificationsDialog(context);
                 },
                 child: const Icon(Icons.notifications, size: 28),
               ),
@@ -713,180 +720,213 @@ class ExpenseHistoryScreen extends StatelessWidget {
     );
   }
 
-  void _navigateToEditExpense(BuildContext context, dynamic expense) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => BlocProvider(
-          create: (context) => AddExpenseCubit(expenseToEdit: expense),
-          child: const AddExpenseScreen(),
-        ),
-      ),
-    );
-  }
-
-  Future<bool> _showDeleteConfirmation(BuildContext context) async {
-    final result = await showDialog<bool>(
+  void _showNotificationsDialog(BuildContext context) {
+    showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Expense'),
-        content: const Text('Are you sure you want to delete this expense?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: Colors.red),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    return result ?? false;
-  }
-
-  // EXACT SAME BOTTOM NAVIGATION AS DASHBOARD - FIXED navigation
-  Widget _buildBottomNavigation(
-    BuildContext context,
-    Color headerColor,
-    Color activeColor,
-  ) {
-    return BottomAppBar(
-      color: headerColor,
-      notchMargin: 8,
-      shape: const CircularNotchedRectangle(),
-      child: SizedBox(
-        height: 60,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Notifications'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            _navItem(
-              Icons.home_outlined,
-              Icons.home,
-              'Home',
-              false,
-              activeColor,
-              () {
-                // Navigate to Dashboard
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => BlocProvider.value(
-                      value: BlocProvider.of<ExpenseCubit>(context),
-                      child: const DashboardScreen(),
-                    ),
-                  ),
-                );
-              },
+            const Icon(Icons.notifications_none, size: 60, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              'No new notifications',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
-            _navItem(
-              Icons.history_outlined,
-              Icons.history,
-              'History',
-              true, // Set to true since we're on History screen
-              activeColor,
-              () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => MultiBlocProvider(
-                      providers: [
-                        BlocProvider.value(value: context.read<ExpenseCubit>()),
-                        BlocProvider(create: (context) => ProfileCubit()),
-                      ],
-                      child: const ProfileScreen(),
-                    ),
-                  ),
-                );
-                ;
-              },
-            ),
-
-            const SizedBox(width: 40), // Gap for the FAB notch
-            _navItem(
-              Icons.pie_chart_outline,
-              Icons.pie_chart,
-              'Budget',
-              false,
-              activeColor,
-              () {
-                // Navigate to Budget screen
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => BlocProvider.value(
-                      value: BlocProvider.of<ExpenseCubit>(context),
-                      child: const BudgetScreen(),
-                    ),
-                  ),
-                );
-              },
-            ),
-            _navItem(
-              Icons.person_outline,
-              Icons.person,
-              'Profile',
-              false,
-              activeColor,
-              () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => MultiBlocProvider(
-                      providers: [
-                        BlocProvider.value(value: context.read<ExpenseCubit>()),
-                        BlocProvider(create: (context) => ProfileCubit()),
-                      ],
-                      child: const ProfileScreen(),
-                    ),
-                  ),
-                );
-              },
+            const SizedBox(height: 8),
+            const Text(
+              'Check back later for updates',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _navItem(
-    IconData icon,
-    IconData activeIcon,
-    String label,
-    bool active,
-    Color activeColor,
-    VoidCallback onTap,
-  ) {
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque, // Make the entire area tappable
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            active ? activeIcon : icon,
-            color: active ? activeColor : Colors.black54,
-            size: 26,
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-              color: active ? activeColor : Colors.black54,
-            ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
           ),
         ],
       ),
     );
   }
+}
 
-  double _calculateTotalAmount(ExpenseState state) {
-    return state.filteredExpenses.fold(0.0, (sum, expense) {
-      final bool isIncome = expense.isIncome ?? false;
-      return isIncome ? sum + expense.amount : sum - expense.amount;
-    });
-  }
+void _navigateToEditExpense(BuildContext context, dynamic expense) {
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => BlocProvider(
+        create: (context) => AddExpenseCubit(expenseToEdit: expense),
+        child: const AddExpenseScreen(),
+      ),
+    ),
+  );
+}
+
+Future<bool> _showDeleteConfirmation(BuildContext context) async {
+  final result = await showDialog<bool>(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Delete Expense'),
+      content: const Text('Are you sure you want to delete this expense?'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context, true),
+          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          child: const Text('Delete'),
+        ),
+      ],
+    ),
+  );
+  return result ?? false;
+}
+
+// EXACT SAME BOTTOM NAVIGATION AS DASHBOARD - FIXED navigation
+Widget _buildBottomNavigation(
+  BuildContext context,
+  Color headerColor,
+  Color activeColor,
+) {
+  return BottomAppBar(
+    color: headerColor,
+    notchMargin: 8,
+    shape: const CircularNotchedRectangle(),
+    child: SizedBox(
+      height: 60,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _navItem(
+            Icons.home_outlined,
+            Icons.home,
+            'Home',
+            false,
+            activeColor,
+            () {
+              // Navigate to Dashboard
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BlocProvider.value(
+                    value: BlocProvider.of<ExpenseCubit>(context),
+                    child: const DashboardScreen(),
+                  ),
+                ),
+              );
+            },
+          ),
+          _navItem(
+            Icons.history_outlined,
+            Icons.history,
+            'History',
+            true, // Set to true since we're on History screen
+            activeColor,
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MultiBlocProvider(
+                    providers: [
+                      BlocProvider.value(value: context.read<ExpenseCubit>()),
+                      BlocProvider(create: (context) => ProfileCubit()),
+                    ],
+                    child: const ProfileScreen(),
+                  ),
+                ),
+              );
+              ;
+            },
+          ),
+
+          const SizedBox(width: 40), // Gap for the FAB notch
+          _navItem(
+            Icons.pie_chart_outline,
+            Icons.pie_chart,
+            'Budget',
+            false,
+            activeColor,
+            () {
+              // Navigate to Budget screen
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BlocProvider.value(
+                    value: BlocProvider.of<ExpenseCubit>(context),
+                    child: const BudgetScreen(),
+                  ),
+                ),
+              );
+            },
+          ),
+          _navItem(
+            Icons.person_outline,
+            Icons.person,
+            'Profile',
+            false,
+            activeColor,
+            () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => MultiBlocProvider(
+                    providers: [
+                      BlocProvider.value(value: context.read<ExpenseCubit>()),
+                      BlocProvider(create: (context) => ProfileCubit()),
+                    ],
+                    child: const ProfileScreen(),
+                  ),
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _navItem(
+  IconData icon,
+  IconData activeIcon,
+  String label,
+  bool active,
+  Color activeColor,
+  VoidCallback onTap,
+) {
+  return GestureDetector(
+    onTap: onTap,
+    behavior: HitTestBehavior.opaque, // Make the entire area tappable
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          active ? activeIcon : icon,
+          color: active ? activeColor : Colors.black54,
+          size: 26,
+        ),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: active ? FontWeight.w600 : FontWeight.normal,
+            color: active ? activeColor : Colors.black54,
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+double _calculateTotalAmount(ExpenseState state) {
+  return state.filteredExpenses.fold(0.0, (sum, expense) {
+    final bool isIncome = expense.isIncome ?? false;
+    return isIncome ? sum + expense.amount : sum - expense.amount;
+  });
 }

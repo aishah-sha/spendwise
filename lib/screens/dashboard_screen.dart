@@ -8,6 +8,7 @@ import '../cubit/add_expense_cubit.dart';
 import 'add_expense_screen.dart';
 import 'budget_screen.dart';
 import 'expense_history_screen.dart';
+import 'analytics_screen.dart'; // Add this import
 
 // Import budget cubit
 import '../cubit/budget_cubit.dart';
@@ -191,10 +192,18 @@ class DashboardScreen extends StatelessWidget {
           ),
           Row(
             children: [
-              // Chart icon - Clickable
+              // Chart icon - Clickable - Now navigates to Analytics Screen
               GestureDetector(
                 onTap: () {
-                  _showStatisticsDialog(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BlocProvider.value(
+                        value: context.read<ExpenseCubit>(),
+                        child: const AnalyticsScreen(),
+                      ),
+                    ),
+                  );
                 },
                 child: const Icon(Icons.bar_chart, size: 28),
               ),
@@ -713,7 +722,6 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 );
-                ;
               },
             ),
           ],

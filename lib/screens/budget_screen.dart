@@ -5,6 +5,7 @@ import '../cubit/expense_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import 'add_budget_screen.dart';
 import 'add_expense_screen.dart';
+import 'analytics_screen.dart';
 import 'expense_history_screen.dart';
 import 'dashboard_screen.dart';
 import '../cubit/add_expense_cubit.dart';
@@ -791,22 +792,28 @@ class BudgetView extends StatelessWidget {
           ),
           Row(
             children: [
+              // Chart icon - Clickable - Now navigates to Analytics Screen
               GestureDetector(
                 onTap: () {
-                  _showChartDialog(context);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BlocProvider.value(
+                        value: context.read<ExpenseCubit>(),
+                        child: const AnalyticsScreen(),
+                      ),
+                    ),
+                  );
                 },
-                child: const Icon(Icons.bar_chart, size: 28, color: darkText),
+                child: const Icon(Icons.bar_chart, size: 28),
               ),
               const SizedBox(width: 15),
+              // Notifications icon - Clickable
               GestureDetector(
                 onTap: () {
                   _showNotificationsDialog(context);
                 },
-                child: const Icon(
-                  Icons.notifications,
-                  size: 28,
-                  color: darkText,
-                ),
+                child: const Icon(Icons.notifications, size: 28),
               ),
             ],
           ),

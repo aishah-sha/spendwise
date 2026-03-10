@@ -6,6 +6,7 @@ import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import '../models/receipt_model.dart';
+import 'analytics_screen.dart';
 import 'budget_screen.dart';
 import 'manual_entry_screen.dart';
 import 'expense_history_screen.dart';
@@ -213,11 +214,31 @@ class AddExpenseScreen extends StatelessWidget {
               ],
             ),
           ),
-          const Row(
+          Row(
             children: [
-              Icon(Icons.bar_chart, size: 28),
-              SizedBox(width: 15),
-              Icon(Icons.notifications, size: 28),
+              // Chart icon - Clickable - Now navigates to Analytics Screen
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BlocProvider.value(
+                        value: context.read<ExpenseCubit>(),
+                        child: const AnalyticsScreen(),
+                      ),
+                    ),
+                  );
+                },
+                child: const Icon(Icons.bar_chart, size: 28),
+              ),
+              const SizedBox(width: 15),
+              // Notifications icon - Clickable
+              GestureDetector(
+                onTap: () {
+                  _showNotificationsDialog(context);
+                },
+                child: const Icon(Icons.notifications, size: 28),
+              ),
             ],
           ),
         ],
@@ -591,67 +612,100 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  void _showErrorDialog(BuildContext context, String message) {
+  void _showNotificationsDialog(BuildContext context) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showManualEntryDialog(BuildContext context, ReceiptModel receipt) {
-    final amountController = TextEditingController();
-    final merchantController = TextEditingController(
-      text: receipt.merchantName ?? '',
-    );
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        title: const Text('Enter Receipt Details'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('Notifications'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: merchantController,
-              decoration: const InputDecoration(labelText: 'Merchant Name'),
+            const Icon(Icons.notifications_none, size: 60, color: Colors.grey),
+            const SizedBox(height: 16),
+            const Text(
+              'No new notifications',
+              style: TextStyle(fontSize: 16, color: Colors.grey),
             ),
-            TextField(
-              controller: amountController,
-              decoration: const InputDecoration(
-                labelText: 'Amount',
-                prefixText: 'RM',
-              ),
-              keyboardType: TextInputType.number,
+            const SizedBox(height: 8),
+            const Text(
+              'Check back later for updates',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () {
-              final amount = double.tryParse(amountController.text) ?? 0.0;
-              context.read<AddExpenseCubit>().confirmManualEntry(
-                amount,
-                merchantController.text,
-              );
-              Navigator.pop(context);
-            },
-            child: const Text('Save'),
+            child: const Text('Close'),
           ),
         ],
       ),
     );
   }
+}
+
+void _showErrorDialog(BuildContext context, String message) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: const Text('Error'),
+      content: Text(message),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('OK'),
+        ),
+      ],
+    ),
+  );
+}
+
+void _showManualEntryDialog(BuildContext context, ReceiptModel receipt) {
+  final amountController = TextEditingController();
+  final merchantController = TextEditingController(
+    text: receipt.merchantName ?? '',
+  );
+  showDialog(
+    context: context,
+    barrierDismissible: false,
+    builder: (context) => AlertDialog(
+      title: const Text('Enter Receipt Details'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          TextField(
+            controller: merchantController,
+            decoration: const InputDecoration(labelText: 'Merchant Name'),
+          ),
+          TextField(
+            controller: amountController,
+            decoration: const InputDecoration(
+              labelText: 'Amount',
+              prefixText: 'RM',
+            ),
+            keyboardType: TextInputType.number,
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Cancel'),
+        ),
+        TextButton(
+          onPressed: () {
+            final amount = double.tryParse(amountController.text) ?? 0.0;
+            context.read<AddExpenseCubit>().confirmManualEntry(
+              amount,
+              merchantController.text,
+            );
+            Navigator.pop(context);
+          },
+          child: const Text('Save'),
+        ),
+      ],
+    ),
+  );
 }
