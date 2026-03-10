@@ -4,11 +4,13 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
+import '../cubit/profile_cubit.dart';
 import '../models/receipt_model.dart';
 import 'budget_screen.dart';
 import 'manual_entry_screen.dart';
 import 'expense_history_screen.dart';
 import 'dashboard_screen.dart';
+import 'profile_screen.dart';
 
 class AddExpenseScreen extends StatelessWidget {
   const AddExpenseScreen({super.key});
@@ -537,7 +539,18 @@ class AddExpenseScreen extends StatelessWidget {
               false,
               activeColor,
               () {
-                print('Profile tapped');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider(create: (context) => ProfileCubit()),
+                      ],
+                      child: const ProfileScreen(),
+                    ),
+                  ),
+                );
               },
             ),
           ],

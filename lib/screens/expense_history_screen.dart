@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
+import '../cubit/profile_cubit.dart';
 import 'add_expense_screen.dart';
 import '../cubit/add_expense_cubit.dart';
 import 'budget_screen.dart';
 import 'dashboard_screen.dart';
+import 'profile_screen.dart';
 
 class ExpenseHistoryScreen extends StatelessWidget {
   const ExpenseHistoryScreen({super.key});
@@ -786,8 +788,19 @@ class ExpenseHistoryScreen extends StatelessWidget {
               true, // Set to true since we're on History screen
               activeColor,
               () {
-                // Already on History screen, maybe scroll to top
-                print('History tapped');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider(create: (context) => ProfileCubit()),
+                      ],
+                      child: const ProfileScreen(),
+                    ),
+                  ),
+                );
+                ;
               },
             ),
 
@@ -818,7 +831,18 @@ class ExpenseHistoryScreen extends StatelessWidget {
               false,
               activeColor,
               () {
-                print('Profile tapped');
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider(create: (context) => ProfileCubit()),
+                      ],
+                      child: const ProfileScreen(),
+                    ),
+                  ),
+                );
               },
             ),
           ],

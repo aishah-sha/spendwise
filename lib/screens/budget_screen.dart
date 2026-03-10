@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/budget_cubit.dart';
 import '../cubit/expense_cubit.dart';
+import '../cubit/profile_cubit.dart';
 import 'add_budget_screen.dart';
 import 'add_expense_screen.dart';
 import 'expense_history_screen.dart';
@@ -12,6 +13,7 @@ import '../models/budget_model.dart';
 
 // Import states with prefix
 import '../cubit/budget_cubit.dart' as cubit;
+import 'profile_screen.dart';
 
 class BudgetScreen extends StatelessWidget {
   const BudgetScreen({super.key});
@@ -134,7 +136,19 @@ class BudgetScreen extends StatelessWidget {
               false,
               activeColor,
               () {
-                _showProfileDialog(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider(create: (context) => ProfileCubit()),
+                      ],
+                      child: const ProfileScreen(),
+                    ),
+                  ),
+                );
+                ;
               },
             ),
           ],

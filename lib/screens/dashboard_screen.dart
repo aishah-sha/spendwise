@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:spendwise/cubit/profile_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 import '../cubit/add_expense_cubit.dart';
@@ -11,6 +12,7 @@ import 'expense_history_screen.dart';
 // Import budget cubit
 import '../cubit/budget_cubit.dart';
 import '../cubit/budget_cubit.dart' as budget_cubit;
+import 'profile_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
@@ -162,7 +164,7 @@ class DashboardScreen extends StatelessWidget {
   Widget _buildTopHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
-      decoration: const BoxDecoration(color: headerColor),
+      decoration: const BoxDecoration(color: Color.fromRGBO(197, 217, 151, 1)),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -699,7 +701,19 @@ class DashboardScreen extends StatelessWidget {
               false,
               activeColor,
               () {
-                _showProfileDialog(context);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider(create: (context) => ProfileCubit()),
+                      ],
+                      child: const ProfileScreen(),
+                    ),
+                  ),
+                );
+                ;
               },
             ),
           ],
