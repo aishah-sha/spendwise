@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/budget_cubit.dart';
 import '../cubit/expense_cubit.dart';
+import '../cubit/expense_state.dart';
 import '../cubit/profile_cubit.dart';
 import 'add_budget_screen.dart';
 import 'add_expense_screen.dart';
@@ -30,8 +31,11 @@ class BudgetScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: bgColor,
-      body: BlocProvider.value(
-        value: context.read<BudgetCubit>(),
+      body: MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: context.read<BudgetCubit>()),
+          BlocProvider.value(value: context.read<ExpenseCubit>()),
+        ],
         child: const BudgetView(),
       ),
 
@@ -149,7 +153,6 @@ class BudgetScreen extends StatelessWidget {
                     ),
                   ),
                 );
-                ;
               },
             ),
           ],
@@ -189,55 +192,6 @@ class BudgetScreen extends StatelessWidget {
       ),
     );
   }
-
-  void _showProfileDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Profile'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            CircleAvatar(
-              radius: 40,
-              backgroundColor: accentGreen.withOpacity(0.2),
-              child: const Icon(Icons.person, size: 40, color: accentGreen),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'User Name',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'user@example.com',
-              style: TextStyle(color: Colors.grey.shade600),
-            ),
-            const SizedBox(height: 16),
-            const Divider(),
-            const SizedBox(height: 8),
-            const ListTile(
-              leading: Icon(Icons.settings, color: accentGreen),
-              title: Text('Settings'),
-              dense: true,
-            ),
-            const ListTile(
-              leading: Icon(Icons.help, color: accentGreen),
-              title: Text('Help & Support'),
-              dense: true,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class BudgetView extends StatelessWidget {
@@ -250,20 +204,24 @@ class BudgetView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Get screen size for responsive design
+    final screenWidth = MediaQuery.of(context).size.width;
+    final screenHeight = MediaQuery.of(context).size.height;
+
     // Load budget when view is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BudgetCubit>().loadBudget(forceRefresh: true);
     });
 
     return BlocBuilder<BudgetCubit, cubit.BudgetState>(
-      builder: (context, state) {
-        if (state is cubit.BudgetLoading) {
+      builder: (context, budgetState) {
+        if (budgetState is cubit.BudgetLoading) {
           return const Center(
             child: CircularProgressIndicator(color: accentGreen),
           );
         }
 
-        if (state is cubit.BudgetError) {
+        if (budgetState is cubit.BudgetError) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -271,7 +229,7 @@ class BudgetView extends StatelessWidget {
                 Icon(Icons.error_outline, size: 48, color: Colors.red.shade300),
                 const SizedBox(height: 16),
                 Text(
-                  'Error: ${state.message}',
+                  'Error: ${budgetState.message}',
                   style: const TextStyle(color: Colors.grey),
                 ),
                 const SizedBox(height: 16),
@@ -293,34 +251,71 @@ class BudgetView extends StatelessWidget {
           );
         }
 
-        if (state is cubit.BudgetLoaded) {
-          final budget = state.budget;
-          return Column(
-            children: [
-              _buildTopHeader(context),
-              Expanded(
-                child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(20.0),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Header Section with Title and Add Button
-                      _buildHeaderRow(context),
-                      const SizedBox(height: 24),
-                      // Monthly Budget Card
-                      _buildMonthlyBudgetSection(budget, context),
-                      const SizedBox(height: 24),
-                      // Category Budgets Header
-                      _buildCategoryHeader(),
-                      const SizedBox(height: 16),
-                      // Category List
-                      _buildCategoryList(budget, context),
-                      const SizedBox(height: 20),
-                    ],
+        if (budgetState is cubit.BudgetLoaded) {
+          final budget = budgetState.budget;
+
+          return BlocBuilder<ExpenseCubit, ExpenseState>(
+            builder: (context, expenseState) {
+              // Calculate actual spending from expenses
+              final Map<String, double> categorySpending = {};
+              double totalSpending = 0;
+
+              for (var expense in expenseState.allExpenses) {
+                if (!expense.isIncome) {
+                  categorySpending[expense.category] =
+                      (categorySpending[expense.category] ?? 0) +
+                      expense.amount;
+                  totalSpending += expense.amount;
+                }
+              }
+
+              return Column(
+                children: [
+                  _buildTopHeader(context),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.all(
+                        16.0,
+                      ), // Reduced padding for smaller screens
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Header Section with Title and Add Button
+                          _buildHeaderRow(context),
+                          const SizedBox(height: 16), // Reduced spacing
+                          // Monthly Budget Card - FIXED FOR PIXEL
+                          _buildMonthlyBudgetSection(
+                            budget,
+                            totalSpending,
+                            screenWidth,
+                            context,
+                          ),
+                          const SizedBox(height: 20), // Reduced spacing
+                          // Category Budgets Header
+                          _buildCategoryHeader(),
+                          const SizedBox(height: 12), // Reduced spacing
+                          // Category List with proper constraints
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: 100,
+                              maxHeight:
+                                  screenHeight * 0.4, // Responsive max height
+                            ),
+                            child: _buildCategoryList(
+                              budget,
+                              categorySpending,
+                              context,
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+                        ],
+                      ),
+                    ),
                   ),
-                ),
-              ),
-            ],
+                ],
+              );
+            },
           );
         }
 
@@ -334,25 +329,34 @@ class BudgetView extends StatelessWidget {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Budget',
-              style: TextStyle(
-                fontSize: 32,
-                fontWeight: FontWeight.bold,
-                color: darkText,
-                letterSpacing: -0.5,
+        Expanded(
+          // Added Expanded to prevent overflow
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Budget',
+                style: TextStyle(
+                  fontSize: 28, // Slightly reduced for smaller screens
+                  fontWeight: FontWeight.bold,
+                  color: darkText,
+                  letterSpacing: -0.5,
+                ),
               ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Manage your spending limits',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                'Manage your spending limits',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: Colors.grey.shade600,
+                ), // Slightly reduced
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
+        const SizedBox(width: 12), // Added spacing
         // Add Budget Button
         GestureDetector(
           onTap: () async {
@@ -370,8 +374,8 @@ class BudgetView extends StatelessWidget {
             }
           },
           child: Container(
-            width: 50,
-            height: 50,
+            width: 44, // Slightly smaller for Pixel
+            height: 44, // Slightly smaller for Pixel
             decoration: BoxDecoration(
               gradient: const LinearGradient(
                 colors: [
@@ -381,23 +385,50 @@ class BudgetView extends StatelessWidget {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(15),
+              borderRadius: BorderRadius.circular(
+                12,
+              ), // Slightly smaller radius
             ),
-            child: const Icon(Icons.add, color: Colors.white, size: 30),
+            child: const Icon(
+              Icons.add,
+              color: Colors.white,
+              size: 26,
+            ), // Slightly smaller icon
           ),
         ),
       ],
     );
   }
 
-  Widget _buildMonthlyBudgetSection(Budget budget, BuildContext context) {
+  Widget _buildMonthlyBudgetSection(
+    Budget budget,
+    double totalSpending,
+    double screenWidth,
+    BuildContext context,
+  ) {
     if (budget.monthlyLimit <= 0) {
       return _buildNoBudgetCard(context);
     }
 
+    final double progress = budget.monthlyLimit > 0
+        ? totalSpending / budget.monthlyLimit
+        : 0;
+    final double remaining = budget.monthlyLimit - totalSpending;
+
+    Color progressColor = accentGreen;
+    String statusText = 'On Track';
+
+    if (progress >= 1.0) {
+      progressColor = Colors.red;
+      statusText = 'Exceeded';
+    } else if (progress >= 0.8) {
+      progressColor = Colors.orange;
+      statusText = 'Near Limit';
+    }
+
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(16), // Reduced padding for Pixel
       decoration: BoxDecoration(
         gradient: const LinearGradient(
           colors: [
@@ -407,185 +438,146 @@ class BudgetView extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(20), // Slightly smaller radius
         boxShadow: [
           BoxShadow(
             color: Colors.green.withOpacity(0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 10),
+            blurRadius: 15,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // First row with icon and amount
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(6), // Smaller padding
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
                 child: const Icon(
                   Icons.account_balance_wallet,
                   color: Colors.white,
-                  size: 20,
+                  size: 18, // Smaller icon
                 ),
               ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Monthly Budget',
-                    style: TextStyle(fontSize: 14, color: Colors.white70),
-                  ),
-                  Text(
-                    'RM ${budget.monthlyLimit.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 28,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+              const SizedBox(width: 10),
+              Expanded(
+                // Added Expanded
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Monthly Budget',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: Colors.white70,
+                      ), // Smaller text
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 2),
+                    FittedBox(
+                      // Make text scale if needed
+                      fit: BoxFit.scaleDown,
+                      child: Text(
+                        'RM ${budget.monthlyLimit.toStringAsFixed(2)}',
+                        style: const TextStyle(
+                          fontSize: 24, // Smaller for Pixel
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ],
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            'Your total spending limit',
-            style: TextStyle(fontSize: 12, color: Colors.white70),
-          ),
-          const SizedBox(height: 12),
-          // Progress bar
-          Stack(
-            children: [
+              const SizedBox(width: 8),
+              // Status badge
               Container(
-                height: 8,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.white.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                 ),
-              ),
-              FractionallySizedBox(
-                widthFactor: (budget.spentPercentage / 100).clamp(0.0, 1.0),
-                child: Container(
-                  height: 8,
-                  decoration: BoxDecoration(
+                child: Text(
+                  statusText,
+                  style: const TextStyle(
                     color: Colors.white,
-                    borderRadius: BorderRadius.circular(20),
+                    fontSize: 11, // Smaller text
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Spent: RM${budget.totalSpent.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 12, color: Colors.white),
-                  ),
-                ],
-              ),
-              Row(
-                children: [
-                  Container(
-                    width: 8,
-                    height: 8,
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.3),
-                      shape: BoxShape.circle,
-                    ),
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    'Remaining: RM${budget.remainingBudget.toStringAsFixed(2)}',
-                    style: const TextStyle(fontSize: 12, color: Colors.white),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
+          const SizedBox(height: 16),
 
-  Widget _buildNoBudgetCard(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.account_balance_wallet_outlined,
-            size: 60,
-            color: Colors.grey.shade400,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'No Monthly Budget Set',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: darkText,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Tap the + button to set your monthly budget',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BlocProvider.value(
-                    value: context.read<BudgetCubit>(),
-                    child: const AddBudgetScreen(),
+          // Progress section
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Spent percentage row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Spent: RM ${totalSpending.toStringAsFixed(2)}',
+                    style: const TextStyle(color: Colors.white70, fontSize: 11),
                   ),
-                ),
-              );
-            },
-            icon: const Icon(Icons.add),
-            label: const Text('Set Budget'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: accentGreen,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                  Text(
+                    '${(progress * 100).toInt()}%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            ),
+              const SizedBox(height: 6),
+              // Progress bar
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: LinearProgressIndicator(
+                  value: progress.clamp(0.0, 1.0),
+                  backgroundColor: Colors.white.withOpacity(0.3),
+                  valueColor: AlwaysStoppedAnimation<Color>(progressColor),
+                  minHeight: 10, // Slightly smaller
+                ),
+              ),
+              const SizedBox(height: 6),
+              // Remaining row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Remaining: RM ${remaining.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      color: remaining >= 0
+                          ? Colors.white70
+                          : Colors.red.shade300,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  if (remaining < 0)
+                    Text(
+                      'Overspent: RM ${(-remaining).toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        color: Colors.red,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                ],
+              ),
+            ],
           ),
         ],
       ),
@@ -599,28 +591,30 @@ class BudgetView extends StatelessWidget {
         const Text(
           'Category Budgets',
           style: TextStyle(
-            fontSize: 20,
+            fontSize: 18, // Slightly reduced
             fontWeight: FontWeight.bold,
             color: darkText,
           ),
         ),
+        // Fixed dropdown to prevent overflow
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
+            borderRadius: BorderRadius.circular(18),
             border: Border.all(color: Colors.grey.shade200),
           ),
           child: Row(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
+              const Text(
                 'This Month',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                style: TextStyle(fontSize: 11, color: Colors.grey),
               ),
-              const SizedBox(width: 4),
+              const SizedBox(width: 2),
               Icon(
                 Icons.keyboard_arrow_down,
-                size: 16,
+                size: 14,
                 color: Colors.grey.shade600,
               ),
             ],
@@ -630,7 +624,11 @@ class BudgetView extends StatelessWidget {
     );
   }
 
-  Widget _buildCategoryList(Budget budget, BuildContext context) {
+  Widget _buildCategoryList(
+    Budget budget,
+    Map<String, double> categorySpending,
+    BuildContext context,
+  ) {
     // Filter active categories (amount > 0)
     final List<BudgetCategory> activeCategories = [];
     for (var category in budget.categories) {
@@ -641,30 +639,32 @@ class BudgetView extends StatelessWidget {
 
     if (activeCategories.isEmpty) {
       return Container(
-        padding: const EdgeInsets.all(30),
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               Icons.category_outlined,
-              size: 50,
+              size: 40,
               color: Colors.grey.shade400,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             Text(
               'No category budgets set',
-              style: TextStyle(fontSize: 16, color: Colors.grey.shade600),
+              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Text(
-              'Tap the + button to set category budgets',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+              'Tap + to set category budgets',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 12),
             OutlinedButton.icon(
               onPressed: () {
                 Navigator.push(
@@ -677,13 +677,20 @@ class BudgetView extends StatelessWidget {
                   ),
                 );
               },
-              icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Categories'),
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text(
+                'Add Categories',
+                style: TextStyle(fontSize: 13),
+              ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: accentGreen,
                 side: BorderSide(color: accentGreen),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
                 ),
               ),
             ),
@@ -698,35 +705,84 @@ class BudgetView extends StatelessWidget {
       itemCount: activeCategories.length,
       itemBuilder: (context, index) {
         final category = activeCategories[index];
+        final spent = categorySpending[category.name] ?? 0;
+
         return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: CategoryBudgetCard(category: category),
+          padding: const EdgeInsets.only(bottom: 10),
+          child: CategoryBudgetCard(category: category, spentAmount: spent),
         );
       },
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
-    return Center(
+  Widget _buildAddToBudgetButton(BuildContext context) {
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => BlocProvider.value(
+                value: context.read<BudgetCubit>(),
+                child: const AddBudgetScreen(isAdding: true),
+              ),
+            ),
+          );
+        },
+        icon: const Icon(Icons.add, size: 18),
+        label: const Text('Add to Budget', style: TextStyle(fontSize: 14)),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accentGreen,
+          foregroundColor: Colors.white,
+          minimumSize: const Size(double.infinity, 44),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoBudgetCard(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.grey.withOpacity(0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          const Icon(
-            Icons.account_balance_wallet,
-            size: 64,
-            color: Colors.grey,
+          Icon(
+            Icons.account_balance_wallet_outlined,
+            size: 48,
+            color: Colors.grey.shade400,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           const Text(
-            'No Budget Found',
-            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            'No Monthly Budget Set',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: darkText,
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 6),
           Text(
-            'Create a budget to get started',
-            style: TextStyle(color: Colors.grey.shade600),
+            'Tap + to set your monthly budget',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            textAlign: TextAlign.center,
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           ElevatedButton.icon(
             onPressed: () {
               Navigator.push(
@@ -739,15 +795,15 @@ class BudgetView extends StatelessWidget {
                 ),
               );
             },
-            icon: const Icon(Icons.add),
-            label: const Text('Create Budget'),
+            icon: const Icon(Icons.add, size: 16),
+            label: const Text('Set Budget', style: TextStyle(fontSize: 13)),
             style: ElevatedButton.styleFrom(
               backgroundColor: accentGreen,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(10),
               ),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
             ),
           ),
         ],
@@ -755,9 +811,116 @@ class BudgetView extends StatelessWidget {
     );
   }
 
+  Widget _buildInsightRow(
+    String label,
+    String value,
+    String subtitle,
+    IconData icon,
+    Color color,
+  ) {
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(6),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(icon, color: color, size: 16),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: darkText.withOpacity(0.6),
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: darkText,
+                ),
+              ),
+            ],
+          ),
+        ),
+        Text(
+          subtitle,
+          style: TextStyle(fontSize: 11, color: darkText.withOpacity(0.5)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.account_balance_wallet,
+              size: 56,
+              color: Colors.grey,
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'No Budget Found',
+              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Create a budget to get started',
+              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+            ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: context.read<BudgetCubit>(),
+                      child: const AddBudgetScreen(),
+                    ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.add, size: 16),
+              label: const Text(
+                'Create Budget',
+                style: TextStyle(fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: accentGreen,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 10,
+                ),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildTopHeader(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
+      padding: const EdgeInsets.only(top: 35, left: 16, right: 16, bottom: 12),
       decoration: const BoxDecoration(color: headerColor),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -767,22 +930,22 @@ class BudgetView extends StatelessWidget {
             child: Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.all(6),
+                  padding: const EdgeInsets.all(5),
                   decoration: BoxDecoration(
                     color: accentGreen,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                   child: const Icon(
                     Icons.account_balance_wallet,
                     color: Colors.white,
-                    size: 15,
+                    size: 14,
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 8),
                 const Text(
                   'SpendWise',
                   style: TextStyle(
-                    fontSize: 15,
+                    fontSize: 14,
                     fontWeight: FontWeight.bold,
                     color: darkText,
                   ),
@@ -792,7 +955,6 @@ class BudgetView extends StatelessWidget {
           ),
           Row(
             children: [
-              // Chart icon - Clickable - Now navigates to Analytics Screen
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -805,96 +967,16 @@ class BudgetView extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Icon(Icons.bar_chart, size: 28),
+                child: const Icon(Icons.bar_chart, size: 24),
               ),
-              const SizedBox(width: 15),
-              // Notifications icon - Clickable
+              const SizedBox(width: 12),
               GestureDetector(
                 onTap: () {
                   _showNotificationsDialog(context);
                 },
-                child: const Icon(Icons.notifications, size: 28),
+                child: const Icon(Icons.notifications, size: 24),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showChartDialog(BuildContext context) {
-    final state = context.read<BudgetCubit>().state;
-    if (state is cubit.BudgetLoaded) {
-      final budget = state.budget;
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: const Text('Budget Overview'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.pie_chart, size: 60, color: accentGreen),
-                const SizedBox(height: 16),
-                _buildStatRow(
-                  'Monthly Budget:',
-                  'RM ${budget.monthlyLimit.toStringAsFixed(2)}',
-                ),
-                _buildStatRow(
-                  'Total Spent:',
-                  'RM ${budget.totalSpent.toStringAsFixed(2)}',
-                ),
-                _buildStatRow(
-                  'Remaining:',
-                  'RM ${budget.remainingBudget.toStringAsFixed(2)}',
-                ),
-                _buildStatRow(
-                  'Spent Percentage:',
-                  '${budget.spentPercentage.toStringAsFixed(1)}%',
-                ),
-                const Divider(height: 24),
-                const Text(
-                  'Categories',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                ...budget.categories
-                    .where((category) => category.amount > 0)
-                    .map(
-                      (category) => _buildStatRow(
-                        category.name,
-                        'RM ${category.spent.toStringAsFixed(2)} / RM ${category.amount.toStringAsFixed(2)}',
-                      ),
-                    ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
-  Widget _buildStatRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-          Text(
-            value,
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
           ),
         ],
       ),
@@ -905,29 +987,29 @@ class BudgetView extends StatelessWidget {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Notifications'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Notifications', style: TextStyle(fontSize: 18)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.notifications_none, size: 60, color: Colors.grey),
-            const SizedBox(height: 16),
+            const Icon(Icons.notifications_none, size: 48, color: Colors.grey),
+            const SizedBox(height: 12),
             const Text(
               'No new notifications',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Check back later for updates on your budget',
-              textAlign: TextAlign.center,
               style: TextStyle(fontSize: 14, color: Colors.grey),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Check back later for updates',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.grey),
             ),
           ],
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: const Text('Close', style: TextStyle(fontSize: 14)),
           ),
         ],
       ),

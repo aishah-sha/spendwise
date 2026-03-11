@@ -8,7 +8,9 @@ import 'budget_screen.dart';
 import '../cubit/budget_cubit.dart' as cubit;
 
 class AddBudgetScreen extends StatefulWidget {
-  const AddBudgetScreen({super.key});
+  final bool isAdding; // New parameter to distinguish between set and add
+
+  const AddBudgetScreen({super.key, this.isAdding = false});
 
   @override
   State<AddBudgetScreen> createState() => _AddBudgetScreenState();
@@ -25,6 +27,9 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
 
   // Controllers for budget inputs
   final _monthlyBudgetController = TextEditingController();
+
+  // Track original spent amounts to preserve them when editing
+  Map<String, double> _originalSpentAmounts = {};
 
   // Category budget controllers
   final List<Map<String, dynamic>> _categoryBudgets = [
@@ -64,6 +69,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
       'controller': TextEditingController(),
       'enabled': false,
     },
+    {'name': 'Other', 'controller': TextEditingController(), 'enabled': false},
   ];
 
   @override
@@ -77,21 +83,28 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     final state = context.read<BudgetCubit>().state;
     if (state is cubit.BudgetLoaded) {
       final budget = state.budget;
-      if (budget.monthlyLimit > 0) {
-        _monthlyBudgetController.text = budget.monthlyLimit.toString();
+
+      // Store original spent amounts to preserve them
+      for (var category in budget.categories) {
+        _originalSpentAmounts[category.name] = category.spent;
       }
 
-      for (var category in _categoryBudgets) {
-        try {
-          final existingCategory = budget.categories.firstWhere(
-            (BudgetCategory c) => c.name == category['name'],
-          );
-          if (existingCategory.amount > 0) {
-            category['enabled'] = true;
-            category['controller'].text = existingCategory.amount.toString();
+      if (budget.monthlyLimit > 0 && !widget.isAdding) {
+        // Only pre-fill if we're setting (not adding to) budget
+        _monthlyBudgetController.text = budget.monthlyLimit.toString();
+
+        for (var category in _categoryBudgets) {
+          try {
+            final existingCategory = budget.categories.firstWhere(
+              (BudgetCategory c) => c.name == category['name'],
+            );
+            if (existingCategory.amount > 0) {
+              category['enabled'] = true;
+              category['controller'].text = existingCategory.amount.toString();
+            }
+          } catch (e) {
+            // Category not found, keep default
           }
-        } catch (e) {
-          // Category not found, keep default
         }
       }
       setState(() {});
@@ -118,9 +131,9 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
           icon: const Icon(Icons.arrow_back, color: darkText),
           onPressed: () => Navigator.pop(context),
         ),
-        title: const Text(
-          'Set Budget',
-          style: TextStyle(
+        title: Text(
+          widget.isAdding ? 'Add to Budget' : 'Set Budget',
+          style: const TextStyle(
             fontSize: 20,
             fontWeight: FontWeight.bold,
             color: darkText,
@@ -242,9 +255,9 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                 ),
               ),
               const SizedBox(width: 12),
-              const Text(
-                'Monthly Budget',
-                style: TextStyle(
+              Text(
+                widget.isAdding ? 'Additional Amount' : 'Monthly Budget',
+                style: const TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
                   color: Colors.white,
@@ -256,30 +269,17 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
           TextFormField(
             controller: _monthlyBudgetController,
             keyboardType: TextInputType.number,
-            style: TextStyle(
-              color: const Color.fromARGB(255, 0, 0, 0),
-              fontSize: 24,
-            ),
+            style: const TextStyle(color: Colors.black, fontSize: 24),
             decoration: InputDecoration(
               prefixText: 'RM ',
               prefixStyle: TextStyle(
-                color: const Color.fromARGB(
-                  255,
-                  114,
-                  114,
-                  114,
-                ).withOpacity(0.5),
+                color: Colors.grey.withOpacity(0.5),
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
               hintText: '0.00',
               hintStyle: TextStyle(
-                color: const Color.fromARGB(
-                  255,
-                  114,
-                  114,
-                  114,
-                ).withOpacity(0.5),
+                color: Colors.grey.withOpacity(0.5),
                 fontSize: 24,
               ),
               enabledBorder: UnderlineInputBorder(
@@ -291,21 +291,25 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
             ),
             validator: (value) {
               if (value == null || value.isEmpty) {
-                return 'Please enter monthly budget';
+                return widget.isAdding
+                    ? 'Please enter amount to add'
+                    : 'Please enter monthly budget';
               }
               final number = double.tryParse(value);
               if (number == null) {
                 return 'Please enter a valid number';
               }
               if (number <= 0) {
-                return 'Budget must be greater than 0';
+                return 'Amount must be greater than 0';
               }
               return null;
             },
           ),
           const SizedBox(height: 8),
           Text(
-            'Set your total monthly spending limit',
+            widget.isAdding
+                ? 'Add this amount to your existing budget'
+                : 'Set your total monthly spending limit',
             style: TextStyle(
               fontSize: 12,
               color: Colors.white.withOpacity(0.7),
@@ -348,9 +352,11 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Set spending limits for specific categories (optional)',
-            style: TextStyle(fontSize: 14, color: Colors.grey),
+          Text(
+            widget.isAdding
+                ? 'Add to specific category budgets (optional)'
+                : 'Set spending limits for specific categories (optional)',
+            style: const TextStyle(fontSize: 14, color: Colors.grey),
           ),
           const SizedBox(height: 20),
 
@@ -368,14 +374,16 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
               color: accentGreen.withOpacity(0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Row(
+            child: Row(
               children: [
-                Icon(Icons.info_outline, color: accentGreen, size: 18),
-                SizedBox(width: 8),
+                const Icon(Icons.info_outline, color: accentGreen, size: 18),
+                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    'Category budgets will be subtracted from your monthly budget',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                    widget.isAdding
+                        ? 'Additional category budgets will be added to existing ones'
+                        : 'Category budgets will be tracked against your expenses',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
                 ),
               ],
@@ -429,14 +437,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
               decoration: InputDecoration(
                 prefixText: 'RM ',
                 hintText: '0.00',
-                hintStyle: TextStyle(
-                  color: const Color.fromARGB(
-                    255,
-                    114,
-                    114,
-                    114,
-                  ).withOpacity(0.5),
-                ),
+                hintStyle: TextStyle(color: Colors.grey.withOpacity(0.5)),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide(
@@ -497,9 +498,9 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
           ),
           elevation: 2,
         ),
-        child: const Text(
-          'Save Budget',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        child: Text(
+          widget.isAdding ? 'Add to Budget' : 'Save Budget',
+          style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
         ),
       ),
     );
@@ -507,8 +508,8 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
 
   void _saveBudget() {
     if (_formKey.currentState!.validate()) {
-      // Get monthly budget
-      final monthlyBudget = double.parse(_monthlyBudgetController.text);
+      // Get monthly budget amount
+      final monthlyAmount = double.parse(_monthlyBudgetController.text);
 
       // Get enabled category budgets
       final categoryBudgets = <String, double>{};
@@ -522,22 +523,11 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
         }
       }
 
-      // Create category objects
-      final categories = categoryBudgets.entries.map((entry) {
-        return BudgetCategory(name: entry.key, amount: entry.value, spent: 0);
-      }).toList();
-
-      // Create budget object
-      final newBudget = Budget(
-        monthlyLimit: monthlyBudget,
-        totalSpent: 0,
-        categories: categories,
-      );
-
-      // Save budget using cubit
+      // Save budget using cubit with isAdditional flag
       context.read<BudgetCubit>().saveBudget(
-        monthlyLimit: monthlyBudget,
+        monthlyLimit: monthlyAmount,
         categoryBudgets: categoryBudgets,
+        isAdditional: widget.isAdding, // This now matches the parameter
       );
     }
   }

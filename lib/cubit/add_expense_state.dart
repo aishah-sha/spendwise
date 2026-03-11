@@ -1,5 +1,6 @@
 // lib/cubit/add_expense_state.dart
 import 'package:equatable/equatable.dart';
+import '../models/expense_model.dart';
 import '../models/receipt_model.dart';
 
 class AddExpenseState extends Equatable {
@@ -8,6 +9,7 @@ class AddExpenseState extends Equatable {
   final String? errorMessage;
   final ReceiptModel? scannedReceipt;
   final String? capturedImagePath;
+  final ExpenseModel? expenseToEdit; // Add this for editing
 
   const AddExpenseState({
     required this.recentUploads,
@@ -15,91 +17,19 @@ class AddExpenseState extends Equatable {
     this.errorMessage,
     this.scannedReceipt,
     this.capturedImagePath,
+    this.expenseToEdit,
   });
 
   factory AddExpenseState.initial() {
     return AddExpenseState(
-      recentUploads: _getMockRecentUploads(),
+      recentUploads:
+          [], // Start with empty list - will be populated from user data
       isLoading: false,
       errorMessage: null,
       scannedReceipt: null,
       capturedImagePath: null,
+      expenseToEdit: null,
     );
-  }
-
-  static List<ReceiptModel> _getMockRecentUploads() {
-    return [
-      ReceiptModel(
-        id: '1',
-        date: DateTime(2023, 1, 5),
-        amount: 1000.00,
-        receiptType: 'scan',
-        merchantName: 'Tesco',
-      ),
-      ReceiptModel(
-        id: '2',
-        date: DateTime(2023, 1, 6),
-        amount: 2000.00,
-        receiptType: 'upload',
-        merchantName: 'Giant',
-      ),
-      ReceiptModel(
-        id: '3',
-        date: DateTime(2023, 1, 7),
-        amount: 3000.00,
-        receiptType: 'manual',
-        merchantName: 'AEON',
-      ),
-      ReceiptModel(
-        id: '4',
-        date: DateTime(2023, 1, 8),
-        amount: 4000.00,
-        receiptType: 'scan',
-        merchantName: 'Starbucks',
-      ),
-      ReceiptModel(
-        id: '5',
-        date: DateTime(2023, 1, 9),
-        amount: 5000.00,
-        receiptType: 'upload',
-        merchantName: 'McDonalds',
-      ),
-      ReceiptModel(
-        id: '6',
-        date: DateTime(2023, 1, 10),
-        amount: 6000.00,
-        receiptType: 'manual',
-        merchantName: 'KFC',
-      ),
-      ReceiptModel(
-        id: '7',
-        date: DateTime(2023, 1, 11),
-        amount: 7000.00,
-        receiptType: 'scan',
-        merchantName: 'Pizza Hut',
-      ),
-      ReceiptModel(
-        id: '8',
-        date: DateTime(2023, 1, 12),
-        amount: 8000.00,
-        receiptType: 'upload',
-        merchantName: 'Dominos',
-      ),
-      ReceiptModel(
-        id: '9',
-        date: DateTime(2023, 1, 13),
-        amount: 9000.00,
-        receiptType: 'manual',
-        merchantName: 'Secret Recipe',
-      ),
-      ReceiptModel(
-        id: '10',
-        date: DateTime(2023, 1, 14),
-        amount: 10000.00,
-        receiptType: 'scan',
-        merchantName: 'Old Town',
-      ),
-    ];
   }
 
   AddExpenseState copyWith({
@@ -108,6 +38,8 @@ class AddExpenseState extends Equatable {
     String? errorMessage,
     ReceiptModel? scannedReceipt,
     String? capturedImagePath,
+    ExpenseModel? expenseToEdit,
+    bool clearExpenseToEdit = false,
   }) {
     return AddExpenseState(
       recentUploads: recentUploads ?? this.recentUploads,
@@ -115,7 +47,36 @@ class AddExpenseState extends Equatable {
       errorMessage: errorMessage,
       scannedReceipt: scannedReceipt ?? this.scannedReceipt,
       capturedImagePath: capturedImagePath ?? this.capturedImagePath,
+      expenseToEdit: clearExpenseToEdit
+          ? null
+          : (expenseToEdit ?? this.expenseToEdit),
     );
+  }
+
+  // Helper method to add a receipt to recent uploads
+  AddExpenseState addReceipt(ReceiptModel receipt) {
+    final updatedList = List<ReceiptModel>.from(recentUploads);
+
+    // Add new receipt at the beginning
+    updatedList.insert(0, receipt);
+
+    // Keep only last 20 receipts to avoid memory issues
+    if (updatedList.length > 20) {
+      updatedList.removeLast();
+    }
+
+    return copyWith(recentUploads: updatedList);
+  }
+
+  // Helper method to remove a receipt from recent uploads
+  AddExpenseState removeReceipt(String receiptId) {
+    final updatedList = recentUploads.where((r) => r.id != receiptId).toList();
+    return copyWith(recentUploads: updatedList);
+  }
+
+  // Helper method to clear all recent uploads
+  AddExpenseState clearRecentUploads() {
+    return copyWith(recentUploads: []);
   }
 
   @override
@@ -125,5 +86,6 @@ class AddExpenseState extends Equatable {
     errorMessage,
     scannedReceipt,
     capturedImagePath,
+    expenseToEdit,
   ];
 }

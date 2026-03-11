@@ -1,3 +1,60 @@
+import 'package:flutter/foundation.dart';
+
+// Keep the original ReceiptItem class for backward compatibility with your parser
+class ReceiptItemOld {
+  final String name;
+  final double price;
+  final String category;
+  final int? quantity;
+  final double? unitPrice;
+
+  ReceiptItemOld({
+    required this.name,
+    required this.price,
+    required this.category,
+    this.quantity,
+    this.unitPrice,
+  });
+
+  // Convert to new ReceiptItem
+  ReceiptItem toNewReceiptItem() {
+    return ReceiptItem(
+      name: name,
+      price: price,
+      quantity: quantity ?? 1,
+      category: category,
+      discount: null,
+      notes: null,
+    );
+  }
+}
+
+class ReceiptData {
+  final String merchant;
+  final double total;
+  final List<ReceiptItemOld> items;
+
+  ReceiptData({
+    required this.merchant,
+    required this.total,
+    required this.items,
+  });
+
+  // Convert to new ReceiptModel
+  ReceiptModel toReceiptModel({String? id}) {
+    return ReceiptModel(
+      id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      date: DateTime.now(),
+      amount: total,
+      merchantName: merchant,
+      items: items.map((item) => item.toNewReceiptItem()).toList(),
+      receiptType: 'scan',
+      currency: 'RM',
+      ocrStatus: 'SUCCESS',
+    );
+  }
+}
+
 class ReceiptModel {
   final String id;
   final DateTime date;
@@ -64,6 +121,71 @@ class ReceiptModel {
     if (tax != null) return tax!;
     return calculatedSubtotal * 0.075; // 7.5% tax rate
   }
+
+  // Convert to ReceiptData (for backward compatibility with your parser)
+  ReceiptData toReceiptData() {
+    return ReceiptData(
+      merchant: merchantName ?? 'Unknown Store',
+      total: amount,
+      items: items?.map((item) => item.toReceiptItemOld()).toList() ?? [],
+    );
+  }
+
+  // Factory method to create from ReceiptData (from parser)
+  factory ReceiptModel.fromReceiptData(ReceiptData data, {String? id}) {
+    return ReceiptModel(
+      id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
+      date: DateTime.now(),
+      amount: data.total,
+      merchantName: data.merchant,
+      items: data.items.map((item) => item.toNewReceiptItem()).toList(),
+      receiptType: 'scan',
+      currency: 'RM',
+      ocrStatus: 'SUCCESS',
+    );
+  }
+
+  // Convert to JSON for storage
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'date': date.toIso8601String(),
+      'amount': amount,
+      'tax': tax,
+      'subtotal': subtotal,
+      'serviceCharge': serviceCharge,
+      'imagePath': imagePath,
+      'receiptType': receiptType,
+      'merchantName': merchantName,
+      'category': category,
+      'currency': currency,
+      'ocrStatus': ocrStatus,
+      'items': items?.map((item) => item.toJson()).toList(),
+    };
+  }
+
+  // Factory method to create from JSON
+  factory ReceiptModel.fromJson(Map<String, dynamic> json) {
+    return ReceiptModel(
+      id: json['id'],
+      date: DateTime.parse(json['date']),
+      amount: json['amount'].toDouble(),
+      tax: json['tax']?.toDouble(),
+      subtotal: json['subtotal']?.toDouble(),
+      serviceCharge: json['serviceCharge']?.toDouble(),
+      imagePath: json['imagePath'],
+      receiptType: json['receiptType'],
+      merchantName: json['merchantName'],
+      category: json['category'],
+      currency: json['currency'],
+      ocrStatus: json['ocrStatus'],
+      items: json['items'] != null
+          ? (json['items'] as List)
+                .map((item) => ReceiptItem.fromJson(item))
+                .toList()
+          : null,
+    );
+  }
 }
 
 class ReceiptItem {
@@ -92,6 +214,17 @@ class ReceiptItem {
     return itemTotal;
   }
 
+  // Convert to old ReceiptItemOld format
+  ReceiptItemOld toReceiptItemOld() {
+    return ReceiptItemOld(
+      name: name,
+      price: price,
+      category: category ?? 'Others',
+      quantity: quantity,
+      unitPrice: price, // Add unitPrice here
+    );
+  }
+
   // Factory method to create from OCR data
   factory ReceiptItem.fromOcr(Map<String, dynamic> data) {
     return ReceiptItem(
@@ -114,6 +247,18 @@ class ReceiptItem {
       'discount': discount,
       'notes': notes,
     };
+  }
+
+  // Factory method to create from JSON
+  factory ReceiptItem.fromJson(Map<String, dynamic> json) {
+    return ReceiptItem(
+      name: json['name'],
+      price: json['price'].toDouble(),
+      quantity: json['quantity'],
+      category: json['category'],
+      discount: json['discount']?.toDouble(),
+      notes: json['notes'],
+    );
   }
 }
 

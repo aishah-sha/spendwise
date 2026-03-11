@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/profile_cubit.dart';
+import '../cubit/receipt_cubit.dart';
 import '../models/receipt_model.dart';
 import 'analytics_screen.dart';
 import 'budget_screen.dart';
@@ -12,6 +13,7 @@ import 'manual_entry_screen.dart';
 import 'expense_history_screen.dart';
 import 'dashboard_screen.dart';
 import 'profile_screen.dart';
+import 'receipt_scanner_screen.dart';
 
 class AddExpenseScreen extends StatelessWidget {
   const AddExpenseScreen({super.key});
@@ -133,7 +135,42 @@ class AddExpenseScreen extends StatelessWidget {
           title: 'Scan Receipt',
           subtitle: 'Use camera to capture receipt',
           color: Colors.blue,
-          onTap: () => context.read<AddExpenseCubit>().scanReceipt(),
+          onTap: () async {
+            print("🔴 SCAN RECEIPT TAPPED");
+            final addExpenseCubit = context.read<AddExpenseCubit>();
+
+            // Navigate to scanner with both cubits
+            final scannedReceipt = await Navigator.push<ReceiptModel?>(
+              context,
+              MaterialPageRoute(
+                builder: (context) => MultiBlocProvider(
+                  providers: [
+                    BlocProvider(create: (context) => ReceiptCubit()),
+                    BlocProvider.value(value: addExpenseCubit),
+                  ],
+                  child: const ReceiptScannerPage(fromAddExpense: true),
+                ),
+              ),
+            );
+
+            print("🔴 Returned from scanner with: $scannedReceipt");
+
+            if (scannedReceipt != null) {
+              print("🔴 Navigating to manual entry with receipt");
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BlocProvider.value(
+                    value: addExpenseCubit,
+                    child: ManualEntryScreen(
+                      receipt: scannedReceipt,
+                      fromAddExpense: true,
+                    ),
+                  ),
+                ),
+              );
+            }
+          },
         ),
         const SizedBox(height: 12),
         _buildOptionCard(
@@ -150,7 +187,6 @@ class AddExpenseScreen extends StatelessWidget {
           subtitle: 'Enter details manually',
           color: Colors.orange,
           onTap: () {
-            // FIX: Capture the current Cubit instance
             final cubit = context.read<AddExpenseCubit>();
             final expenseToEdit = cubit.state.expenseToEdit;
 
@@ -171,6 +207,7 @@ class AddExpenseScreen extends StatelessWidget {
                         : null,
                     isEditing: expenseToEdit != null,
                     expenseToEdit: expenseToEdit,
+                    fromAddExpense: true,
                   ),
                 ),
               ),

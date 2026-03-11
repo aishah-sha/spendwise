@@ -3,14 +3,32 @@ import '../models/budget_model.dart';
 
 class CategoryBudgetCard extends StatelessWidget {
   final BudgetCategory category;
+  final double spentAmount; // Add this parameter
 
-  const CategoryBudgetCard({super.key, required this.category});
+  const CategoryBudgetCard({
+    super.key,
+    required this.category,
+    required this.spentAmount, // Make it required
+  });
 
   static const Color accentGreen = Color(0xFF32BA32);
   static const Color darkText = Color(0xFF000000);
 
   @override
   Widget build(BuildContext context) {
+    final double budgetAmount = category.amount;
+    final double progress = budgetAmount > 0 ? spentAmount / budgetAmount : 0;
+    final double remaining = budgetAmount - spentAmount;
+    final double spentPercentage = (progress * 100).clamp(0, 100);
+
+    // Determine color based on progress
+    Color progressColor = _getCategoryColor(category.name);
+    if (progress >= 1.0) {
+      progressColor = Colors.red;
+    } else if (progress >= 0.8) {
+      progressColor = Colors.orange;
+    }
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -35,8 +53,8 @@ class CategoryBudgetCard extends StatelessWidget {
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: [
-                      _getCategoryColor(category.name).withOpacity(0.2),
-                      _getCategoryColor(category.name).withOpacity(0.1),
+                      progressColor.withOpacity(0.2),
+                      progressColor.withOpacity(0.1),
                     ],
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
@@ -45,7 +63,7 @@ class CategoryBudgetCard extends StatelessWidget {
                 ),
                 child: Icon(
                   _getCategoryIcon(category.name),
-                  color: _getCategoryColor(category.name),
+                  color: progressColor,
                   size: 24,
                 ),
               ),
@@ -68,7 +86,7 @@ class CategoryBudgetCard extends StatelessWidget {
                           ),
                         ),
                         Text(
-                          'RM ${category.amount.toStringAsFixed(2)}',
+                          'RM ${budgetAmount.toStringAsFixed(2)}',
                           style: const TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -93,16 +111,14 @@ class CategoryBudgetCard extends StatelessWidget {
                                 ),
                               ),
                               FractionallySizedBox(
-                                widthFactor: category.spentPercentage / 100,
+                                widthFactor: (progress).clamp(0.0, 1.0),
                                 child: Container(
                                   height: 6,
                                   decoration: BoxDecoration(
                                     gradient: LinearGradient(
                                       colors: [
-                                        _getCategoryColor(category.name),
-                                        _getCategoryColor(
-                                          category.name,
-                                        ).withOpacity(0.7),
+                                        progressColor,
+                                        progressColor.withOpacity(0.7),
                                       ],
                                     ),
                                     borderRadius: BorderRadius.circular(10),
@@ -119,17 +135,15 @@ class CategoryBudgetCard extends StatelessWidget {
                             vertical: 4,
                           ),
                           decoration: BoxDecoration(
-                            color: _getCategoryColor(
-                              category.name,
-                            ).withOpacity(0.1),
+                            color: progressColor.withOpacity(0.1),
                             borderRadius: BorderRadius.circular(20),
                           ),
                           child: Text(
-                            '${category.spentPercentage.toStringAsFixed(0)}%',
+                            '${spentPercentage.toStringAsFixed(0)}%',
                             style: TextStyle(
                               fontSize: 11,
                               fontWeight: FontWeight.w600,
-                              color: _getCategoryColor(category.name),
+                              color: progressColor,
                             ),
                           ),
                         ),
@@ -138,22 +152,68 @@ class CategoryBudgetCard extends StatelessWidget {
 
                     const SizedBox(height: 8),
 
-                    // Spent amount
+                    // Spent and remaining info
                     Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Icon(
-                          Icons.arrow_upward,
-                          size: 12,
-                          color: Colors.grey.shade400,
+                        // Spent amount
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.arrow_upward,
+                              size: 12,
+                              color: Colors.grey.shade400,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Spent: RM${spentAmount.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: Colors.grey.shade600,
+                              ),
+                            ),
+                          ],
                         ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Spent: RM${category.spent.toStringAsFixed(2)}',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade600,
+
+                        // Remaining/Overspent indicator
+                        if (remaining >= 0)
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Left: RM${remaining.toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.green.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          )
+                        else
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.red.shade50,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Text(
+                              'Overspent: RM${(-remaining).toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.red.shade700,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                           ),
-                        ),
                       ],
                     ),
                   ],

@@ -46,145 +46,21 @@ class ExpenseState extends Equatable {
 
   factory ExpenseState.initial() {
     final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
-    final twoDaysAgo = today.subtract(const Duration(days: 2));
-
-    final initialExpenses = [
-      ExpenseModel(
-        id: '1',
-        title: 'Mydin',
-        category: 'Food',
-        amount: 23.00,
-        date: today,
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '2',
-        title: 'Tunas Manja Group',
-        category: 'Detergent',
-        amount: 19.00,
-        date: yesterday,
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '3',
-        title: 'SM budget',
-        category: 'Supplies',
-        amount: 50.00,
-        date: twoDaysAgo,
-        isIncome: true,
-        note: 'Recent Supplies',
-      ),
-      ExpenseModel(
-        id: '4',
-        title: 'SMO Bookstore',
-        category: 'Stationery',
-        amount: 13.00,
-        date: twoDaysAgo,
-        isIncome: false,
-      ),
-      // Additional expenses for analytics
-      ExpenseModel(
-        id: '5',
-        title: 'Rent',
-        category: 'Rent',
-        amount: 50.00,
-        date: today.subtract(const Duration(days: 5)),
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '6',
-        title: 'Rent',
-        category: 'Rent',
-        amount: 100.00,
-        date: today.subtract(const Duration(days: 10)),
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '7',
-        title: 'Stationery',
-        category: 'Stationery',
-        amount: 50.00,
-        date: today.subtract(const Duration(days: 7)),
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '8',
-        title: 'Clothes',
-        category: 'Clothes',
-        amount: 450.00,
-        date: today.subtract(const Duration(days: 3)),
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '9',
-        title: 'Beverages',
-        category: 'Beverages',
-        amount: 90.00,
-        date: today.subtract(const Duration(days: 2)),
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '10',
-        title: 'Food',
-        category: 'Food',
-        amount: 100.00,
-        date: today.subtract(const Duration(days: 1)),
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '11',
-        title: 'Recent',
-        category: 'Others',
-        amount: 3.00,
-        date: today,
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '12',
-        title: 'Superb',
-        category: 'Others',
-        amount: 5.00,
-        date: today,
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '13',
-        title: 'Kompleks',
-        category: 'Others',
-        amount: 1.00,
-        date: today,
-        isIncome: false,
-      ),
-      ExpenseModel(
-        id: '14',
-        title: 'Groceries',
-        category: 'Groceries',
-        amount: 150.00,
-        date: today.subtract(const Duration(days: 4)),
-        isIncome: false,
-      ),
-    ];
-
-    final totalSpending = initialExpenses.fold(
-      0.0,
-      (sum, item) => item.isIncome ? sum - item.amount : sum + item.amount,
-    );
 
     return ExpenseState(
       userName: 'John',
       currentDate: now,
-      totalBalance: 1000.00,
-      totalSpending: totalSpending.abs(),
-      budget: 2000.00,
-      allExpenses: initialExpenses,
-      filteredExpenses: initialExpenses,
+      totalBalance: 0.0, // Start with 0, will be updated when user adds money
+      totalSpending: 0.0, // Start with 0, will be calculated from expenses
+      budget: 0.0, // Start with 0, will be updated when user sets budget
+      allExpenses: [], // Start empty, will be filled when user adds expenses
+      filteredExpenses:
+          [], // Start empty, will be filled when user adds expenses
       analyticsSelectedDate: now,
     );
   }
 
-  // Computed properties for analytics
+  // Computed properties for analytics - all based on actual expenses
   double get totalSpent {
     return getExpensesForAnalytics().fold(0.0, (sum, expense) {
       return expense.isIncome ? sum : sum + expense.amount;
@@ -192,10 +68,24 @@ class ExpenseState extends Equatable {
   }
 
   double get lastMonthTotal {
-    return totalSpent * 1.1; // Simulate 10% more than current
+    // Calculate based on actual expenses from last month
+    final now = analyticsSelectedDate;
+    final thisMonthStart = DateTime(now.year, now.month, 1);
+    final lastMonthStart = DateTime(now.year, now.month - 1, 1);
+    final lastMonthEnd = thisMonthStart.subtract(const Duration(days: 1));
+
+    return allExpenses.fold(0.0, (sum, expense) {
+      if (!expense.isIncome &&
+          expense.date.isAfter(lastMonthStart) &&
+          expense.date.isBefore(lastMonthEnd)) {
+        return sum + expense.amount;
+      }
+      return sum;
+    });
   }
 
   double get percentageChange {
+    if (lastMonthTotal == 0) return 0;
     return ((totalSpent - lastMonthTotal) / lastMonthTotal) * 100;
   }
 
@@ -239,7 +129,7 @@ class ExpenseState extends Equatable {
 
   double get groceriesTotal {
     return getExpensesForAnalytics()
-        .where((e) => !e.isIncome && e.category == 'Groceries')
+        .where((e) => !e.isIncome && e.category.toLowerCase() == 'groceries')
         .fold(0.0, (sum, e) => sum + e.amount);
   }
 
@@ -260,7 +150,7 @@ class ExpenseState extends Equatable {
     }
   }
 
-  // Existing methods (groupedByDate, copyWith, etc. remain the same)
+  // Group expenses by date for history view
   Map<String, List<ExpenseModel>> get groupedByDate {
     final grouped = <String, List<ExpenseModel>>{};
 
@@ -313,15 +203,35 @@ class ExpenseState extends Equatable {
     return months[month - 1];
   }
 
-  // Computed properties
+  // Computed properties based on actual data
   double get remaining => budget - totalSpending;
-  double get budgetProgress => totalSpending / budget;
+  double get budgetProgress => budget > 0 ? totalSpending / budget : 0;
   int get totalExpensesCount => filteredExpenses.length;
 
   double get totalAmount {
     return filteredExpenses.fold(0.0, (sum, expense) {
       return expense.isIncome ? sum + expense.amount : sum - expense.amount;
     });
+  }
+
+  // Update totalSpending based on all expenses
+  double calculateTotalSpending() {
+    return allExpenses.fold(0.0, (sum, expense) {
+      return expense.isIncome ? sum : sum + expense.amount;
+    });
+  }
+
+  // Update totalBalance based on income and expenses
+  double calculateTotalBalance() {
+    double balance = 0.0;
+    for (var expense in allExpenses) {
+      if (expense.isIncome) {
+        balance += expense.amount;
+      } else {
+        balance -= expense.amount;
+      }
+    }
+    return balance;
   }
 
   ExpenseState copyWith({

@@ -6,19 +6,20 @@ import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../models/receipt_model.dart';
 import '../models/expense_model.dart';
-import 'add_expense_screen.dart';
 import 'dashboard_screen.dart';
 
 class ManualEntryScreen extends StatefulWidget {
   final ReceiptModel? receipt;
   final bool isEditing;
   final ExpenseModel? expenseToEdit;
+  final bool fromAddExpense;
 
   const ManualEntryScreen({
     super.key,
     this.receipt,
     this.isEditing = false,
     this.expenseToEdit,
+    this.fromAddExpense = false,
   });
 
   @override
@@ -36,16 +37,13 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   late DateTime _selectedDate;
   bool _isIncome = false;
 
-  // List of items
-  late List<ReceiptItem> _items;
-  late List<TextEditingController> _itemNameControllers;
-  late List<TextEditingController> _itemPriceControllers;
-  late List<TextEditingController> _itemQuantityControllers;
-  late List<String> _itemCategories;
-  late List<TextEditingController> _itemCategoryControllers;
+  // List to hold items
+  List<ReceiptItem> _items = [];
 
+  // Categories - Added 'Beverages'
   final List<String> _categories = [
     'Food',
+    'Beverages',
     'Detergent',
     'Stationery',
     'Transport',
@@ -57,95 +55,72 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     'Other',
   ];
 
+  // Controllers for adding new items
+  final TextEditingController _newItemNameController = TextEditingController();
+  final TextEditingController _newItemPriceController = TextEditingController();
+  String _newItemCategory = 'Food';
+
+  // Image file for receipt
+  File? _receiptImageFile;
+
   @override
   void initState() {
     super.initState();
+    print("🟢 ManualEntryScreen initState");
 
-    // Check if we're editing an existing expense
-    if (widget.expenseToEdit != null) {
-      _initializeFromExpense(widget.expenseToEdit!);
-    }
-    // Check if we have a receipt from scan/upload
-    else if (widget.receipt != null) {
-      _initializeFromReceipt(widget.receipt!);
-    } else {
-      _initializeEmpty();
-    }
-
-    // Update the AddExpenseCubit form fields
-    _updateCubitFields();
-  }
-
-  void _initializeFromExpense(ExpenseModel expense) {
-    // Create a single item from the expense
-    _items = [
-      ReceiptItem(
-        name: expense.title,
-        price: expense.amount,
-        quantity: 1,
-        category: expense.category,
-      ),
-    ];
-
-    _initializeItemControllers();
-
-    _amountController = TextEditingController(
-      text: expense.amount.toStringAsFixed(2),
-    );
-
-    _vendorController = TextEditingController(text: expense.title);
-
-    _selectedDate = expense.date;
-    _isIncome = expense.isIncome ?? false;
-  }
-
-  void _initializeFromReceipt(ReceiptModel receipt) {
-    if (receipt.items != null && receipt.items!.isNotEmpty) {
-      _items = List.from(receipt.items!);
-    } else {
-      _items = [ReceiptItem(name: '', price: 0.0, quantity: 1)];
-    }
-
-    _initializeItemControllers();
-
-    _amountController = TextEditingController(
-      text: receipt.amount.toStringAsFixed(2),
-    );
-
-    _vendorController = TextEditingController(text: receipt.merchantName ?? '');
-
-    _selectedDate = receipt.date;
-  }
-
-  void _initializeEmpty() {
-    _items = [ReceiptItem(name: '', price: 0.0, quantity: 1)];
-    _initializeItemControllers();
-    _amountController = TextEditingController(text: '0.00');
+    _amountController = TextEditingController();
     _vendorController = TextEditingController();
     _selectedDate = DateTime.now();
-  }
 
-  void _initializeItemControllers() {
-    _itemNameControllers = _items
-        .map((item) => TextEditingController(text: item.name ?? ''))
-        .toList();
+    // Initialize with data
+    if (widget.receipt != null) {
+      print("🟢 Received receipt: ${widget.receipt!.merchantName}");
+      print("🟢 Items from receipt: ${widget.receipt!.items?.length ?? 0}");
 
-    _itemPriceControllers = _items
-        .map(
-          (item) => TextEditingController(text: item.price.toStringAsFixed(2)),
-        )
-        .toList();
+      // Load receipt image if available
+      if (widget.receipt!.imagePath != null &&
+          widget.receipt!.imagePath!.isNotEmpty) {
+        try {
+          _receiptImageFile = File(widget.receipt!.imagePath!);
+          print("🟢 Receipt image loaded from: ${widget.receipt!.imagePath}");
+        } catch (e) {
+          print("🟢 Error loading receipt image: $e");
+          _receiptImageFile = null;
+        }
+      }
 
-    _itemQuantityControllers = _items
-        .map((item) => TextEditingController(text: item.quantity.toString()))
-        .toList();
+      if (widget.receipt!.items != null && widget.receipt!.items!.isNotEmpty) {
+        _items = List.from(widget.receipt!.items!);
+      } else {
+        _items = [
+          ReceiptItem(name: '', price: 0.0, quantity: 1, category: 'Food'),
+        ];
+      }
 
-    // Initialize categories for each item
-    _itemCategories = _items.map((item) => item.category ?? 'Food').toList();
+      _amountController.text = widget.receipt!.amount.toStringAsFixed(2);
+      _vendorController.text = widget.receipt!.merchantName ?? 'Unknown Store';
+      _selectedDate = widget.receipt!.date;
+    } else if (widget.expenseToEdit != null) {
+      _items = [
+        ReceiptItem(
+          name: widget.expenseToEdit!.title,
+          price: widget.expenseToEdit!.amount,
+          quantity: 1,
+          category: widget.expenseToEdit!.category,
+        ),
+      ];
+      _amountController.text = widget.expenseToEdit!.amount.toStringAsFixed(2);
+      _vendorController.text = widget.expenseToEdit!.title;
+      _selectedDate = widget.expenseToEdit!.date;
+    } else {
+      _items = [
+        ReceiptItem(name: '', price: 0.0, quantity: 1, category: 'Food'),
+      ];
+      _amountController.text = '0.00';
+      _vendorController.text = '';
+    }
 
-    _itemCategoryControllers = _items
-        .map((item) => TextEditingController(text: item.category ?? 'Food'))
-        .toList();
+    _updateCubitFields();
   }
 
   void _updateCubitFields() {
@@ -156,42 +131,19 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     );
     addExpenseCubit.updateDate(_selectedDate);
     addExpenseCubit.updateIsIncome(_isIncome);
-
-    if (_items.isNotEmpty) {
-      addExpenseCubit.updateCategory(_itemCategories.first);
-    }
   }
 
   @override
   void dispose() {
     _amountController.dispose();
     _vendorController.dispose();
-
-    // Dispose all item controllers
-    for (var controller in _itemNameControllers) {
-      controller.dispose();
-    }
-    for (var controller in _itemPriceControllers) {
-      controller.dispose();
-    }
-    for (var controller in _itemQuantityControllers) {
-      controller.dispose();
-    }
-    for (var controller in _itemCategoryControllers) {
-      controller.dispose();
-    }
-
+    _newItemNameController.dispose();
+    _newItemPriceController.dispose();
     super.dispose();
   }
 
   double _calculateTotal() {
-    double total = 0.0;
-    for (int i = 0; i < _items.length; i++) {
-      double price = double.tryParse(_itemPriceControllers[i].text) ?? 0.0;
-      int quantity = int.tryParse(_itemQuantityControllers[i].text) ?? 1;
-      total += price * quantity;
-    }
-    return total;
+    return _items.fold(0.0, (sum, item) => sum + (item.price * item.quantity));
   }
 
   void _updateTotal() {
@@ -201,33 +153,149 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     context.read<AddExpenseCubit>().updateAmount(_calculateTotal());
   }
 
-  void _addNewItem() {
-    setState(() {
-      _items.add(ReceiptItem(name: '', price: 0.0, quantity: 1));
-      _itemNameControllers.add(TextEditingController());
-      _itemPriceControllers.add(TextEditingController(text: '0.00'));
-      _itemQuantityControllers.add(TextEditingController(text: '1'));
-      _itemCategories.add('Food');
-      _itemCategoryControllers.add(TextEditingController(text: 'Food'));
-    });
+  void _showAddItemDialog() {
+    _newItemNameController.clear();
+    _newItemPriceController.clear();
+    _newItemCategory = 'Food';
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text("Add New Item"),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: _newItemNameController,
+              decoration: const InputDecoration(
+                labelText: "Item Name",
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _newItemPriceController,
+              decoration: const InputDecoration(
+                labelText: "Price (RM)",
+                border: OutlineInputBorder(),
+                prefixText: 'RM ',
+              ),
+              keyboardType: TextInputType.number,
+            ),
+            const SizedBox(height: 8),
+            DropdownButtonFormField<String>(
+              value: _newItemCategory,
+              decoration: const InputDecoration(
+                labelText: "Category",
+                border: OutlineInputBorder(),
+              ),
+              items: _categories.map((category) {
+                return DropdownMenuItem(
+                  value: category,
+                  child: Row(
+                    children: [
+                      Icon(
+                        _getCategoryIcon(category),
+                        size: 16,
+                        color: _getCategoryColor(category),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(category),
+                    ],
+                  ),
+                );
+              }).toList(),
+              onChanged: (value) {
+                if (value != null) {
+                  _newItemCategory = value;
+                }
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text("Cancel"),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (_newItemNameController.text.isNotEmpty &&
+                  _newItemPriceController.text.isNotEmpty) {
+                final price = double.tryParse(_newItemPriceController.text);
+                if (price != null && price > 0) {
+                  setState(() {
+                    _items.add(
+                      ReceiptItem(
+                        name: _newItemNameController.text,
+                        price: price,
+                        quantity: 1,
+                        category: _newItemCategory,
+                      ),
+                    );
+                    _updateTotal();
+                  });
+                  Navigator.pop(context);
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Please enter a valid price'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please fill all fields'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: accentGreen),
+            child: const Text("Add"),
+          ),
+        ],
+      ),
+    );
   }
 
-  void _removeItem(int index) {
-    setState(() {
-      _items.removeAt(index);
-      _itemNameControllers[index].dispose();
-      _itemPriceControllers[index].dispose();
-      _itemQuantityControllers[index].dispose();
-      _itemCategoryControllers[index].dispose();
+  void _showFullScreenImage() {
+    if (_receiptImageFile == null) return;
 
-      _itemNameControllers.removeAt(index);
-      _itemPriceControllers.removeAt(index);
-      _itemQuantityControllers.removeAt(index);
-      _itemCategories.removeAt(index);
-      _itemCategoryControllers.removeAt(index);
-
-      _updateTotal();
-    });
+    showDialog(
+      context: context,
+      builder: (context) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.all(10),
+        child: Stack(
+          children: [
+            Container(
+              width: double.infinity,
+              height: double.infinity,
+              child: InteractiveViewer(
+                panEnabled: true,
+                minScale: 0.5,
+                maxScale: 4.0,
+                child: Image.file(_receiptImageFile!, fit: BoxFit.contain),
+              ),
+            ),
+            Positioned(
+              top: 10,
+              right: 10,
+              child: CircleAvatar(
+                backgroundColor: Colors.black54,
+                child: IconButton(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  onPressed: () => Navigator.pop(context),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -236,670 +304,114 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
 
     return Scaffold(
       backgroundColor: bgColor,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: Container(
-        margin: const EdgeInsets.only(top: 25),
-        height: 70,
-        width: 70,
-      ),
-      appBar: PreferredSize(
-        preferredSize: const Size.fromHeight(80),
-        child: _buildTopHeader(context),
+      appBar: AppBar(
+        backgroundColor: headerColor,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context, null),
+        ),
+        title: const Text('SpendWise'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => Navigator.pop(context, null),
+          ),
+        ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16), // Reduced from 20 to 16
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header with dynamic title - REDUCED FONT SIZE
             Text(
               isEditing ? 'Edit Expense' : 'Manual Entry',
-              style: const TextStyle(
-                fontSize: 22, // Reduced from 28 to 22
-                fontWeight: FontWeight.bold,
-                color: darkText,
-              ),
+              style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 16), // Reduced from 20 to 16
-            // Receipt Image
-            _buildReceiptImage(),
+            const SizedBox(height: 16),
 
-            const SizedBox(height: 20), // Reduced from 24 to 20
-            // EXPENSE DETAILS SECTION
+            // Receipt Image Section
+            _buildReceiptImageSection(),
+            const SizedBox(height: 20),
+
+            // EXPENSE DETAILS
             Container(
-              padding: const EdgeInsets.symmetric(
-                vertical: 6,
-              ), // Reduced from 8 to 6
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: const Text(
                 'EXPENSE DETAILS',
-                style: TextStyle(
-                  fontSize: 14, // Reduced from 16 to 14
-                  fontWeight: FontWeight.w600,
-                  color: darkText,
-                ),
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
               ),
             ),
+            const SizedBox(height: 6),
 
-            const SizedBox(height: 6), // Reduced from 8 to 6
-            // Total Amount Field
-            Container(
-              decoration: BoxDecoration(
-                color: headerColor,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 5,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: TextField(
-                controller: _amountController,
-                keyboardType: TextInputType.number,
-                readOnly: true,
-                decoration: InputDecoration(
-                  labelText: 'Total Amount',
-                  labelStyle: TextStyle(
-                    color: darkText.withOpacity(0.6),
-                    fontSize: 13, // Reduced from 14 to 13
-                  ),
-                  prefixText: 'RM ',
-                  prefixStyle: const TextStyle(
-                    fontSize: 15, // Reduced from 16 to 15
-                    fontWeight: FontWeight.w500,
-                    color: accentGreen,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: Colors.transparent,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14, // Reduced from 16 to 14
-                    vertical: 14, // Reduced from 16 to 14
+            // Total Amount (Read-only as it's calculated from items)
+            _buildReadOnlyField('Total Amount', _amountController),
+            const SizedBox(height: 10),
+
+            // Date Field (Editable)
+            _buildDateField(),
+            const SizedBox(height: 10),
+
+            // Vendor Field (Editable)
+            _buildEditableField('Vendor', _vendorController, (value) {
+              context.read<AddExpenseCubit>().updateTitle(value);
+            }),
+            const SizedBox(height: 20),
+
+            // ITEMS SECTION HEADER
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'ITEMS (${_items.length})',
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                style: const TextStyle(
-                  fontSize: 15, // Reduced from 16 to 15
-                  fontWeight: FontWeight.bold,
-                  color: accentGreen,
+                TextButton.icon(
+                  onPressed: _showAddItemDialog,
+                  icon: Icon(Icons.add_circle, color: accentGreen, size: 18),
+                  label: Text(
+                    'Add Item',
+                    style: TextStyle(color: accentGreen, fontSize: 13),
+                  ),
                 ),
-              ),
+              ],
             ),
+            const SizedBox(height: 10),
 
-            const SizedBox(height: 10), // Reduced from 12 to 10
-            // Date Field
-            Container(
-              decoration: BoxDecoration(
-                color: headerColor,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 5,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: InkWell(
-                onTap: () async {
-                  DateTime? picked = await showDatePicker(
-                    context: context,
-                    initialDate: _selectedDate,
-                    firstDate: DateTime(2020),
-                    lastDate: DateTime.now(),
-                    builder: (context, child) {
-                      return Theme(
-                        data: Theme.of(context).copyWith(
-                          colorScheme: ColorScheme.light(
-                            primary: accentGreen,
-                            onPrimary: Colors.white,
-                            surface: headerColor,
-                            onSurface: darkText,
-                          ),
-                          dialogBackgroundColor: headerColor,
-                        ),
-                        child: child!,
-                      );
-                    },
-                  );
-                  if (picked != null && picked != _selectedDate) {
-                    setState(() {
-                      _selectedDate = picked;
-                    });
-                    context.read<AddExpenseCubit>().updateDate(picked);
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14, // Reduced from 16 to 14
-                    vertical: 4,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Date',
-                              style: TextStyle(
-                                fontSize: 13, // Reduced from 14 to 13
-                                color: darkText.withOpacity(0.6),
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              DateFormat('dd/MM/yy').format(_selectedDate),
-                              style: const TextStyle(
-                                fontSize: 15, // Reduced from 16 to 15
-                                color: darkText,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      Icon(
-                        Icons.calendar_today,
-                        color: accentGreen,
-                        size: 18,
-                      ), // Reduced from 20 to 18
-                    ],
-                  ),
+            // Items List (Editable)
+            if (_items.isEmpty)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(32),
+                  child: Text("No items. Tap 'Add Item' to add."),
                 ),
-              ),
-            ),
-
-            const SizedBox(height: 10), // Reduced from 12 to 10
-            // Vendor Field
-            Container(
-              decoration: BoxDecoration(
-                color: headerColor,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 5,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-              child: TextField(
-                controller: _vendorController,
-                decoration: InputDecoration(
-                  labelText: 'Vendor',
-                  labelStyle: TextStyle(
-                    color: darkText.withOpacity(0.6),
-                    fontSize: 13, // Reduced from 14 to 13
-                  ),
-                  hintText: 'Store name',
-                  hintStyle: TextStyle(
-                    color: darkText.withOpacity(0.4),
-                    fontSize: 13,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  filled: true,
-                  fillColor: Colors.transparent,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 14, // Reduced from 16 to 14
-                    vertical: 14, // Reduced from 16 to 14
-                  ),
-                ),
-                style: const TextStyle(
-                  fontSize: 15,
-                  color: darkText,
-                ), // Reduced from 16 to 15
-                onChanged: (value) {
-                  context.read<AddExpenseCubit>().updateTitle(value);
+              )
+            else
+              ListView.builder(
+                key: ValueKey(_items.length),
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: _items.length,
+                itemBuilder: (context, index) {
+                  return _buildEditableItem(index);
                 },
               ),
-            ),
 
-            const SizedBox(height: 10), // Reduced from 12 to 10
-            // Income/Expense Toggle
-            Container(
-              decoration: BoxDecoration(
-                color: headerColor,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 5,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-              ),
-            ),
+            const SizedBox(height: 20),
 
-            const SizedBox(height: 20), // Reduced from 24 to 20
-            // ITEMS LIST SECTION
-            Container(
-              padding: const EdgeInsets.symmetric(
-                vertical: 6,
-              ), // Reduced from 8 to 6
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'ITEMS',
-                    style: TextStyle(
-                      fontSize: 14, // Reduced from 16 to 14
-                      fontWeight: FontWeight.w600,
-                      color: darkText,
-                    ),
-                  ),
-                  TextButton.icon(
-                    onPressed: _addNewItem,
-                    icon: Icon(
-                      Icons.add_circle,
-                      color: accentGreen,
-                      size: 18,
-                    ), // Reduced from 20 to 18
-                    label: Text(
-                      'Add Item',
-                      style: TextStyle(
-                        color: accentGreen,
-                        fontSize: 13,
-                      ), // Added fontSize
-                    ),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 0,
-                      ),
-                      minimumSize: Size.zero,
-                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
-            const SizedBox(height: 6), // Reduced from 8 to 6
-            // Items List
-            ListView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: _items.length,
-              itemBuilder: (context, index) {
-                return Container(
-                  margin: const EdgeInsets.only(
-                    bottom: 12,
-                  ), // Reduced from 16 to 12
-                  padding: const EdgeInsets.all(12), // Reduced from 16 to 12
-                  decoration: BoxDecoration(
-                    color: headerColor,
-                    borderRadius: BorderRadius.circular(12),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withOpacity(0.05),
-                        blurRadius: 5,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: Column(
-                    children: [
-                      // Item Header with remove button
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(
-                                  4,
-                                ), // Reduced from 6 to 4
-                                decoration: BoxDecoration(
-                                  color: _getCategoryColor(
-                                    _itemCategories[index],
-                                  ).withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(
-                                    4,
-                                  ), // Reduced from 6 to 4
-                                ),
-                                child: Icon(
-                                  _getCategoryIcon(_itemCategories[index]),
-                                  size: 12, // Reduced from 14 to 12
-                                  color: _getCategoryColor(
-                                    _itemCategories[index],
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 6), // Reduced from 8 to 6
-                              Text(
-                                'Item ${index + 1}',
-                                style: TextStyle(
-                                  fontSize: 13, // Reduced from 14 to 13
-                                  fontWeight: FontWeight.w600,
-                                  color: darkText,
-                                ),
-                              ),
-                            ],
-                          ),
-                          if (_items.length > 1)
-                            IconButton(
-                              icon: Icon(
-                                Icons.delete_outline,
-                                color: Colors.red[400],
-                                size: 18, // Reduced from 20 to 18
-                              ),
-                              onPressed: () => _removeItem(index),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              visualDensity: VisualDensity
-                                  .compact, // Make button more compact
-                            ),
-                        ],
-                      ),
-                      const SizedBox(height: 8), // Reduced from 12 to 8
-                      // Item Name Field
-                      TextField(
-                        controller: _itemNameControllers[index],
-                        decoration: InputDecoration(
-                          labelText: 'Item Name',
-                          labelStyle: TextStyle(
-                            color: darkText.withOpacity(0.6),
-                            fontSize: 11, // Reduced from 12 to 11
-                          ),
-                          hintText: 'e.g., Imperial Roll',
-                          hintStyle: TextStyle(
-                            color: darkText.withOpacity(0.4),
-                            fontSize: 11, // Reduced from 12 to 11
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(
-                              6,
-                            ), // Reduced from 8 to 6
-                            borderSide: BorderSide.none,
-                          ),
-                          filled: true,
-                          fillColor: Colors.white.withOpacity(0.7),
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 10, // Reduced from 12 to 10
-                            vertical: 10, // Reduced from 12 to 10
-                          ),
-                          isDense: true, // Make text field more compact
-                        ),
-                        style: const TextStyle(
-                          fontSize: 13,
-                          color: darkText,
-                        ), // Reduced from 14 to 13
-                        onChanged: (value) {
-                          _items[index] = ReceiptItem(
-                            name: value,
-                            price:
-                                double.tryParse(
-                                  _itemPriceControllers[index].text,
-                                ) ??
-                                0.0,
-                            quantity:
-                                int.tryParse(
-                                  _itemQuantityControllers[index].text,
-                                ) ??
-                                1,
-                            category: _itemCategories[index],
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 8), // Reduced from 10 to 8
-                      // Category Dropdown for each item
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(
-                            6,
-                          ), // Reduced from 8 to 6
-                        ),
-                        child: DropdownButtonFormField<String>(
-                          value: _itemCategories[index],
-                          decoration: InputDecoration(
-                            labelText: 'Category',
-                            labelStyle: TextStyle(
-                              color: darkText.withOpacity(0.6),
-                              fontSize: 11, // Reduced from 12 to 11
-                            ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(
-                                6,
-                              ), // Reduced from 8 to 6
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 10, // Reduced from 12 to 10
-                              vertical: 2, // Reduced from 4 to 2
-                            ),
-                            isDense: true,
-                          ),
-                          items: _categories.map((category) {
-                            return DropdownMenuItem(
-                              value: category,
-                              child: Row(
-                                children: [
-                                  Icon(
-                                    _getCategoryIcon(category),
-                                    size: 12, // Reduced from 14 to 12
-                                    color: _getCategoryColor(category),
-                                  ),
-                                  const SizedBox(
-                                    width: 4,
-                                  ), // Reduced from 6 to 4
-                                  Text(
-                                    category,
-                                    style: const TextStyle(
-                                      fontSize: 12, // Reduced from 13 to 12
-                                      color: darkText,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            );
-                          }).toList(),
-                          onChanged: (value) {
-                            if (value != null) {
-                              setState(() {
-                                _itemCategories[index] = value;
-                                _itemCategoryControllers[index].text = value;
-                                _items[index] = ReceiptItem(
-                                  name: _itemNameControllers[index].text,
-                                  price:
-                                      double.tryParse(
-                                        _itemPriceControllers[index].text,
-                                      ) ??
-                                      0.0,
-                                  quantity:
-                                      int.tryParse(
-                                        _itemQuantityControllers[index].text,
-                                      ) ??
-                                      1,
-                                  category: value,
-                                );
-                              });
-                              // Update cubit with first item's category (for main expense)
-                              if (index == 0) {
-                                context.read<AddExpenseCubit>().updateCategory(
-                                  value,
-                                );
-                              }
-                            }
-                          },
-                          icon: Icon(
-                            Icons.arrow_drop_down,
-                            color: accentGreen,
-                            size: 16, // Reduced from 18 to 16
-                          ),
-                          dropdownColor: headerColor,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: darkText,
-                          ), // Reduced from 13 to 12
-                        ),
-                      ),
-                      const SizedBox(height: 8), // Reduced from 10 to 8
-                      // Item Price and Quantity Row
-                      Row(
-                        children: [
-                          // Quantity
-                          Expanded(
-                            child: TextField(
-                              controller: _itemQuantityControllers[index],
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: 'Qty',
-                                labelStyle: TextStyle(
-                                  color: darkText.withOpacity(0.6),
-                                  fontSize: 11, // Reduced from 12 to 11
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    6,
-                                  ), // Reduced from 8 to 6
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.7),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10, // Reduced from 12 to 10
-                                  vertical: 8, // Reduced from 12 to 8
-                                ),
-                                isDense: true,
-                              ),
-                              style: const TextStyle(
-                                fontSize: 13, // Reduced from 14 to 13
-                                color: darkText,
-                              ),
-                              onChanged: (value) {
-                                int qty = int.tryParse(value) ?? 1;
-                                _items[index] = ReceiptItem(
-                                  name: _itemNameControllers[index].text,
-                                  price:
-                                      double.tryParse(
-                                        _itemPriceControllers[index].text,
-                                      ) ??
-                                      0.0,
-                                  quantity: qty,
-                                  category: _itemCategories[index],
-                                );
-                                _updateTotal();
-                              },
-                            ),
-                          ),
-                          const SizedBox(width: 6), // Reduced from 8 to 6
-                          // Price
-                          Expanded(
-                            child: TextField(
-                              controller: _itemPriceControllers[index],
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                labelText: 'Price',
-                                labelStyle: TextStyle(
-                                  color: darkText.withOpacity(0.6),
-                                  fontSize: 11, // Reduced from 12 to 11
-                                ),
-                                prefixText: 'RM ',
-                                prefixStyle: TextStyle(
-                                  fontSize: 13, // Reduced from 14 to 13
-                                  color: accentGreen,
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(
-                                    6,
-                                  ), // Reduced from 8 to 6
-                                  borderSide: BorderSide.none,
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withOpacity(0.7),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  horizontal: 10, // Reduced from 12 to 10
-                                  vertical: 8, // Reduced from 12 to 8
-                                ),
-                                isDense: true,
-                              ),
-                              style: const TextStyle(
-                                fontSize: 13, // Reduced from 14 to 13
-                                color: darkText,
-                              ),
-                              onChanged: (value) {
-                                double price = double.tryParse(value) ?? 0.0;
-                                _items[index] = ReceiptItem(
-                                  name: _itemNameControllers[index].text,
-                                  price: price,
-                                  quantity:
-                                      int.tryParse(
-                                        _itemQuantityControllers[index].text,
-                                      ) ??
-                                      1,
-                                  category: _itemCategories[index],
-                                );
-                                _updateTotal();
-                              },
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 6), // Reduced from 8 to 6
-                      // Item Total
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            'Item Total: ',
-                            style: TextStyle(
-                              fontSize: 11, // Reduced from 12 to 11
-                              color: darkText.withOpacity(0.6),
-                            ),
-                          ),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6, // Reduced from 8 to 6
-                              vertical: 1, // Reduced from 2 to 1
-                            ),
-                            decoration: BoxDecoration(
-                              color: accentGreen.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(
-                                10,
-                              ), // Reduced from 12 to 10
-                            ),
-                            child: Text(
-                              'RM ${((double.tryParse(_itemPriceControllers[index].text) ?? 0.0) * (int.tryParse(_itemQuantityControllers[index].text) ?? 1)).toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontSize: 11, // Reduced from 12 to 11
-                                fontWeight: FontWeight.bold,
-                                color: accentGreen,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                );
-              },
-            ),
-
-            const SizedBox(height: 20), // Reduced from 24 to 20
-            // Save Expense Button
+            // Save Button
             SizedBox(
               width: double.infinity,
-              height: 48, // Reduced from 55 to 48
+              height: 48,
               child: ElevatedButton(
-                onPressed: () {
-                  _saveExpense(context);
-                },
+                onPressed: () => _saveExpense(context),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: accentGreen,
-                  foregroundColor: Colors.white,
-                  elevation: 2,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      10,
-                    ), // Reduced from 12 to 10
+                    borderRadius: BorderRadius.circular(10),
                   ),
                 ),
                 child: Text(
@@ -907,95 +419,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                   style: const TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                  ), // Reduced from 16 to 15
+                  ),
                 ),
               ),
             ),
-
-            const SizedBox(height: 16), // Reduced from 20 to 16
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildReceiptImage() {
-    if (widget.receipt?.imagePath != null) {
-      return Container(
-        width: double.infinity,
-        height: 160, // Reduced from 200 to 160
-        decoration: BoxDecoration(
-          color: headerColor,
-          borderRadius: BorderRadius.circular(12), // Reduced from 16 to 12
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 8, // Reduced from 10 to 8
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12), // Reduced from 16 to 12
-          child: Image.file(
-            File(widget.receipt!.imagePath!),
-            width: double.infinity,
-            height: 160, // Reduced from 200 to 160
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              return _buildNoImagePlaceholder();
-            },
-          ),
-        ),
-      );
-    } else {
-      return _buildNoImagePlaceholder();
-    }
-  }
-
-  Widget _buildNoImagePlaceholder() {
-    return Container(
-      width: double.infinity,
-      height: 160, // Reduced from 200 to 160
-      decoration: BoxDecoration(
-        color: headerColor.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12), // Reduced from 16 to 12
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 8, // Reduced from 10 to 8
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.receipt_long,
-            size: 48, // Reduced from 60 to 48
-            color: accentGreen.withOpacity(0.5),
-          ),
-          const SizedBox(height: 8), // Reduced from 12 to 8
-          Text(
-            'No Receipt Image',
-            style: TextStyle(
-              fontSize: 14, // Reduced from 16 to 14
-              fontWeight: FontWeight.w500,
-              color: darkText.withOpacity(0.5),
-            ),
-          ),
-          const SizedBox(height: 2), // Reduced from 4 to 2
-          Text(
-            widget.expenseToEdit != null
-                ? 'Editing existing expense'
-                : 'Receipt preview not available',
-            style: TextStyle(
-              fontSize: 11,
-              color: darkText.withOpacity(0.4),
-            ), // Reduced from 12 to 11
-          ),
-        ],
       ),
     );
   }
@@ -1032,14 +461,15 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
             children: [
               GestureDetector(
                 onTap: () {
-                  // Typically an X icon is used to close/pop the screen
-                  Navigator.pop(context);
-                  print('Close icon tapped');
+                  print("🟢 Close button pressed");
+                  if (widget.fromAddExpense) {
+                    // Return null to indicate cancellation
+                    Navigator.pop(context, null);
+                  } else {
+                    Navigator.pop(context);
+                  }
                 },
-                child: const Icon(
-                  Icons.close, // Changed from Icons.bar_chart to Icons.close
-                  size: 24,
-                ),
+                child: const Icon(Icons.close, size: 24),
               ),
               const SizedBox(width: 12),
             ],
@@ -1049,10 +479,613 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     );
   }
 
+  Widget _buildReceiptImageSection() {
+    if (_receiptImageFile != null) {
+      return GestureDetector(
+        onTap: _showFullScreenImage,
+        child: Container(
+          width: double.infinity,
+          height: 200,
+          decoration: BoxDecoration(
+            color: headerColor,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Image.file(
+                  _receiptImageFile!,
+                  width: double.infinity,
+                  height: 200,
+                  fit: BoxFit.cover,
+                ),
+              ),
+              // Gradient overlay for better text visibility
+              Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(12),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.transparent, Colors.black.withOpacity(0.3)],
+                  ),
+                ),
+              ),
+              // Receipt info overlay
+              Positioned(
+                bottom: 10,
+                left: 10,
+                right: 10,
+                child: Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(16),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.receipt,
+                            color: Colors.white,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Receipt Image',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: const Icon(
+                        Icons.zoom_out_map,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      return _buildNoImagePlaceholder();
+    }
+  }
+
+  Widget _buildNoImagePlaceholder() {
+    return Container(
+      width: double.infinity,
+      height: 160,
+      decoration: BoxDecoration(
+        color: headerColor.withOpacity(0.5),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey.shade300, width: 1),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.receipt_long,
+            size: 48,
+            color: accentGreen.withOpacity(0.5),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'No Receipt Image',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+              color: darkText.withOpacity(0.5),
+            ),
+          ),
+          const SizedBox(height: 4),
+          if (widget.receipt?.merchantName != null)
+            Text(
+              widget.receipt!.merchantName!,
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+          if (widget.receipt?.amount != null)
+            Text(
+              'RM ${widget.receipt!.amount.toStringAsFixed(2)}',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: accentGreen,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEditableItem(int index) {
+    if (index < 0 || index >= _items.length) return const SizedBox.shrink();
+
+    ReceiptItem item = _items[index];
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 2,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Stack(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  width: 4,
+                  height: 160,
+                  decoration: BoxDecoration(
+                    color: accentGreen,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    children: [
+                      // Item Name
+                      TextFormField(
+                        initialValue: item.name,
+                        decoration: const InputDecoration(
+                          labelText: 'Item Name',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 8,
+                          ),
+                        ),
+                        onChanged: (value) {
+                          if (index < _items.length) {
+                            setState(() {
+                              _items[index] = ReceiptItem(
+                                name: value,
+                                price: item.price,
+                                quantity: item.quantity,
+                                category: item.category ?? 'Food',
+                              );
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Price and Quantity Row
+                      Row(
+                        children: [
+                          // Price
+                          Expanded(
+                            child: TextFormField(
+                              initialValue: item.price.toStringAsFixed(2),
+                              decoration: const InputDecoration(
+                                labelText: 'Price (RM)',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                prefixText: 'RM ',
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (value) {
+                                if (index < _items.length) {
+                                  double newPrice =
+                                      double.tryParse(value) ?? item.price;
+                                  setState(() {
+                                    _items[index] = ReceiptItem(
+                                      name: item.name,
+                                      price: newPrice,
+                                      quantity: item.quantity,
+                                      category: item.category ?? 'Food',
+                                    );
+                                    _updateTotal();
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+
+                          // Quantity
+                          Expanded(
+                            child: TextFormField(
+                              initialValue: item.quantity.toString(),
+                              decoration: const InputDecoration(
+                                labelText: 'Qty',
+                                border: OutlineInputBorder(),
+                                isDense: true,
+                                contentPadding: EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                              ),
+                              keyboardType: TextInputType.number,
+                              onChanged: (value) {
+                                if (index < _items.length) {
+                                  int newQty = int.tryParse(value) ?? 1;
+                                  setState(() {
+                                    _items[index] = ReceiptItem(
+                                      name: item.name,
+                                      price: item.price,
+                                      quantity: newQty,
+                                      category: item.category ?? 'Food',
+                                    );
+                                    _updateTotal();
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+
+                      // Category Dropdown - Fixed with safety check
+                      DropdownButtonFormField<String>(
+                        value: _categories.contains(item.category)
+                            ? item.category
+                            : _categories.first,
+                        decoration: const InputDecoration(
+                          labelText: 'Category',
+                          border: OutlineInputBorder(),
+                          isDense: true,
+                          contentPadding: EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
+                        ),
+                        items: _categories.map((category) {
+                          return DropdownMenuItem(
+                            value: category,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _getCategoryIcon(category),
+                                  size: 16,
+                                  color: _getCategoryColor(category),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(category),
+                              ],
+                            ),
+                          );
+                        }).toList(),
+                        onChanged: (value) {
+                          if (value != null && index < _items.length) {
+                            setState(() {
+                              _items[index] = ReceiptItem(
+                                name: item.name,
+                                price: item.price,
+                                quantity: item.quantity,
+                                category: value,
+                              );
+                            });
+                            if (index == 0) {
+                              context.read<AddExpenseCubit>().updateCategory(
+                                value,
+                              );
+                            }
+                          }
+                        },
+                      ),
+
+                      const SizedBox(height: 4),
+
+                      // Item Total
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 4,
+                          ),
+                          decoration: BoxDecoration(
+                            color: accentGreen.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Text(
+                            'Total: RM ${(item.price * item.quantity).toStringAsFixed(2)}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                              color: accentGreen,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Delete Button
+          if (_items.length > 1)
+            Positioned(
+              right: 0,
+              top: 0,
+              child: IconButton(
+                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                onPressed: () {
+                  if (index < _items.length) {
+                    setState(() {
+                      _items.removeAt(index);
+                      _updateTotal();
+                    });
+                  }
+                },
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReadOnlyField(String label, TextEditingController controller) {
+    return Container(
+      decoration: BoxDecoration(
+        color: headerColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextField(
+        controller: controller,
+        readOnly: true,
+        decoration: InputDecoration(
+          labelText: label,
+          prefixText: 'RM ',
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.transparent,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
+        ),
+        style: const TextStyle(
+          fontWeight: FontWeight.bold,
+          color: Color(0xFF32BA32),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEditableField(
+    String label,
+    TextEditingController controller,
+    Function(String) onChanged,
+  ) {
+    return Container(
+      decoration: BoxDecoration(
+        color: headerColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          labelText: label,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide.none,
+          ),
+          filled: true,
+          fillColor: Colors.transparent,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
+        ),
+        onChanged: onChanged,
+      ),
+    );
+  }
+
+  Widget _buildDateField() {
+    return Container(
+      decoration: BoxDecoration(
+        color: headerColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: InkWell(
+        onTap: () async {
+          DateTime? picked = await showDatePicker(
+            context: context,
+            initialDate: _selectedDate,
+            firstDate: DateTime(2020),
+            lastDate: DateTime.now(),
+            builder: (context, child) {
+              return Theme(
+                data: Theme.of(context).copyWith(
+                  colorScheme: ColorScheme.light(
+                    primary: accentGreen,
+                    onPrimary: Colors.white,
+                    surface: headerColor,
+                    onSurface: darkText,
+                  ),
+                ),
+                child: child!,
+              );
+            },
+          );
+          if (picked != null) {
+            setState(() => _selectedDate = picked);
+            context.read<AddExpenseCubit>().updateDate(picked);
+          }
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  DateFormat('dd MMM yyyy').format(_selectedDate),
+                  style: const TextStyle(fontSize: 15),
+                ),
+              ),
+              Icon(Icons.calendar_today, color: accentGreen, size: 18),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _saveExpense(BuildContext context) {
+    print("🟢 SAVE EXPENSE CALLED");
+    print("🟢 fromAddExpense: ${widget.fromAddExpense}");
+
+    // Validate at least one valid item
+    bool hasValidItem = false;
+    for (var item in _items) {
+      if (item.name.isNotEmpty && item.price > 0) {
+        hasValidItem = true;
+        break;
+      }
+    }
+
+    if (!hasValidItem) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please add at least one valid item'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Validate vendor
+    if (_vendorController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please enter a vendor name'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    final String expenseId =
+        widget.expenseToEdit?.id ??
+        DateTime.now().millisecondsSinceEpoch.toString();
+
+    // Create expense model
+    final expense = ExpenseModel(
+      id: expenseId,
+      title: _vendorController.text,
+      category: _items.first.category ?? 'Food',
+      amount: _calculateTotal(),
+      date: _selectedDate,
+      isIncome: _isIncome,
+      note: '${_items.length} items',
+    );
+
+    print("🟢 Expense created: ${expense.title} - RM${expense.amount}");
+
+    // Get cubits
+    final expenseCubit = context.read<ExpenseCubit>();
+    final addExpenseCubit = context.read<AddExpenseCubit>();
+
+    if (widget.isEditing || widget.expenseToEdit != null) {
+      // Update existing expense
+      expenseCubit.updateExpense(expense);
+      print("🟢 Expense updated");
+    } else {
+      // Add new expense
+      expenseCubit.addExpense(expense);
+      print("🟢 New expense added");
+    }
+
+    // Create receipt for recent uploads
+    final receipt = ReceiptModel(
+      id: expenseId,
+      date: expense.date,
+      amount: expense.amount,
+      receiptType: 'manual',
+      merchantName: expense.title,
+      items: _items,
+      imagePath: widget.receipt?.imagePath,
+    );
+
+    // Add to recent uploads
+    addExpenseCubit.addReceipt(receipt);
+    print("🟢 Receipt added to recent uploads");
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          widget.isEditing
+              ? 'Expense updated successfully'
+              : 'Expense saved successfully',
+        ),
+        backgroundColor: accentGreen,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    // Navigate back based on where we came from
+    if (widget.fromAddExpense) {
+      print("🟢 Returning to add expense screen");
+      Future.delayed(const Duration(seconds: 1), () {
+        Navigator.pop(context, receipt);
+      });
+    } else {
+      print("🟢 Navigating to dashboard");
+      Future.delayed(const Duration(seconds: 1), () {
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(
+            builder: (context) => BlocProvider.value(
+              value: expenseCubit,
+              child: const DashboardScreen(),
+            ),
+          ),
+          (route) => false,
+        );
+      });
+    }
+  }
+
   IconData _getCategoryIcon(String category) {
     switch (category.toLowerCase()) {
       case 'food':
         return Icons.restaurant;
+      case 'beverages':
+        return Icons.local_cafe;
       case 'detergent':
         return Icons.local_laundry_service;
       case 'stationery':
@@ -1078,6 +1111,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     switch (category.toLowerCase()) {
       case 'food':
         return Colors.orange;
+      case 'beverages':
+        return Colors.blue;
       case 'detergent':
         return Colors.blue;
       case 'stationery':
@@ -1097,105 +1132,5 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       default:
         return Colors.grey;
     }
-  }
-
-  void _saveExpense(BuildContext context) {
-    // Validate at least one item
-    bool hasValidItem = false;
-    String firstCategory = 'Food';
-
-    for (int i = 0; i < _items.length; i++) {
-      if (_itemNameControllers[i].text.isNotEmpty &&
-          double.tryParse(_itemPriceControllers[i].text) != null &&
-          double.parse(_itemPriceControllers[i].text) > 0) {
-        hasValidItem = true;
-        if (i == 0) {
-          firstCategory = _itemCategories[i];
-        }
-        break;
-      }
-    }
-
-    if (!hasValidItem) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please add at least one valid item'),
-          backgroundColor: Colors.red,
-          duration: Duration(seconds: 2),
-        ),
-      );
-      return;
-    }
-
-    // Create expense model
-    final expense = ExpenseModel(
-      id:
-          widget.expenseToEdit?.id ??
-          DateTime.now().millisecondsSinceEpoch.toString(),
-      title: _vendorController.text.isEmpty
-          ? 'Unknown Vendor'
-          : _vendorController.text,
-      category: firstCategory,
-      amount: _calculateTotal(),
-      date: _selectedDate,
-      isIncome: _isIncome,
-      note: _items.length > 1 ? '${_items.length} items' : _items.first.name,
-    );
-
-    // Get cubits
-    final expenseCubit = context.read<ExpenseCubit>();
-    final addExpenseCubit = context.read<AddExpenseCubit>();
-
-    if (widget.isEditing || widget.expenseToEdit != null) {
-      // Update existing expense
-      expenseCubit.updateExpense(expense);
-
-      // Create receipt for recent uploads
-      final receipt = ReceiptModel(
-        id: expense.id,
-        date: expense.date,
-        amount: expense.amount,
-        receiptType: 'manual',
-        merchantName: expense.title,
-        items: _items,
-      );
-      addExpenseCubit.addReceipt(receipt);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Expense updated successfully'),
-          backgroundColor: accentGreen,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    } else {
-      // Add new expense
-      expenseCubit.addExpense(expense);
-
-      // Create receipt for recent uploads
-      final receipt = ReceiptModel(
-        id: expense.id,
-        date: expense.date,
-        amount: expense.amount,
-        receiptType: 'manual',
-        merchantName: expense.title,
-        items: _items,
-        imagePath: widget.receipt?.imagePath,
-      );
-      addExpenseCubit.addReceipt(receipt);
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Expense saved successfully'),
-          backgroundColor: accentGreen,
-          duration: const Duration(seconds: 2),
-        ),
-      );
-    }
-
-    // Navigate back after save
-    Future.delayed(const Duration(seconds: 2), () {
-      Navigator.popUntil(context, (route) => route.isFirst);
-    });
   }
 }

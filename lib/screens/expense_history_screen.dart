@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 import '../cubit/profile_cubit.dart';
+import '../cubit/budget_cubit.dart' as budget_cubit;
 import 'add_expense_screen.dart';
 import '../cubit/add_expense_cubit.dart';
 import 'analytics_screen.dart';
@@ -14,10 +15,10 @@ class ExpenseHistoryScreen extends StatelessWidget {
   const ExpenseHistoryScreen({super.key});
 
   // Same colors as dashboard for consistency
-  static const Color bgColor = Color(0xFFE8F7CB); // Main background light green
-  static const Color headerColor = Color(0xFFC5D997); // Header muted green
-  static const Color accentGreen = Color(0xFF32BA32); // Bright green
-  static const Color darkText = Color(0xFF000000); // Black text
+  static const Color bgColor = Color(0xFFE8F7CB);
+  static const Color headerColor = Color(0xFFC5D997);
+  static const Color accentGreen = Color(0xFF32BA32);
+  static const Color darkText = Color(0xFF000000);
 
   @override
   Widget build(BuildContext context) {
@@ -40,12 +41,20 @@ class ExpenseHistoryScreen extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => BlocProvider(
-                  create: (context) => AddExpenseCubit(),
+                builder: (context) => MultiBlocProvider(
+                  providers: [
+                    BlocProvider(create: (context) => AddExpenseCubit()),
+                    BlocProvider.value(
+                      value: context.read<budget_cubit.BudgetCubit>(),
+                    ),
+                  ],
                   child: const AddExpenseScreen(),
                 ),
               ),
-            );
+            ).then((_) {
+              // When returning from add expense, refresh budget if needed
+              _refreshBudget(context);
+            });
           },
           child: const Icon(Icons.add, color: accentGreen, size: 45),
         ),
@@ -57,13 +66,12 @@ class ExpenseHistoryScreen extends StatelessWidget {
       ),
       body: Column(
         children: [
-          _buildTopHeader(context), // Pass context for navigation
+          _buildTopHeader(context),
           // Title Section (below header)
           Container(
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(20, 15, 20, 10),
-            color: Colors
-                .transparent, // Make transparent since header already has color
+            color: Colors.transparent,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -128,19 +136,16 @@ class ExpenseHistoryScreen extends StatelessWidget {
               children: [
                 _buildFilterChip('All', isSelected: true),
                 const SizedBox(width: 10),
-                _buildFilterDropdown(context, 'Category'), // Pass context here
+                _buildFilterDropdown(context, 'Category'),
                 const SizedBox(width: 10),
-                _buildFilterDropdown(
-                  context,
-                  'Date Range',
-                ), // Pass context here
+                _buildFilterDropdown(context, 'Date Range'),
                 const Spacer(),
               ],
             ),
           ),
           const SizedBox(height: 16),
 
-          // Summary Cards
+          // Summary Cards - FIXED to show correct total amount
           _buildSummaryCards(),
 
           const SizedBox(height: 16),
@@ -205,7 +210,65 @@ class ExpenseHistoryScreen extends StatelessWidget {
     );
   }
 
-  // EXACT SAME HEADER AS DASHBOARD - Added BuildContext parameter
+  // Helper method to refresh budget
+  void _refreshBudget(BuildContext context) {
+    context.read<budget_cubit.BudgetCubit>().loadBudget(forceRefresh: true);
+  }
+
+  // Helper method to update budget when expense is added
+  void _updateBudgetFromExpense(BuildContext context, dynamic expense) {
+    if (expense.isIncome != true) {
+      final budgetCubit = context.read<budget_cubit.BudgetCubit>();
+      final budgetState = budgetCubit.state;
+
+      if (budgetState is budget_cubit.BudgetLoaded) {
+        // Get current spent amount for this category
+        final currentBudget = budgetState.budget;
+        double currentSpent = 0;
+
+        for (var category in currentBudget.categories) {
+          if (category.name == expense.category) {
+            currentSpent = category.spent;
+            break;
+          }
+        }
+
+        // Update with new total spent amount
+        budgetCubit.updateCategorySpent(
+          expense.category,
+          currentSpent + expense.amount,
+        );
+      }
+    }
+  }
+
+  // Helper method to update budget when expense is deleted
+  void _updateBudgetOnDelete(BuildContext context, dynamic expense) {
+    if (expense.isIncome != true) {
+      final budgetCubit = context.read<budget_cubit.BudgetCubit>();
+      final budgetState = budgetCubit.state;
+
+      if (budgetState is budget_cubit.BudgetLoaded) {
+        // Get current spent amount for this category
+        final currentBudget = budgetState.budget;
+        double currentSpent = 0;
+
+        for (var category in currentBudget.categories) {
+          if (category.name == expense.category) {
+            currentSpent = category.spent;
+            break;
+          }
+        }
+
+        // Update with new total spent amount (subtract the deleted expense)
+        budgetCubit.updateCategorySpent(
+          expense.category,
+          currentSpent - expense.amount,
+        );
+      }
+    }
+  }
+
   Widget _buildTopHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
@@ -236,7 +299,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
           ),
           Row(
             children: [
-              // Chart icon - Clickable - Now navigates to Analytics Screen
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -252,7 +314,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                 child: const Icon(Icons.bar_chart, size: 28),
               ),
               const SizedBox(width: 15),
-              // Notifications icon - Clickable
               GestureDetector(
                 onTap: () {
                   _showNotificationsDialog(context);
@@ -292,7 +353,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
     );
   }
 
-  // In _buildFilterDropdown method, add BuildContext parameter
   Widget _buildFilterDropdown(BuildContext context, String label) {
     return GestureDetector(
       onTap: () {
@@ -497,6 +557,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
   Widget _buildSummaryCards() {
     return BlocBuilder<ExpenseCubit, ExpenseState>(
       builder: (context, state) {
+        final totalExpenses = state.filteredExpenses.length;
         final totalAmount = _calculateTotalAmount(state);
         final Color amountColor = totalAmount >= 0 ? accentGreen : Colors.red;
 
@@ -515,12 +576,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
             borderRadius: BorderRadius.circular(15),
             boxShadow: [
               BoxShadow(
-                color: const Color.fromARGB(
-                  255,
-                  255,
-                  255,
-                  255,
-                ).withOpacity(0.3),
+                color: Colors.white.withOpacity(0.3),
                 blurRadius: 20,
                 offset: const Offset(0, 10),
               ),
@@ -528,7 +584,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
           ),
           child: Row(
             children: [
-              // TOTAL EXPENSES
+              // TOTAL EXPENSES COUNT
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -537,22 +593,17 @@ class ExpenseHistoryScreen extends StatelessWidget {
                       'TOTAL EXPENSES',
                       style: TextStyle(
                         fontSize: 12,
-                        color: const Color.fromARGB(
-                          255,
-                          255,
-                          255,
-                          255,
-                        ).withOpacity(0.7),
+                        color: Colors.white.withOpacity(0.7),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      '${state.filteredExpenses.length}',
+                      '$totalExpenses',
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
-                        color: const Color.fromARGB(255, 255, 255, 255),
+                        color: Colors.white,
                       ),
                     ),
                   ],
@@ -563,15 +614,10 @@ class ExpenseHistoryScreen extends StatelessWidget {
               Container(
                 height: 40,
                 width: 1,
-                color: const Color.fromARGB(
-                  255,
-                  255,
-                  255,
-                  255,
-                ).withOpacity(0.2),
+                color: Colors.white.withOpacity(0.2),
               ),
 
-              // TOTAL AMOUNT with dynamic color
+              // TOTAL AMOUNT
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
@@ -580,18 +626,13 @@ class ExpenseHistoryScreen extends StatelessWidget {
                       'TOTAL AMOUNT',
                       style: TextStyle(
                         fontSize: 12,
-                        color: const Color.fromARGB(
-                          255,
-                          255,
-                          255,
-                          255,
-                        ).withOpacity(0.7),
+                        color: Colors.white.withOpacity(0.7),
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'RM${totalAmount.toStringAsFixed(2)}',
+                      'RM ${totalAmount.toStringAsFixed(2)}',
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -639,7 +680,18 @@ class ExpenseHistoryScreen extends StatelessWidget {
           // Swipe left to delete
           final confirm = await _showDeleteConfirmation(context);
           if (confirm) {
+            // Update budget before deleting
+            _updateBudgetOnDelete(context, expense);
             context.read<ExpenseCubit>().deleteExpense(expense.id);
+
+            // Show success message
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Expense deleted'),
+                backgroundColor: Colors.red,
+                duration: Duration(seconds: 2),
+              ),
+            );
           }
           return confirm;
         }
@@ -758,12 +810,20 @@ void _navigateToEditExpense(BuildContext context, dynamic expense) {
   Navigator.push(
     context,
     MaterialPageRoute(
-      builder: (context) => BlocProvider(
-        create: (context) => AddExpenseCubit(expenseToEdit: expense),
+      builder: (context) => MultiBlocProvider(
+        providers: [
+          BlocProvider(
+            create: (context) => AddExpenseCubit(expenseToEdit: expense),
+          ),
+          BlocProvider.value(value: context.read<budget_cubit.BudgetCubit>()),
+        ],
         child: const AddExpenseScreen(),
       ),
     ),
-  );
+  ).then((_) {
+    // Refresh budget when returning from edit
+    context.read<budget_cubit.BudgetCubit>().loadBudget(forceRefresh: true);
+  });
 }
 
 Future<bool> _showDeleteConfirmation(BuildContext context) async {
@@ -788,7 +848,6 @@ Future<bool> _showDeleteConfirmation(BuildContext context) async {
   return result ?? false;
 }
 
-// EXACT SAME BOTTOM NAVIGATION AS DASHBOARD - FIXED navigation
 Widget _buildBottomNavigation(
   BuildContext context,
   Color headerColor,
@@ -810,12 +869,16 @@ Widget _buildBottomNavigation(
             false,
             activeColor,
             () {
-              // Navigate to Dashboard
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => BlocProvider.value(
-                    value: BlocProvider.of<ExpenseCubit>(context),
+                  builder: (context) => MultiBlocProvider(
+                    providers: [
+                      BlocProvider.value(value: context.read<ExpenseCubit>()),
+                      BlocProvider.value(
+                        value: context.read<budget_cubit.BudgetCubit>(),
+                      ),
+                    ],
                     child: const DashboardScreen(),
                   ),
                 ),
@@ -826,7 +889,18 @@ Widget _buildBottomNavigation(
             Icons.history_outlined,
             Icons.history,
             'History',
-            true, // Set to true since we're on History screen
+            true,
+            activeColor,
+            () {
+              // Already on history screen
+            },
+          ),
+          const SizedBox(width: 40),
+          _navItem(
+            Icons.pie_chart_outline,
+            Icons.pie_chart,
+            'Budget',
+            false,
             activeColor,
             () {
               Navigator.push(
@@ -835,30 +909,10 @@ Widget _buildBottomNavigation(
                   builder: (context) => MultiBlocProvider(
                     providers: [
                       BlocProvider.value(value: context.read<ExpenseCubit>()),
-                      BlocProvider(create: (context) => ProfileCubit()),
+                      BlocProvider(
+                        create: (context) => budget_cubit.BudgetCubit(),
+                      ),
                     ],
-                    child: const ProfileScreen(),
-                  ),
-                ),
-              );
-              ;
-            },
-          ),
-
-          const SizedBox(width: 40), // Gap for the FAB notch
-          _navItem(
-            Icons.pie_chart_outline,
-            Icons.pie_chart,
-            'Budget',
-            false,
-            activeColor,
-            () {
-              // Navigate to Budget screen
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BlocProvider.value(
-                    value: BlocProvider.of<ExpenseCubit>(context),
                     child: const BudgetScreen(),
                   ),
                 ),
@@ -902,7 +956,7 @@ Widget _navItem(
 ) {
   return GestureDetector(
     onTap: onTap,
-    behavior: HitTestBehavior.opaque, // Make the entire area tappable
+    behavior: HitTestBehavior.opaque,
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
