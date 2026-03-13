@@ -411,6 +411,19 @@ class ExpenseHistoryScreen extends StatelessWidget {
   }
 
   void _showCategoryFilterMenu(BuildContext context) {
+    // Get unique categories from expenses
+    final expenseState = context.read<ExpenseCubit>().state;
+    final Set<String> categories = {};
+
+    for (var expense in expenseState.allExpenses) {
+      if (expense.category.isNotEmpty) {
+        categories.add(expense.category);
+      }
+    }
+
+    // Sort categories alphabetically
+    final sortedCategories = categories.toList()..sort();
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -452,34 +465,21 @@ class ExpenseHistoryScreen extends StatelessWidget {
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
               ),
               const SizedBox(height: 8),
-              _buildFilterOption(context, 'Food', () {
-                context.read<ExpenseCubit>().filterByCategory(
-                  ExpenseFilter.all,
-                  specificCategory: 'Food',
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'Detergent', () {
-                context.read<ExpenseCubit>().filterByCategory(
-                  ExpenseFilter.all,
-                  specificCategory: 'Detergent',
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'Stationery', () {
-                context.read<ExpenseCubit>().filterByCategory(
-                  ExpenseFilter.all,
-                  specificCategory: 'Stationery',
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'Supplies', () {
-                context.read<ExpenseCubit>().filterByCategory(
-                  ExpenseFilter.all,
-                  specificCategory: 'Supplies',
-                );
-                Navigator.pop(context);
-              }),
+              // Dynamically show available categories
+              ...sortedCategories.map(
+                (category) => _buildFilterOption(context, category, () {
+                  context.read<ExpenseCubit>().filterByCategory(
+                    ExpenseFilter.all,
+                    specificCategory: category,
+                  );
+                  Navigator.pop(context);
+                }),
+              ),
+              if (sortedCategories.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.all(8.0),
+                  child: Text('No categories available'),
+                ),
             ],
           ),
         );
@@ -550,100 +550,181 @@ class ExpenseHistoryScreen extends StatelessWidget {
     return ListTile(
       title: Text(title),
       onTap: onTap,
-      leading: const Icon(Icons.filter_list),
+      leading: Icon(
+        Icons.filter_list,
+        color: title == 'All Categories' || title == 'All Time'
+            ? Colors.grey
+            : accentGreen,
+      ),
     );
   }
 
   Widget _buildSummaryCards() {
     return BlocBuilder<ExpenseCubit, ExpenseState>(
-      builder: (context, state) {
-        final totalExpenses = state.filteredExpenses.length;
-        final totalAmount = _calculateTotalAmount(state);
-        final Color amountColor = totalAmount >= 0 ? accentGreen : Colors.red;
+      builder: (context, expenseState) {
+        return BlocBuilder<budget_cubit.BudgetCubit, budget_cubit.BudgetState>(
+          builder: (context, budgetState) {
+            final totalExpenses = expenseState.filteredExpenses.length;
 
-        return Container(
-          margin: const EdgeInsets.symmetric(horizontal: 16),
-          padding: const EdgeInsets.all(20),
-          decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              colors: [
-                Color.fromARGB(255, 24, 143, 0),
-                Color.fromARGB(255, 126, 223, 106),
-              ],
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-            ),
-            borderRadius: BorderRadius.circular(15),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.white.withOpacity(0.3),
-                blurRadius: 20,
-                offset: const Offset(0, 10),
+            // Calculate total from expenses (income - expenses)
+            final expensesTotal = expenseState.filteredExpenses.fold(0.0, (
+              sum,
+              expense,
+            ) {
+              final bool isIncome = expense.isIncome ?? false;
+              return isIncome ? sum + expense.amount : sum - expense.amount;
+            });
+
+            // Get monthly budget if available
+            double monthlyBudget = 0;
+            if (budgetState is budget_cubit.BudgetLoaded) {
+              monthlyBudget = budgetState.budget.monthlyLimit;
+            }
+
+            // Calculate the amount to display
+            // If budget exists, show remaining budget (monthlyBudget + expensesTotal)
+            // If no budget, show expenses total
+            final displayAmount = monthlyBudget > 0
+                ? monthlyBudget +
+                      expensesTotal // This gives remaining budget
+                : expensesTotal;
+
+            // Determine color based on the amount
+            Color amountColor = accentGreen;
+            if (monthlyBudget > 0) {
+              if (displayAmount < 0) {
+                amountColor = Colors.red; // Over budget
+              } else if (displayAmount < monthlyBudget * 0.2) {
+                amountColor = Colors.orange; // Less than 20% remaining
+              } else {
+                amountColor = const Color.fromARGB(
+                  255,
+                  0,
+                  252,
+                  0,
+                ); // Good amount remaining
+              }
+            } else {
+              amountColor = expensesTotal >= 0 ? accentGreen : Colors.red;
+            }
+
+            return Container(
+              margin: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [
+                    Color.fromARGB(255, 24, 143, 0),
+                    Color.fromARGB(255, 126, 223, 106),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(15),
+                boxShadow: [
+                  BoxShadow(
+                    color: const Color.fromARGB(
+                      255,
+                      184,
+                      255,
+                      170,
+                    ).withOpacity(0.3),
+                    blurRadius: 20,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: Row(
-            children: [
-              // TOTAL EXPENSES COUNT
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'TOTAL EXPENSES',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.7),
-                        fontWeight: FontWeight.w500,
+              child: Column(
+                children: [
+                  // TOP ROW - Total Expenses and Total Amount on the same line
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      // TOTAL EXPENSES
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'TOTAL EXPENSES',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withOpacity(0.9),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            '$totalExpenses',
+                            style: const TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '$totalExpenses',
-                      style: const TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
+
+                      // Vertical Divider
+                      Container(
+                        height: 40,
+                        width: 2,
+                        color: Colors.white.withOpacity(0.5),
                       ),
+
+                      // TOTAL AMOUNT
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            'TOTAL AMOUNT',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.white.withOpacity(0.9),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          Text(
+                            'RM ${displayAmount.toStringAsFixed(2)}',
+                            style: TextStyle(
+                              fontSize: 28,
+                              fontWeight: FontWeight.bold,
+                              color: amountColor,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+
+                  if (monthlyBudget > 0) ...[
+                    const SizedBox(height: 2),
+                    Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.end, // Align to the right
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(
+                              Icons.shopping_cart,
+                              size: 14,
+                              color: Colors.white70,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              'Spent: RM${(-expensesTotal).toStringAsFixed(2)}',
+                              style: TextStyle(
+                                fontSize: 10,
+                                color: Colors.white.withOpacity(0.8),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
                   ],
-                ),
+                ],
               ),
-
-              // Vertical Divider
-              Container(
-                height: 40,
-                width: 1,
-                color: Colors.white.withOpacity(0.2),
-              ),
-
-              // TOTAL AMOUNT
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'TOTAL AMOUNT',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withOpacity(0.7),
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'RM ${totalAmount.toStringAsFixed(2)}',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: amountColor,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+            );
+          },
         );
       },
     );
@@ -701,6 +782,80 @@ class ExpenseHistoryScreen extends StatelessWidget {
     );
   }
 
+  // Helper method to get category icon based on category name
+  IconData _getCategoryIcon(String category) {
+    switch (category.toLowerCase()) {
+      case 'food':
+      case 'dining':
+      case 'restaurant':
+        return Icons.restaurant;
+      case 'groceries':
+      case 'grocery':
+        return Icons.shopping_cart;
+      case 'transport':
+      case 'transportation':
+      case 'travel':
+        return Icons.directions_car;
+      case 'entertainment':
+      case 'fun':
+        return Icons.movie;
+      case 'shopping':
+      case 'retail':
+        return Icons.shopping_bag;
+      case 'bills':
+      case 'utilities':
+        return Icons.receipt;
+      case 'healthcare':
+      case 'health':
+      case 'medical':
+        return Icons.medical_services;
+      case 'education':
+      case 'learning':
+        return Icons.school;
+      case 'other':
+      case 'others':
+      default:
+        return Icons.category;
+    }
+  }
+
+  // Helper method to get category color based on category name
+  Color _getCategoryColor(String category) {
+    switch (category.toLowerCase()) {
+      case 'food':
+      case 'dining':
+      case 'restaurant':
+        return Colors.orange;
+      case 'groceries':
+      case 'grocery':
+        return Colors.green;
+      case 'transport':
+      case 'transportation':
+      case 'travel':
+        return Colors.blue;
+      case 'entertainment':
+      case 'fun':
+        return Colors.purple;
+      case 'shopping':
+      case 'retail':
+        return Colors.pink;
+      case 'bills':
+      case 'utilities':
+        return Colors.red;
+      case 'healthcare':
+      case 'health':
+      case 'medical':
+        return Colors.teal;
+      case 'education':
+      case 'learning':
+        return Colors.indigo;
+      case 'other':
+      case 'others':
+      default:
+        return Colors.grey;
+    }
+  }
+
   Widget _buildExpenseItem(BuildContext context, dynamic expense) {
     final bool isIncome = expense.isIncome ?? false;
     final String amountPrefix = isIncome ? '+' : '-';
@@ -722,6 +877,22 @@ class ExpenseHistoryScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
+          // Category Icon based on category
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: _getCategoryColor(expense.category).withOpacity(0.1),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(
+              _getCategoryIcon(expense.category),
+              color: _getCategoryColor(expense.category),
+              size: 20,
+            ),
+          ),
+          const SizedBox(width: 12),
+
           // Left side - Merchant and Category
           Expanded(
             child: Column(
@@ -736,15 +907,44 @@ class ExpenseHistoryScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  expense.category,
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: darkText.withOpacity(0.6),
+                // Category with count (always 1 for now since we don't have item data)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: _getCategoryColor(expense.category).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: _getCategoryColor(
+                        expense.category,
+                      ).withOpacity(0.3),
+                      width: 0.5,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        _getCategoryIcon(expense.category),
+                        size: 10,
+                        color: _getCategoryColor(expense.category),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        '1 ${expense.category}',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: _getCategoryColor(expense.category),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                if (expense.note != null) ...[
-                  const SizedBox(height: 2),
+                if (expense.note != null && expense.note!.isNotEmpty) ...[
+                  const SizedBox(height: 4),
                   Text(
                     expense.note!,
                     style: TextStyle(
@@ -752,6 +952,8 @@ class ExpenseHistoryScreen extends StatelessWidget {
                       color: darkText.withOpacity(0.5),
                       fontStyle: FontStyle.italic,
                     ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ],
               ],
@@ -759,13 +961,27 @@ class ExpenseHistoryScreen extends StatelessWidget {
           ),
 
           // Right side - Amount
-          Text(
-            '$amountPrefix RM${expense.amount.toStringAsFixed(2)}',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: amountColor,
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '$amountPrefix RM${expense.amount.toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: amountColor,
+                ),
+              ),
+              // Since we don't have item count, we can show something else or nothing
+              // For now, we'll just show a small indicator
+              Text(
+                isIncome ? 'Income' : 'Expense',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: darkText.withOpacity(0.4),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -122,6 +122,72 @@ class ReceiptModel {
     return calculatedSubtotal * 0.075; // 7.5% tax rate
   }
 
+  // NEW: Get all unique categories in this receipt
+  Set<String> get categories {
+    if (items == null || items!.isEmpty) {
+      return {category ?? 'Uncategorized'};
+    }
+    return items!.map((item) => item.category ?? 'Uncategorized').toSet();
+  }
+
+  // NEW: Get category summary string (e.g., "2 items • Food, Beverage")
+  String get categorySummary {
+    if (items == null || items!.isEmpty) {
+      return category ?? 'Uncategorized';
+    }
+
+    final categoryCounts = <String, int>{};
+    for (var item in items!) {
+      final cat = item.category ?? 'Uncategorized';
+      categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
+    }
+
+    // Sort categories by item count (descending)
+    final sortedCategories = categoryCounts.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    // Build summary
+    if (sortedCategories.length == 1) {
+      return '${sortedCategories.first.value} ${sortedCategories.first.key}';
+    } else {
+      final mainCategory = sortedCategories.first.key;
+      final otherCount = sortedCategories.length - 1;
+      return '${sortedCategories.first.value} $mainCategory +$otherCount other';
+    }
+  }
+
+  // NEW: Get breakdown of amounts by category
+  Map<String, double> get categoryBreakdown {
+    if (items == null || items!.isEmpty) {
+      return {category ?? 'Uncategorized': amount};
+    }
+
+    final breakdown = <String, double>{};
+    for (var item in items!) {
+      final cat = item.category ?? 'Uncategorized';
+      breakdown[cat] = (breakdown[cat] ?? 0) + (item.price * item.quantity);
+    }
+    return breakdown;
+  }
+
+  // NEW: Get primary category (the one with highest total amount)
+  String get primaryCategory {
+    if (items == null || items!.isEmpty) {
+      return category ?? 'Uncategorized';
+    }
+
+    final breakdown = categoryBreakdown;
+    if (breakdown.isEmpty) return 'Uncategorized';
+
+    return breakdown.entries.reduce((a, b) => a.value > b.value ? a : b).key;
+  }
+
+  // NEW: Get total item count
+  int get totalItemCount {
+    if (items == null) return 0;
+    return items!.fold(0, (sum, item) => sum + item.quantity);
+  }
+
   // Convert to ReceiptData (for backward compatibility with your parser)
   ReceiptData toReceiptData() {
     return ReceiptData(
@@ -157,7 +223,7 @@ class ReceiptModel {
       'imagePath': imagePath,
       'receiptType': receiptType,
       'merchantName': merchantName,
-      'category': category,
+      'category': category, // Keep for backward compatibility
       'currency': currency,
       'ocrStatus': ocrStatus,
       'items': items?.map((item) => item.toJson()).toList(),
@@ -283,13 +349,13 @@ extension ReceiptModelSample on ReceiptModel {
           name: 'Imperial Roll Shrimp Springroll',
           price: 7000.0,
           quantity: 1,
-          category: 'Appetizer',
+          category: 'Food',
         ),
         ReceiptItem(
           name: 'Sweet and Sour Chicken Nasi Goreng',
           price: 3500.0,
           quantity: 1,
-          category: 'Main Course',
+          category: 'Food',
         ),
         ReceiptItem(
           name: 'Fresh Fruit Punch Stamp Duty',

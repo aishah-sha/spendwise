@@ -3,10 +3,13 @@ import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../models/receipt_model.dart';
 import '../models/expense_model.dart';
 import '../services/ml_kit_service.dart';
-import 'expense_cubit.dart'; // Add this import
+import 'expense_cubit.dart';
+import '../services/image_picker_service.dart';
 
 // State
 class AddExpenseState extends Equatable {
@@ -72,6 +75,9 @@ class AddExpenseState extends Equatable {
 // Cubit
 class AddExpenseCubit extends Cubit<AddExpenseState> {
   final MLKitService _mlKitService = MLKitService();
+  final ImagePickerService _imagePickerService = ImagePickerService();
+
+  static const String _receiptsStorageKey = 'recent_receipts';
 
   // Form fields for manual entry
   String title = '';
@@ -88,6 +94,41 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
       // Initialize with expense data for editing
       _initializeWithExpense(expenseToEdit);
       emit(state.copyWith(expenseToEdit: expenseToEdit));
+    }
+    // Load saved receipts when cubit is created
+    _loadSavedReceipts();
+  }
+
+  // Load receipts from SharedPreferences
+  Future<void> _loadSavedReceipts() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? receiptsJson = prefs.getString(_receiptsStorageKey);
+
+      if (receiptsJson != null && receiptsJson.isNotEmpty) {
+        final List<dynamic> decoded = json.decode(receiptsJson);
+        final List<ReceiptModel> receipts = decoded
+            .map((item) => ReceiptModel.fromJson(item as Map<String, dynamic>))
+            .toList();
+
+        emit(state.copyWith(recentUploads: receipts));
+      }
+    } catch (e) {
+      print('Error loading saved receipts: $e');
+      // If there's an error, just keep the empty list
+    }
+  }
+
+  // Save receipts to SharedPreferences
+  Future<void> _saveReceiptsToStorage(List<ReceiptModel> receipts) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final List<Map<String, dynamic>> encoded = receipts
+          .map((r) => r.toJson())
+          .toList();
+      await prefs.setString(_receiptsStorageKey, json.encode(encoded));
+    } catch (e) {
+      print('Error saving receipts: $e');
     }
   }
 
@@ -143,8 +184,8 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     );
   }
 
-  // Add receipt to recent uploads
-  void addReceipt(ReceiptModel receipt) {
+  // Add receipt to recent uploads (now with persistence)
+  Future<void> addReceipt(ReceiptModel receipt) async {
     final updatedUploads = List<ReceiptModel>.from(state.recentUploads);
 
     // Check if receipt already exists (avoid duplicates)
@@ -162,19 +203,28 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
       updatedUploads.removeLast();
     }
 
+    // Save to persistent storage
+    await _saveReceiptsToStorage(updatedUploads);
+
     emit(state.copyWith(recentUploads: updatedUploads, isLoading: false));
   }
 
-  // Remove receipt from recent uploads
-  void removeReceipt(String receiptId) {
+  // Remove receipt from recent uploads (now with persistence)
+  Future<void> removeReceipt(String receiptId) async {
     final updatedUploads = state.recentUploads
         .where((r) => r.id != receiptId)
         .toList();
+
+    // Save to persistent storage
+    await _saveReceiptsToStorage(updatedUploads);
+
     emit(state.copyWith(recentUploads: updatedUploads));
   }
 
-  // Clear all recent uploads
-  void clearRecentUploads() {
+  // Clear all recent uploads (now with persistence)
+  Future<void> clearRecentUploads() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove(_receiptsStorageKey);
     emit(state.copyWith(recentUploads: []));
   }
 
@@ -218,7 +268,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         }
       }
 
-      // Create receipt model from scanned data
+      // Create receipt model from scanned data using your ReceiptModel
       final scannedReceipt = ReceiptModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         date: DateTime.now(),
@@ -257,8 +307,8 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     emit(state.copyWith(isLoading: true, errorMessage: null));
 
     try {
-      // Pick image from gallery
-      final XFile? image = await _mlKitService.pickImageFromGallery();
+      // Pick image from gallery using the service
+      final File? image = await _imagePickerService.pickImageFromGallery();
 
       if (image == null) {
         emit(
@@ -267,11 +317,10 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         return;
       }
 
-      final File imageFile = File(image.path);
-      emit(state.copyWith(capturedImage: imageFile, isLoading: true));
+      emit(state.copyWith(capturedImage: image, isLoading: true));
 
       // Process with ML Kit
-      final receiptData = await _mlKitService.processReceiptImage(imageFile);
+      final receiptData = await _mlKitService.processReceiptImage(image);
 
       // Handle items safely
       List<ReceiptItem> items = [];
@@ -290,7 +339,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         }
       }
 
-      // Create receipt model from processed data
+      // Create receipt model from processed data using your ReceiptModel
       final scannedReceipt = ReceiptModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         date: DateTime.now(),
@@ -425,7 +474,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         expenseCubit.addExpense(expense);
       }
 
-      // Create receipt for recent uploads
+      // Create receipt for recent uploads using your ReceiptModel
       final receipt = ReceiptModel(
         id: expense.id,
         date: expense.date,
@@ -434,10 +483,16 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         merchantName: expense.title,
         items: state.scannedReceipt?.items ?? [],
         imagePath: state.capturedImage?.path ?? state.scannedReceipt?.imagePath,
+        tax: state.scannedReceipt?.tax,
+        subtotal: state.scannedReceipt?.subtotal,
+        serviceCharge: state.scannedReceipt?.serviceCharge,
+        category: category,
+        currency: 'RM',
+        ocrStatus: state.scannedReceipt?.ocrStatus,
       );
 
-      // Add to recent uploads
-      addReceipt(receipt);
+      // Add to recent uploads (now saves to persistent storage)
+      await addReceipt(receipt);
 
       // Clear editing state
       resetForm();

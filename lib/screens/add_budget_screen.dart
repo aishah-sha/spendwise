@@ -8,7 +8,7 @@ import 'budget_screen.dart';
 import '../cubit/budget_cubit.dart' as cubit;
 
 class AddBudgetScreen extends StatefulWidget {
-  final bool isAdding; // New parameter to distinguish between set and add
+  final bool isAdding; // Parameter to distinguish between set and add
 
   const AddBudgetScreen({super.key, this.isAdding = false});
 
@@ -72,6 +72,9 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     {'name': 'Other', 'controller': TextEditingController(), 'enabled': false},
   ];
 
+  // Track if this is the first time setting budget
+  bool _isFirstTimeBudget = false;
+
   @override
   void initState() {
     super.initState();
@@ -84,14 +87,28 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     if (state is cubit.BudgetLoaded) {
       final budget = state.budget;
 
+      // Check if this is first time (no monthly budget and no category budgets)
+      // But ONLY if we're not in adding mode
+      if (!widget.isAdding) {
+        _isFirstTimeBudget =
+            budget.monthlyLimit == 0 &&
+            budget.categories.every((cat) => cat.amount == 0);
+      } else {
+        // If we're in adding mode, it's definitely not first time
+        _isFirstTimeBudget = false;
+      }
+
       // Store original spent amounts to preserve them
       for (var category in budget.categories) {
         _originalSpentAmounts[category.name] = category.spent;
       }
 
-      if (budget.monthlyLimit > 0 && !widget.isAdding) {
-        // Only pre-fill if we're setting (not adding to) budget
-        _monthlyBudgetController.text = budget.monthlyLimit.toString();
+      // Only pre-fill if we're setting (not adding to) budget
+      // AND this is not first time (first time should show empty fields)
+      if (!widget.isAdding && !_isFirstTimeBudget) {
+        if (budget.monthlyLimit > 0) {
+          _monthlyBudgetController.text = budget.monthlyLimit.toString();
+        }
 
         for (var category in _categoryBudgets) {
           try {
@@ -105,6 +122,13 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
           } catch (e) {
             // Category not found, keep default
           }
+        }
+      } else {
+        // For first time setup OR adding mode, show empty fields
+        _monthlyBudgetController.clear();
+        for (var category in _categoryBudgets) {
+          category['enabled'] = false;
+          category['controller'].clear();
         }
       }
       setState(() {});
@@ -155,17 +179,8 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
               ),
             );
 
-            // Navigate to budget screen and remove all previous routes
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(
-                builder: (context) => BlocProvider.value(
-                  value: context.read<BudgetCubit>(),
-                  child: const BudgetScreen(),
-                ),
-              ),
-              (route) => false, // Remove all previous routes
-            );
+            // Simply pop back instead of pushing new screen
+            Navigator.pop(context, true);
           } else if (state is cubit.BudgetError) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
@@ -197,6 +212,63 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                       const SizedBox(height: 30),
                       // Save Button
                       _buildSaveButton(),
+
+                      // Show info text based on mode
+                      if (_isFirstTimeBudget && !widget.isAdding) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.blue.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: Colors.blue),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.info, color: Colors.blue, size: 20),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'First time setup: Please set both Monthly Budget and at least one Category Budget',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.blue,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ] else if (widget.isAdding) ...[
+                        const SizedBox(height: 16),
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: Colors.green.withOpacity(0.1),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: accentGreen),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(
+                                Icons.add_circle,
+                                color: accentGreen,
+                                size: 20,
+                              ),
+                              SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  'Adding mode: You can add only category budgets without monthly budget',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: accentGreen,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -277,7 +349,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                 fontSize: 24,
                 fontWeight: FontWeight.bold,
               ),
-              hintText: '0.00',
+              hintText: widget.isAdding ? '0.00 (Optional)' : '0.00',
               hintStyle: TextStyle(
                 color: Colors.grey.withOpacity(0.5),
                 fontSize: 24,
@@ -290,17 +362,44 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
               ),
             ),
             validator: (value) {
-              if (value == null || value.isEmpty) {
-                return widget.isAdding
-                    ? 'Please enter amount to add'
-                    : 'Please enter monthly budget';
+              // If this is adding mode, monthly budget is optional
+              if (widget.isAdding) {
+                if (value != null && value.isNotEmpty) {
+                  final number = double.tryParse(value);
+                  if (number == null) {
+                    return 'Please enter a valid number';
+                  }
+                  if (number <= 0) {
+                    return 'Amount must be greater than 0';
+                  }
+                }
+                return null;
               }
-              final number = double.tryParse(value);
-              if (number == null) {
-                return 'Please enter a valid number';
+
+              // For first time setup, monthly budget is required
+              if (_isFirstTimeBudget) {
+                if (value == null || value.isEmpty) {
+                  return 'Monthly budget is required for first time setup';
+                }
+                final number = double.tryParse(value);
+                if (number == null) {
+                  return 'Please enter a valid number';
+                }
+                if (number <= 0) {
+                  return 'Amount must be greater than 0';
+                }
+                return null;
               }
-              if (number <= 0) {
-                return 'Amount must be greater than 0';
+
+              // For normal setup (not first time, not adding), monthly budget is optional
+              if (value != null && value.isNotEmpty) {
+                final number = double.tryParse(value);
+                if (number == null) {
+                  return 'Please enter a valid number';
+                }
+                if (number <= 0) {
+                  return 'Amount must be greater than 0';
+                }
               }
               return null;
             },
@@ -308,8 +407,10 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
           const SizedBox(height: 8),
           Text(
             widget.isAdding
-                ? 'Add this amount to your existing budget'
-                : 'Set your total monthly spending limit',
+                ? 'Add this amount to your existing budget (optional)'
+                : _isFirstTimeBudget
+                ? 'Set your total monthly spending limit (required)'
+                : 'Set your total monthly spending limit (optional)',
             style: TextStyle(
               fontSize: 12,
               color: Colors.white.withOpacity(0.7),
@@ -354,7 +455,9 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
           const SizedBox(height: 16),
           Text(
             widget.isAdding
-                ? 'Add to specific category budgets (optional)'
+                ? 'Add to specific category budgets'
+                : _isFirstTimeBudget
+                ? 'Set spending limits for specific categories (at least one required)'
                 : 'Set spending limits for specific categories (optional)',
             style: const TextStyle(fontSize: 14, color: Colors.grey),
           ),
@@ -382,6 +485,8 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                   child: Text(
                     widget.isAdding
                         ? 'Additional category budgets will be added to existing ones'
+                        : _isFirstTimeBudget
+                        ? 'You must set at least one category budget for first time setup'
                         : 'Category budgets will be tracked against your expenses',
                     style: const TextStyle(fontSize: 12, color: Colors.grey),
                   ),
@@ -509,7 +614,10 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
   void _saveBudget() {
     if (_formKey.currentState!.validate()) {
       // Get monthly budget amount
-      final monthlyAmount = double.parse(_monthlyBudgetController.text);
+      double monthlyAmount = 0;
+      if (_monthlyBudgetController.text.isNotEmpty) {
+        monthlyAmount = double.parse(_monthlyBudgetController.text);
+      }
 
       // Get enabled category budgets
       final categoryBudgets = <String, double>{};
@@ -523,11 +631,49 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
         }
       }
 
+      // First time setup validation
+      if (_isFirstTimeBudget && !widget.isAdding) {
+        // For first time, must have monthly budget AND at least one category
+        if (monthlyAmount <= 0) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Monthly budget is required for first time setup'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+
+        if (categoryBudgets.isEmpty) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Please set at least one category budget'),
+              backgroundColor: Colors.red,
+              behavior: SnackBarBehavior.floating,
+            ),
+          );
+          return;
+        }
+      }
+
+      // Adding mode validation - at least one field must have value
+      if (widget.isAdding && monthlyAmount <= 0 && categoryBudgets.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Please enter an amount to add'),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
       // Save budget using cubit with isAdditional flag
       context.read<BudgetCubit>().saveBudget(
         monthlyLimit: monthlyAmount,
         categoryBudgets: categoryBudgets,
-        isAdditional: widget.isAdding, // This now matches the parameter
+        isAdditional: widget.isAdding,
       );
     }
   }

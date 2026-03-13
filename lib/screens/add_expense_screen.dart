@@ -64,6 +64,14 @@ class AddExpenseScreen extends StatelessWidget {
                   _showManualEntryDialog(context, state.scannedReceipt!);
                 }
 
+                // FIX: Add this to handle successful uploads
+                if (state.scannedReceipt != null &&
+                    state.scannedReceipt!.amount > 0 &&
+                    !state.isLoading) {
+                  // This will be handled by the onTap callback
+                  // We just need to make sure we don't show duplicate dialogs
+                }
+
                 // FIX: Pass Cubit to the Edit Screen via BlocProvider.value
                 if (state.expenseToEdit != null) {
                   final cubit = context.read<AddExpenseCubit>();
@@ -178,7 +186,39 @@ class AddExpenseScreen extends StatelessWidget {
           title: 'Upload Image',
           subtitle: 'Select from gallery',
           color: Colors.purple,
-          onTap: () => context.read<AddExpenseCubit>().uploadImage(),
+          onTap: () async {
+            print("🟣 UPLOAD IMAGE TAPPED");
+            final addExpenseCubit = context.read<AddExpenseCubit>();
+
+            // Call the uploadImage method
+            await addExpenseCubit.uploadImage();
+
+            // Check the state after upload
+            final state = addExpenseCubit.state;
+
+            if (state.scannedReceipt != null) {
+              print("🟣 Upload successful, navigating to manual entry");
+              // Navigate to manual entry with the scanned receipt
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => BlocProvider.value(
+                    value: addExpenseCubit,
+                    child: ManualEntryScreen(
+                      receipt: state.scannedReceipt!,
+                      fromAddExpense: true,
+                    ),
+                  ),
+                ),
+              ).then((_) {
+                // Clear the scanned receipt after returning
+                addExpenseCubit.clearScannedReceipt();
+              });
+            } else if (state.errorMessage != null) {
+              print("🟣 Upload error: ${state.errorMessage}");
+              _showErrorDialog(context, state.errorMessage!);
+            }
+          },
         ),
         const SizedBox(height: 12),
         _buildOptionCard(
@@ -217,7 +257,6 @@ class AddExpenseScreen extends StatelessWidget {
       ],
     );
   }
-
   // --- UI Helper Methods ---
 
   Widget _buildTopHeader(BuildContext context) {
@@ -474,23 +513,46 @@ class AddExpenseScreen extends StatelessWidget {
                           color: darkText,
                         ),
                       ),
+                      const SizedBox(height: 4),
+                      // Show category summary with item count
                       Text(
-                        DateFormat('dd MMM yyyy, hh:mm a').format(receipt.date),
+                        receipt.categorySummary,
                         style: TextStyle(
                           fontSize: 12,
                           color: darkText.withOpacity(0.6),
                         ),
                       ),
+                      const SizedBox(height: 2),
+                      Text(
+                        receipt.formattedDate,
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: darkText.withOpacity(0.4),
+                        ),
+                      ),
                     ],
                   ),
                 ),
-                Text(
-                  'RM${receipt.amount.toStringAsFixed(2)}',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: accentGreen,
-                  ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      'RM${receipt.amount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: accentGreen,
+                      ),
+                    ),
+                    if (receipt.items != null && receipt.items!.isNotEmpty)
+                      Text(
+                        '${receipt.totalItemCount} items',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: darkText.withOpacity(0.4),
+                        ),
+                      ),
+                  ],
                 ),
               ],
             ),

@@ -2,9 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/dashboard_screen.dart';
-import 'screens/add_budget_screen.dart'; // Add this import
+import 'screens/add_budget_screen.dart';
+import 'screens/profile_screen.dart'; // Add this import
+import 'screens/notification_screen.dart'; // Add this import
 import 'cubit/expense_cubit.dart';
-import 'cubit/budget_cubit.dart'; // Add this import
+import 'cubit/budget_cubit.dart';
+import 'cubit/profile_cubit.dart'; // Add this import
+import 'cubit/notification_cubit.dart'; // Add this import
+import 'cubit/add_expense_cubit.dart'; // Add this import
 
 void main() {
   runApp(const MyApp());
@@ -17,10 +22,16 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        // Provide ExpenseCubit at the app level so all screens can access it
+        // Core app-level cubits that need to persist throughout the app
         BlocProvider<ExpenseCubit>(create: (context) => ExpenseCubit()),
-        // Provide BudgetCubit at the app level for budget-related screens
         BlocProvider<BudgetCubit>(create: (context) => BudgetCubit()),
+        BlocProvider<NotificationCubit>(
+          create: (context) => NotificationCubit(),
+        ),
+        BlocProvider<ProfileCubit>(create: (context) => ProfileCubit()),
+
+        // Note: AddExpenseCubit is NOT provided at app level because it should be
+        // created fresh each time we navigate to AddExpenseScreen to avoid state conflicts
       ],
       child: MaterialApp(
         title: 'SpendWise',
@@ -50,14 +61,25 @@ class MyApp extends StatelessWidget {
         routes: {
           '/': (context) => const OnboardingScreen(),
           '/dashboard': (context) => const DashboardScreen(),
-          '/add_budget': (context) =>
-              const AddBudgetScreen(), // Add this route if needed
+          '/add_budget': (context) => const AddBudgetScreen(),
+          '/profile': (context) => const ProfileScreen(),
+          '/notifications': (context) => const NotificationScreen(),
         },
         // Handle undefined routes
         onGenerateRoute: (settings) {
           if (settings.name == '/add_budget') {
             return MaterialPageRoute(
               builder: (context) => const AddBudgetScreen(),
+            );
+          }
+          if (settings.name == '/profile') {
+            return MaterialPageRoute(
+              builder: (context) => const ProfileScreen(),
+            );
+          }
+          if (settings.name == '/notifications') {
+            return MaterialPageRoute(
+              builder: (context) => const NotificationScreen(),
             );
           }
           return null;

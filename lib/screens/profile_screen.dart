@@ -48,8 +48,8 @@ class ProfileScreen extends StatelessWidget {
                   bottomNavigationBar: _buildBottomNavigation(scaffoldContext),
                   body: Column(
                     children: [
-                      _buildTopHeader(scaffoldContext),
-                      Expanded(child: _ProfileContent()),
+                      _buildTopHeader(scaffoldContext, isDarkMode),
+                      Expanded(child: _ProfileContent(isDarkMode: isDarkMode)),
                     ],
                   ),
                 );
@@ -62,10 +62,12 @@ class ProfileScreen extends StatelessWidget {
   }
 
   // --- TOP HEADER: CHART & NOTIFICATIONS ---
-  Widget _buildTopHeader(BuildContext context) {
+  Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
-      decoration: const BoxDecoration(color: headerColor),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[900] : headerColor,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -86,12 +88,12 @@ class ProfileScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
+                Text(
                   'SpendWise',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: darkText,
+                    color: isDarkMode ? Colors.white : darkText,
                   ),
                 ),
               ],
@@ -112,7 +114,11 @@ class ProfileScreen extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Icon(Icons.bar_chart, size: 28, color: darkText),
+                child: Icon(
+                  Icons.bar_chart,
+                  size: 28,
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
               ),
               const SizedBox(width: 15),
               // Notifications icon
@@ -120,10 +126,10 @@ class ProfileScreen extends StatelessWidget {
                 onTap: () {
                   _showNotificationsDialog(context);
                 },
-                child: const Icon(
+                child: Icon(
                   Icons.notifications,
                   size: 28,
-                  color: darkText,
+                  color: isDarkMode ? Colors.white : darkText,
                 ),
               ),
             ],
@@ -296,6 +302,10 @@ class ProfileScreen extends StatelessWidget {
 }
 
 class _ProfileContent extends StatelessWidget {
+  final bool isDarkMode;
+
+  const _ProfileContent({required this.isDarkMode});
+
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<ProfileCubit, ProfileState>(
@@ -317,44 +327,59 @@ class _ProfileContent extends StatelessWidget {
                 ]),
                 const SizedBox(height: 25),
                 _buildSection('PREFERENCES', [
-                  SwitchListTile(
-                    secondary: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: ProfileScreen.accentGreen.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.notifications_outlined,
-                        color: ProfileScreen.accentGreen,
-                        size: 20,
-                      ),
-                    ),
-                    title: const Text('Push Notifications'),
+                  // Push Notifications Toggle
+                  _buildSwitchTile(
+                    icon: Icons.notifications_outlined,
+                    title: 'Push Notifications',
                     value: state.user.pushNotificationsEnabled,
-                    activeColor: ProfileScreen.accentGreen,
-                    onChanged: (v) =>
-                        context.read<ProfileCubit>().togglePushNotifications(),
+                    onChanged: (value) {
+                      context.read<ProfileCubit>().togglePushNotifications();
+                      _showSnackBar(
+                        context,
+                        value
+                            ? 'Push Notifications Enabled'
+                            : 'Push Notifications Disabled',
+                      );
+                    },
                   ),
-                  SwitchListTile(
-                    secondary: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: ProfileScreen.accentGreen.withOpacity(0.1),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.dark_mode_outlined,
-                        color: ProfileScreen.accentGreen,
-                        size: 20,
-                      ),
-                    ),
-                    title: const Text('Dark Mode'),
+
+                  // Dark Mode Toggle
+                  _buildSwitchTile(
+                    icon: Icons.dark_mode_outlined,
+                    title: 'Dark Mode',
                     value: state.user.isDarkMode,
-                    activeColor: ProfileScreen.accentGreen,
-                    onChanged: (v) =>
-                        context.read<ProfileCubit>().toggleDarkMode(),
+                    onChanged: (value) {
+                      context.read<ProfileCubit>().toggleDarkMode();
+                      _showSnackBar(
+                        context,
+                        value ? 'Dark Mode Enabled' : 'Light Mode Enabled',
+                      );
+                    },
                   ),
+
+                  // Biometric Toggle
+                  _buildSwitchTile(
+                    icon: Icons.fingerprint,
+                    title: 'Biometric Login',
+                    value: state.user.biometricEnabled,
+                    onChanged: (value) {
+                      context.read<ProfileCubit>().toggleBiometric();
+                      _showSnackBar(
+                        context,
+                        value
+                            ? 'Biometric Login Enabled'
+                            : 'Biometric Login Disabled',
+                      );
+                    },
+                  ),
+                ]),
+                const SizedBox(height: 25),
+                _buildSection('CURRENCY SETTINGS', [
+                  _buildCurrencySelector(context, state),
+                ]),
+                const SizedBox(height: 25),
+                _buildSection('EXPENSE SETTINGS', [
+                  _buildSmallExpensesLimit(context, state),
                 ]),
                 const SizedBox(height: 40),
                 _buildLogoutButton(context),
@@ -389,15 +414,18 @@ class _ProfileContent extends StatelessWidget {
         const SizedBox(height: 16),
         Text(
           state.user.fullName,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.bold,
-            color: ProfileScreen.darkText,
+            color: isDarkMode ? Colors.white : ProfileScreen.darkText,
           ),
         ),
         Text(
           state.user.email,
-          style: const TextStyle(color: Colors.black54, fontSize: 15),
+          style: TextStyle(
+            color: isDarkMode ? Colors.white70 : Colors.black54,
+            fontSize: 15,
+          ),
         ),
         const SizedBox(height: 16),
 
@@ -419,6 +447,259 @@ class _ProfileContent extends StatelessWidget {
     );
   }
 
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required String title,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return SwitchListTile(
+      secondary: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: ProfileScreen.accentGreen.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: Icon(icon, color: ProfileScreen.accentGreen, size: 20),
+      ),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: isDarkMode ? Colors.white : ProfileScreen.darkText,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      value: value,
+      activeColor: ProfileScreen.accentGreen,
+      onChanged: onChanged,
+    );
+  }
+
+  Widget _buildCurrencySelector(BuildContext context, ProfileLoaded state) {
+    final List<String> currencies = ['RM', 'USD', 'EUR', 'GBP', 'SGD'];
+
+    return Column(
+      children: currencies.map((currency) {
+        return RadioListTile<String>(
+          title: Text(
+            currency,
+            style: TextStyle(
+              color: isDarkMode ? Colors.white : ProfileScreen.darkText,
+            ),
+          ),
+          value: currency,
+          groupValue: state.user.currency,
+          activeColor: ProfileScreen.accentGreen,
+          onChanged: (value) {
+            if (value != null) {
+              context.read<ProfileCubit>().updateCurrency(value);
+              _showSnackBar(context, 'Currency changed to $value');
+            }
+          },
+          secondary: Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: ProfileScreen.accentGreen.withOpacity(0.1),
+              shape: BoxShape.circle,
+            ),
+            child: Text(
+              currency,
+              style: TextStyle(
+                color: ProfileScreen.accentGreen,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+              ),
+            ),
+          ),
+        );
+      }).toList(),
+    );
+  }
+
+  Widget _buildSmallExpensesLimit(BuildContext context, ProfileLoaded state) {
+    return ListTile(
+      leading: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(
+          color: ProfileScreen.accentGreen.withOpacity(0.1),
+          shape: BoxShape.circle,
+        ),
+        child: const Icon(
+          Icons.money_off,
+          color: ProfileScreen.accentGreen,
+          size: 20,
+        ),
+      ),
+      title: Text(
+        'Small Expenses Limit',
+        style: TextStyle(
+          color: isDarkMode ? Colors.white : ProfileScreen.darkText,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      subtitle: Text(
+        'Expenses below this amount are considered "small"',
+        style: TextStyle(
+          color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+          fontSize: 12,
+        ),
+      ),
+      trailing: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: ProfileScreen.accentGreen.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'RM ${state.user.smallExpensesLimit.toStringAsFixed(0)}',
+              style: const TextStyle(
+                color: ProfileScreen.accentGreen,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            const SizedBox(width: 4),
+            GestureDetector(
+              onTap: () {
+                _showLimitSlider(context, state);
+              },
+              child: const Icon(
+                Icons.edit,
+                size: 16,
+                color: ProfileScreen.accentGreen,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showLimitSlider(BuildContext context, ProfileLoaded state) {
+    double currentLimit = state.user.smallExpensesLimit;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return Container(
+              padding: const EdgeInsets.all(24),
+              decoration: BoxDecoration(
+                color: isDarkMode ? Colors.grey[900] : Colors.white,
+                borderRadius: const BorderRadius.vertical(
+                  top: Radius.circular(30),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 50,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[300],
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  const SizedBox(height: 25),
+                  const Text(
+                    "Small Expenses Limit",
+                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    "Set the maximum amount for small expenses",
+                    style: TextStyle(
+                      color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: ProfileScreen.accentGreen.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      'RM ${currentLimit.toStringAsFixed(0)}',
+                      style: const TextStyle(
+                        fontSize: 32,
+                        fontWeight: FontWeight.bold,
+                        color: ProfileScreen.accentGreen,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 30),
+                  Slider(
+                    value: currentLimit,
+                    min: 10,
+                    max: 200,
+                    divisions: 19,
+                    activeColor: ProfileScreen.accentGreen,
+                    inactiveColor: Colors.grey.shade300,
+                    onChanged: (value) {
+                      setState(() {
+                        currentLimit = value;
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.grey,
+                            side: const BorderSide(color: Colors.grey),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                          ),
+                          child: const Text('Cancel'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            context
+                                .read<ProfileCubit>()
+                                .updateSmallExpensesLimit(currentLimit);
+                            Navigator.pop(context);
+                            _showSnackBar(
+                              context,
+                              'Small expenses limit updated to RM ${currentLimit.toStringAsFixed(0)}',
+                            );
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: ProfileScreen.accentGreen,
+                            foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(15),
+                            ),
+                            padding: const EdgeInsets.symmetric(vertical: 15),
+                          ),
+                          child: const Text('Save'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   void _showEditProfileSheet(BuildContext context, ProfileLoaded state) {
     final nameController = TextEditingController(text: state.user.fullName);
     final emailController = TextEditingController(text: state.user.email);
@@ -428,9 +709,9 @@ class _ProfileContent extends StatelessWidget {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(30)),
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey[900] : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(30)),
         ),
         padding: EdgeInsets.only(
           bottom: MediaQuery.of(context).viewInsets.bottom + 20,
@@ -451,12 +732,12 @@ class _ProfileContent extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 25),
-              const Text(
+              Text(
                 "Edit Profile",
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
-                  color: ProfileScreen.darkText,
+                  color: isDarkMode ? Colors.white : ProfileScreen.darkText,
                 ),
               ),
               const SizedBox(height: 25),
@@ -502,8 +783,14 @@ class _ProfileContent extends StatelessWidget {
 
               TextField(
                 controller: nameController,
+                style: TextStyle(
+                  color: isDarkMode ? Colors.white : ProfileScreen.darkText,
+                ),
                 decoration: InputDecoration(
                   labelText: "Full Name",
+                  labelStyle: TextStyle(
+                    color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+                  ),
                   prefixIcon: const Icon(
                     Icons.person_outline,
                     color: ProfileScreen.accentGreen,
@@ -528,8 +815,14 @@ class _ProfileContent extends StatelessWidget {
               TextField(
                 controller: emailController,
                 keyboardType: TextInputType.emailAddress,
+                style: TextStyle(
+                  color: isDarkMode ? Colors.white : ProfileScreen.darkText,
+                ),
                 decoration: InputDecoration(
                   labelText: "Email Address",
+                  labelStyle: TextStyle(
+                    color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+                  ),
                   prefixIcon: const Icon(
                     Icons.email_outlined,
                     color: ProfileScreen.accentGreen,
@@ -554,15 +847,12 @@ class _ProfileContent extends StatelessWidget {
 
               ElevatedButton(
                 onPressed: () {
-                  // Add save logic here
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Profile updated successfully!'),
-                      backgroundColor: ProfileScreen.accentGreen,
-                      duration: Duration(seconds: 2),
-                    ),
+                  context.read<ProfileCubit>().updateFullName(
+                    nameController.text,
                   );
+                  // Email update might need verification, so we'll just show a message
+                  Navigator.pop(context);
+                  _showSnackBar(context, 'Profile updated successfully!');
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: ProfileScreen.accentGreen,
@@ -587,6 +877,18 @@ class _ProfileContent extends StatelessWidget {
     );
   }
 
+  void _showSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: ProfileScreen.accentGreen,
+        duration: const Duration(seconds: 2),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+      ),
+    );
+  }
+
   Widget _buildSection(String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -598,19 +900,23 @@ class _ProfileContent extends StatelessWidget {
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.bold,
-              color: Colors.grey.shade600,
+              color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
               letterSpacing: 1.1,
             ),
           ),
         ),
         Container(
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDarkMode ? Colors.grey[900] : Colors.white,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: ProfileScreen.fabBorderColor),
+            border: Border.all(
+              color: isDarkMode
+                  ? Colors.grey.shade800
+                  : ProfileScreen.fabBorderColor,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: Colors.grey.withOpacity(isDarkMode ? 0.2 : 0.1),
                 blurRadius: 10,
                 offset: const Offset(0, 2),
               ),
@@ -634,14 +940,17 @@ class _ProfileContent extends StatelessWidget {
       ),
       title: Text(
         label,
-        style: const TextStyle(fontSize: 11, color: Colors.grey),
+        style: TextStyle(
+          fontSize: 11,
+          color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+        ),
       ),
       subtitle: Text(
         value,
-        style: const TextStyle(
+        style: TextStyle(
           fontWeight: FontWeight.bold,
           fontSize: 15,
-          color: ProfileScreen.darkText,
+          color: isDarkMode ? Colors.white : ProfileScreen.darkText,
         ),
       ),
     );
@@ -652,7 +961,11 @@ class _ProfileContent extends StatelessWidget {
       width: double.infinity,
       height: 50,
       child: ElevatedButton.icon(
-        onPressed: () => context.read<ProfileCubit>().logout(),
+        onPressed: () {
+          context.read<ProfileCubit>().logout();
+          // Navigate to login screen or show logout message
+          _showSnackBar(context, 'Logged out successfully');
+        },
         icon: const Icon(Icons.logout, size: 20),
         label: const Text("Log Out"),
         style: ElevatedButton.styleFrom(
