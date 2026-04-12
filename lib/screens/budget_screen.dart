@@ -4,26 +4,24 @@ import '../cubit/budget_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 import '../cubit/profile_cubit.dart';
-import '../cubit/notification_cubit.dart'; // Add this import
+import '../cubit/notification_cubit.dart';
 import '../models/expense_model.dart';
 import 'add_budget_screen.dart';
 import 'add_expense_screen.dart';
 import 'analytics_screen.dart';
 import 'expense_history_screen.dart';
 import 'dashboard_screen.dart';
-import 'notification_screen.dart'; // Add this import
+import 'notification_screen.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../widgets/category_budget_card.dart';
 import '../models/budget_model.dart';
 
-// Import states with prefix
 import '../cubit/budget_cubit.dart' as cubit;
 import 'profile_screen.dart';
 
 class BudgetScreen extends StatelessWidget {
   const BudgetScreen({super.key});
 
-  // Theme colors
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
   static const Color accentGreen = Color(0xFF32BA32);
@@ -38,14 +36,10 @@ class BudgetScreen extends StatelessWidget {
         providers: [
           BlocProvider.value(value: context.read<BudgetCubit>()),
           BlocProvider.value(value: context.read<ExpenseCubit>()),
-          BlocProvider(
-            create: (context) => NotificationCubit(),
-          ), // Add NotificationCubit
+          BlocProvider(create: (context) => NotificationCubit()),
         ],
         child: const BudgetView(),
       ),
-
-      // FAB centered and notched
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: Container(
         margin: const EdgeInsets.only(top: 30),
@@ -71,8 +65,6 @@ class BudgetScreen extends StatelessWidget {
           child: const Icon(Icons.add, color: accentGreen, size: 45),
         ),
       ),
-
-      // Bottom Navigation
       bottomNavigationBar: _buildBottomNavigation(
         context,
         headerColor,
@@ -131,7 +123,7 @@ class BudgetScreen extends StatelessWidget {
                 );
               },
             ),
-            const SizedBox(width: 40), // Gap for the FAB notch
+            const SizedBox(width: 40),
             _navItem(
               Icons.pie_chart_outline,
               Icons.pie_chart,
@@ -207,14 +199,17 @@ class BudgetView extends StatelessWidget {
   static const Color headerColor = Color(0xFFC5D997);
   static const Color accentGreen = Color(0xFF32BA32);
   static const Color darkText = Color(0xFF000000);
+  static const Color onTrackColor = Color(0xFF2196F3);
+  static const Color goodColor = Color(0xFF4CAF50);
+  static const Color moderateColor = Color(0xFFFF9800);
+  static const Color nearLimitColor = Color(0xFFFF5722);
+  static const Color overLimitColor = Color(0xFFF44336);
 
   @override
   Widget build(BuildContext context) {
-    // Get screen size for responsive design
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // Load budget when view is built
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BudgetCubit>().loadBudget(forceRefresh: true);
     });
@@ -262,38 +257,27 @@ class BudgetView extends StatelessWidget {
 
           return BlocBuilder<ExpenseCubit, ExpenseState>(
             builder: (context, expenseState) {
-              // Calculate actual spending from expenses with better category handling
               final Map<String, double> categorySpending = {};
               double totalSpending = 0;
 
               for (var expense in expenseState.allExpenses) {
                 if (!expense.isIncome) {
-                  // Use the expense's category directly
                   String categoryName = expense.category;
-
-                  // Standardize category names for better matching with budget categories
                   categoryName = _standardizeCategoryName(categoryName);
-
-                  // Add to spending map
                   categorySpending[categoryName] =
                       (categorySpending[categoryName] ?? 0) + expense.amount;
                   totalSpending += expense.amount;
                 }
               }
 
-              // Check budget and create notifications
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 final notificationCubit = context.read<NotificationCubit>();
-
-                // Prepare category budgets map
                 final Map<String, double> categoryBudgets = {};
                 for (var category in budget.categories) {
                   if (category.amount > 0) {
                     categoryBudgets[category.name] = category.amount;
                   }
                 }
-
-                // Check budgets and create notifications
                 notificationCubit.checkBudgetAndNotify(
                   monthlyBudget: budget.monthlyLimit,
                   totalSpent: totalSpending,
@@ -311,10 +295,8 @@ class BudgetView extends StatelessWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          // Header Section with Title and Add Button
                           _buildHeaderRow(context),
                           const SizedBox(height: 16),
-                          // Monthly Budget Card
                           _buildMonthlyBudgetSection(
                             budget,
                             totalSpending,
@@ -322,14 +304,12 @@ class BudgetView extends StatelessWidget {
                             context,
                           ),
                           const SizedBox(height: 20),
-                          // Category Budgets Header
                           _buildCategoryHeader(),
                           const SizedBox(height: 12),
-                          // Category List with proper constraints
                           ConstrainedBox(
                             constraints: BoxConstraints(
                               minHeight: 100,
-                              maxHeight: screenHeight * 0.4,
+                              maxHeight: screenHeight * 0.5,
                             ),
                             child: _buildCategoryList(
                               budget,
@@ -348,15 +328,12 @@ class BudgetView extends StatelessWidget {
           );
         }
 
-        // BudgetInitial state
         return _buildEmptyState(context);
       },
     );
   }
 
-  // Helper method to standardize category names for better matching
   String _standardizeCategoryName(String category) {
-    // Create a mapping of common variations to standard names
     final Map<String, String> categoryMap = {
       'Food': 'Food',
       'Foods': 'Food',
@@ -383,8 +360,6 @@ class BudgetView extends StatelessWidget {
       'Misc': 'Other',
       'Miscellaneous': 'Other',
     };
-
-    // Check if the category has a mapping, otherwise return original
     return categoryMap[category] ?? category;
   }
 
@@ -416,18 +391,13 @@ class BudgetView extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        // Add Budget Button
         GestureDetector(
           onTap: () async {
-            // Check if budget already exists
             final budgetState = context.read<BudgetCubit>().state;
             bool isAdding = false;
-
             if (budgetState is cubit.BudgetLoaded) {
-              // If there's already a budget with monthly limit > 0, we're adding to it
               isAdding = budgetState.budget.monthlyLimit > 0;
             }
-
             final result = await Navigator.push(
               context,
               MaterialPageRoute(
@@ -437,8 +407,6 @@ class BudgetView extends StatelessWidget {
                 ),
               ),
             );
-
-            // If result is true, refresh the budget
             if (result == true) {
               context.read<BudgetCubit>().loadBudget(forceRefresh: true);
             }
@@ -478,16 +446,38 @@ class BudgetView extends StatelessWidget {
         ? totalSpending / budget.monthlyLimit
         : 0;
     final double remaining = budget.monthlyLimit - totalSpending;
+    final double percentage = progress * 100;
 
-    Color progressColor = accentGreen;
-    String statusText = 'On Track';
+    String statusText;
+    Color progressColor;
+    Color statusBgColor;
+    Color statusTextColor;
 
     if (progress >= 1.0) {
-      progressColor = Colors.red;
-      statusText = 'Exceeded';
+      statusText = 'Over Limit';
+      progressColor = overLimitColor;
+      statusBgColor = overLimitColor;
+      statusTextColor = Colors.white;
     } else if (progress >= 0.8) {
-      progressColor = Colors.orange;
       statusText = 'Near Limit';
+      progressColor = nearLimitColor;
+      statusBgColor = nearLimitColor;
+      statusTextColor = Colors.white;
+    } else if (progress >= 0.5) {
+      statusText = 'Moderate';
+      progressColor = moderateColor;
+      statusBgColor = moderateColor;
+      statusTextColor = Colors.white;
+    } else if (progress > 0) {
+      statusText = 'Good';
+      progressColor = goodColor;
+      statusBgColor = goodColor;
+      statusTextColor = Colors.white;
+    } else {
+      statusText = 'On Track';
+      progressColor = onTrackColor;
+      statusBgColor = onTrackColor;
+      statusTextColor = Colors.white;
     }
 
     return Container(
@@ -514,7 +504,6 @@ class BudgetView extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // First row with icon and amount
           Row(
             children: [
               Container(
@@ -554,20 +543,19 @@ class BudgetView extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 8),
-              // Status badge
               Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 10,
                   vertical: 4,
                 ),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.2),
+                  color: statusBgColor,
                   borderRadius: BorderRadius.circular(16),
                 ),
                 child: Text(
                   statusText,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: statusTextColor,
                     fontSize: 11,
                     fontWeight: FontWeight.w500,
                   ),
@@ -576,12 +564,9 @@ class BudgetView extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Progress section
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Spent percentage row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -590,7 +575,7 @@ class BudgetView extends StatelessWidget {
                     style: const TextStyle(color: Colors.white70, fontSize: 11),
                   ),
                   Text(
-                    '${(progress * 100).toInt()}%',
+                    '${percentage.toStringAsFixed(1)}%',
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 11,
@@ -600,7 +585,6 @@ class BudgetView extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 6),
-              // Progress bar
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
                 child: LinearProgressIndicator(
@@ -610,13 +594,14 @@ class BudgetView extends StatelessWidget {
                   minHeight: 10,
                 ),
               ),
-              const SizedBox(height: 6),
-              // Remaining row
+              const SizedBox(height: 8),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
-                    'Remaining: RM ${remaining.toStringAsFixed(2)}',
+                    remaining >= 0
+                        ? 'Remaining: RM ${remaining.toStringAsFixed(2)}'
+                        : 'Overspent: RM ${(-remaining).toStringAsFixed(2)}',
                     style: TextStyle(
                       color: remaining >= 0
                           ? Colors.white70
@@ -625,13 +610,23 @@ class BudgetView extends StatelessWidget {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  if (remaining < 0)
-                    Text(
-                      'Overspent: RM ${(-remaining).toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        color: Colors.red,
-                        fontSize: 11,
-                        fontWeight: FontWeight.bold,
+                  if (progress > 1.0)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.red.withOpacity(0.2),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        '+${((progress - 1) * 100).toStringAsFixed(0)}% over',
+                        style: const TextStyle(
+                          color: Colors.red,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
                       ),
                     ),
                 ],
@@ -687,7 +682,6 @@ class BudgetView extends StatelessWidget {
     Map<String, double> categorySpending,
     BuildContext context,
   ) {
-    // Filter active categories (amount > 0)
     final List<BudgetCategory> activeCategories = [];
     for (var category in budget.categories) {
       if (category.amount > 0) {
@@ -763,24 +757,14 @@ class BudgetView extends StatelessWidget {
       itemCount: activeCategories.length,
       itemBuilder: (context, index) {
         final category = activeCategories[index];
-
-        // Standardize the budget category name for matching
         final standardCategoryName = _standardizeCategoryName(category.name);
-
-        // Try to find spending for this category with multiple matching strategies
         double spent = 0;
 
-        // Strategy 1: Direct match with standardized name
         if (categorySpending.containsKey(standardCategoryName)) {
           spent = categorySpending[standardCategoryName] ?? 0;
-        }
-        // Strategy 2: Try original name
-        else if (categorySpending.containsKey(category.name)) {
+        } else if (categorySpending.containsKey(category.name)) {
           spent = categorySpending[category.name] ?? 0;
-        }
-        // Strategy 3: Handle special cases
-        else {
-          // For each spending category, check if it maps to this budget category
+        } else {
           for (var entry in categorySpending.entries) {
             if (_standardizeCategoryName(entry.key) == standardCategoryName) {
               spent += entry.value;
@@ -800,35 +784,6 @@ class BudgetView extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-
-  Widget _buildAddToBudgetButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => BlocProvider.value(
-                value: context.read<BudgetCubit>(),
-                child: const AddBudgetScreen(isAdding: true),
-              ),
-            ),
-          );
-        },
-        icon: const Icon(Icons.add, size: 18),
-        label: const Text('Add to Budget', style: TextStyle(fontSize: 14)),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: accentGreen,
-          foregroundColor: Colors.white,
-          minimumSize: const Size(double.infinity, 44),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-        ),
-      ),
     );
   }
 
@@ -896,55 +851,6 @@ class BudgetView extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildInsightRow(
-    String label,
-    String value,
-    String subtitle,
-    IconData icon,
-    Color color,
-  ) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(6),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 16),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11,
-                  color: darkText.withOpacity(0.6),
-                ),
-              ),
-              const SizedBox(height: 2),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: darkText,
-                ),
-              ),
-            ],
-          ),
-        ),
-        Text(
-          subtitle,
-          style: TextStyle(fontSize: 11, color: darkText.withOpacity(0.5)),
-        ),
-      ],
     );
   }
 
@@ -1065,7 +971,6 @@ class BudgetView extends StatelessWidget {
                     child: const Icon(Icons.bar_chart, size: 24),
                   ),
                   const SizedBox(width: 12),
-                  // Notifications icon with badge
                   GestureDetector(
                     onTap: () {
                       Navigator.push(
@@ -1117,20 +1022,6 @@ class BudgetView extends StatelessWidget {
           ),
         );
       },
-    );
-  }
-
-  void _showNotificationsDialog(BuildContext context) {
-    // This method is no longer used since we're navigating to NotificationScreen
-    // Keeping it for backward compatibility
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => BlocProvider(
-          create: (context) => NotificationCubit(),
-          child: const NotificationScreen(),
-        ),
-      ),
     );
   }
 }

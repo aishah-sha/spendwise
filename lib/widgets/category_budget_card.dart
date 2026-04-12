@@ -3,12 +3,12 @@ import '../models/budget_model.dart';
 
 class CategoryBudgetCard extends StatelessWidget {
   final BudgetCategory category;
-  final double spentAmount; // Add this parameter
+  final double spentAmount;
 
   const CategoryBudgetCard({
     super.key,
     required this.category,
-    required this.spentAmount, // Make it required
+    required this.spentAmount,
   });
 
   static const Color accentGreen = Color(0xFF32BA32);
@@ -19,233 +19,320 @@ class CategoryBudgetCard extends StatelessWidget {
     final double budgetAmount = category.amount;
     final double progress = budgetAmount > 0 ? spentAmount / budgetAmount : 0;
     final double remaining = budgetAmount - spentAmount;
-    final double spentPercentage = (progress * 100).clamp(0, 100);
+    final double spentPercentage = progress * 100;
 
     // Determine color based on progress
     Color progressColor = _getCategoryColor(category.name);
+    String statusText = _getStatusText(progress);
+
     if (progress >= 1.0) {
       progressColor = Colors.red;
+      statusText = 'Over Limit';
     } else if (progress >= 0.8) {
       progressColor = Colors.orange;
+      statusText = 'Near Limit';
+    } else if (progress >= 0.5) {
+      statusText = 'Moderate';
+    } else if (progress > 0) {
+      statusText = 'Good';
+    } else {
+      statusText = 'On Track';
     }
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
             color: Colors.grey.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 5),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              // Category icon with gradient background
-              Container(
-                width: 50,
-                height: 50,
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      progressColor.withOpacity(0.2),
-                      progressColor.withOpacity(0.1),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(15),
-                ),
-                child: Icon(
-                  _getCategoryIcon(category.name),
-                  color: progressColor,
-                  size: 24,
-                ),
+          // Category icon
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: [
+                  progressColor.withOpacity(0.2),
+                  progressColor.withOpacity(0.1),
+                ],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
-              const SizedBox(width: 16),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              _getCategoryIcon(category.name),
+              color: progressColor,
+              size: 22,
+            ),
+          ),
+          const SizedBox(width: 12),
 
-              // Category details
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          // Category details - Expanded to take remaining space
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Row 1: Category name and status badge
+                Row(
                   children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          category.name,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: darkText,
-                          ),
+                    Expanded(
+                      child: Text(
+                        category.name,
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                          color: darkText,
                         ),
-                        Text(
-                          'RM ${budgetAmount.toStringAsFixed(2)}',
-                          style: const TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: darkText,
-                          ),
-                        ),
-                      ],
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 1,
+                      ),
                     ),
-                    const SizedBox(height: 8),
-
-                    // Progress bar with percentage
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Stack(
-                            children: [
-                              Container(
-                                height: 6,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(10),
-                                ),
-                              ),
-                              FractionallySizedBox(
-                                widthFactor: (progress).clamp(0.0, 1.0),
-                                child: Container(
-                                  height: 6,
-                                  decoration: BoxDecoration(
-                                    gradient: LinearGradient(
-                                      colors: [
-                                        progressColor,
-                                        progressColor.withOpacity(0.7),
-                                      ],
-                                    ),
-                                    borderRadius: BorderRadius.circular(10),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: progressColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        statusText,
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w500,
+                          color: progressColor,
                         ),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 4,
-                          ),
-                          decoration: BoxDecoration(
-                            color: progressColor.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            '${spentPercentage.toStringAsFixed(0)}%',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: progressColor,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-
-                    const SizedBox(height: 8),
-
-                    // Spent and remaining info
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        // Spent amount
-                        Row(
-                          children: [
-                            Icon(
-                              Icons.arrow_upward,
-                              size: 12,
-                              color: Colors.grey.shade400,
-                            ),
-                            const SizedBox(width: 4),
-                            Text(
-                              'Spent: RM${spentAmount.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey.shade600,
-                              ),
-                            ),
-                          ],
-                        ),
-
-                        // Remaining/Overspent indicator
-                        if (remaining >= 0)
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'Left: RM${remaining.toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.green.shade700,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          )
-                        else
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 8,
-                              vertical: 2,
-                            ),
-                            decoration: BoxDecoration(
-                              color: Colors.red.shade50,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: Text(
-                              'Overspent: RM${(-remaining).toStringAsFixed(2)}',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Colors.red.shade700,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+
+                // Row 2: Budget amount
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Budget',
+                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                    Text(
+                      'RM ${budgetAmount.toStringAsFixed(2)}',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: darkText,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+
+                // Row 3: Spent amount
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Spent',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: progress >= 1.0 ? Colors.red : Colors.grey,
+                      ),
+                    ),
+                    Text(
+                      'RM ${spentAmount.toStringAsFixed(2)}',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: progress >= 1.0
+                            ? Colors.red
+                            : Colors.grey.shade700,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Progress bar with percentage
+                Row(
+                  children: [
+                    Expanded(
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(6),
+                        child: LinearProgressIndicator(
+                          value: progress.clamp(0.0, 1.0),
+                          backgroundColor: Colors.grey.shade200,
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            progressColor,
+                          ),
+                          minHeight: 6,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: progressColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        '${spentPercentage.toStringAsFixed(1)}%',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                          color: progressColor,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+
+                // Remaining/Overspent indicator
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: remaining >= 0
+                        ? const Color(0xFF2196F3).withOpacity(0.08)
+                        : Colors.red.withOpacity(0.08),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            remaining >= 0
+                                ? Icons.check_circle_outline
+                                : Icons.warning_amber_rounded,
+                            size: 14,
+                            color: remaining >= 0
+                                ? const Color(0xFF2196F3)
+                                : Colors.red,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            remaining >= 0 ? 'Remaining' : 'Overspent',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: remaining >= 0
+                                  ? const Color(0xFF2196F3)
+                                  : Colors.red,
+                            ),
+                          ),
+                        ],
+                      ),
+                      Flexible(
+                        child: Text(
+                          'RM ${remaining >= 0 ? remaining.toStringAsFixed(2) : (-remaining).toStringAsFixed(2)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: remaining >= 0
+                                ? const Color(0xFF2196F3)
+                                : Colors.red,
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Warning if significantly over budget
+                if (progress > 1.2) ...[
+                  const SizedBox(height: 6),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          size: 12,
+                          color: Colors.red,
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Exceeded by ${((progress - 1) * 100).toStringAsFixed(0)}%',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Colors.red,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ],
       ),
     );
   }
 
+  String _getStatusText(double progress) {
+    if (progress >= 1.0) return 'Over Limit';
+    if (progress >= 0.8) return 'Near Limit';
+    if (progress >= 0.5) return 'Moderate';
+    if (progress > 0) return 'Good';
+    return 'On Track';
+  }
+
   Color _getCategoryColor(String categoryName) {
     switch (categoryName) {
       case 'Groceries':
-        return const Color(0xFF4CAF50); // Green
+        return const Color(0xFF4CAF50);
       case 'Food':
-        return const Color(0xFFFF9800); // Orange
+        return const Color(0xFFFF9800);
       case 'Beverages':
-        return const Color(0xFF2196F3); // Blue
+        return const Color(0xFF2196F3);
       case 'Clothes':
-        return const Color(0xFF9C27B0); // Purple
+        return const Color(0xFF9C27B0);
       case 'Stationery':
-        return const Color(0xFF009688); // Teal
+        return const Color(0xFF009688);
       case 'Entertainment':
-        return const Color(0xFFE91E63); // Pink
+        return const Color(0xFFE91E63);
       case 'Transport':
-        return const Color(0xFF795548); // Brown
+        return const Color(0xFF795548);
       case 'Shopping':
-        return const Color(0xFF673AB7); // Deep Purple
+        return const Color(0xFF673AB7);
       default:
-        return const Color(0xFF9E9E9E); // Grey
+        return accentGreen;
     }
   }
 
