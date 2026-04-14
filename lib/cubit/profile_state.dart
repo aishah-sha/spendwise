@@ -1,3 +1,4 @@
+// cubit/profile_state.dart
 import 'package:equatable/equatable.dart';
 import '../models/user_model.dart';
 
@@ -20,6 +21,13 @@ class ProfileLoaded extends ProfileState {
 
   @override
   List<Object?> get props => [user, isEditing];
+
+  ProfileLoaded copyWith({UserModel? user, bool? isEditing}) {
+    return ProfileLoaded(
+      user: user ?? this.user,
+      isEditing: isEditing ?? this.isEditing,
+    );
+  }
 }
 
 class ProfileError extends ProfileState {
@@ -42,4 +50,22 @@ class ProfileThemeChanged extends ProfileState {
 
   @override
   List<Object?> get props => [isDarkMode];
+}
+
+class ProfileUpdateSuccess extends ProfileState {
+  final String message;
+
+  const ProfileUpdateSuccess({required this.message});
+
+  @override
+  List<Object?> get props => [message];
+}
+
+class ProfileImageUpdated extends ProfileState {
+  final String imageUrl;
+
+  const ProfileImageUpdated({required this.imageUrl});
+
+  @override
+  List<Object?> get props => [imageUrl];
 }

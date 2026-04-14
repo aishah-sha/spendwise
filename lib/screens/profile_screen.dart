@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'dart:ui' show ImageFilter;
 
 // Cubits
 import '../cubit/budget_cubit.dart';
@@ -38,25 +37,20 @@ class ProfileScreen extends StatelessWidget {
               ? state.user.isDarkMode
               : false;
 
-          return MaterialApp(
-            debugShowCheckedModeBanner: false,
-            theme: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-            home: Builder(
-              builder: (scaffoldContext) {
-                return Scaffold(
-                  backgroundColor: isDarkMode ? Colors.black : bgColor,
-                  floatingActionButtonLocation:
-                      FloatingActionButtonLocation.centerDocked,
-                  floatingActionButton: _buildFab(scaffoldContext),
-                  bottomNavigationBar: _buildBottomNavigation(scaffoldContext),
-                  body: Column(
-                    children: [
-                      _buildTopHeader(scaffoldContext, isDarkMode),
-                      Expanded(child: _ProfileContent(isDarkMode: isDarkMode)),
-                    ],
-                  ),
-                );
-              },
+          return Theme(
+            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+            child: Scaffold(
+              backgroundColor: isDarkMode ? Colors.black : bgColor,
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.centerDocked,
+              floatingActionButton: _buildFab(context, isDarkMode),
+              bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
+              body: Column(
+                children: [
+                  _buildTopHeader(context, isDarkMode),
+                  Expanded(child: _ProfileContent(isDarkMode: isDarkMode)),
+                ],
+              ),
             ),
           );
         },
@@ -122,10 +116,18 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 15),
-              // Notification badge - Updated
-              BlocProvider(
-                create: (context) => NotificationCubit(),
-                child: const NotificationBadge(iconSize: 28),
+              // Wrap NotificationBadge with IconTheme to control color
+              IconTheme(
+                data: IconThemeData(
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
+                child: BlocProvider(
+                  create: (context) => NotificationCubit(),
+                  child: const NotificationBadge(
+                    icon: Icons.notifications_none,
+                    iconSize: 28,
+                  ),
+                ),
               ),
             ],
           ),
@@ -134,13 +136,13 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildFab(BuildContext context) {
+  Widget _buildFab(BuildContext context, bool isDarkMode) {
     return Container(
       margin: const EdgeInsets.only(top: 30),
       height: 70,
       width: 70,
       child: FloatingActionButton(
-        backgroundColor: Colors.white,
+        backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
         elevation: 4,
         shape: const CircleBorder(
           side: BorderSide(color: fabBorderColor, width: 4),
@@ -154,14 +156,14 @@ class ProfileScreen extends StatelessWidget {
             ),
           ),
         ),
-        child: const Icon(Icons.add, color: accentGreen, size: 45),
+        child: Icon(Icons.add, color: accentGreen, size: 45),
       ),
     );
   }
 
-  Widget _buildBottomNavigation(BuildContext context) {
+  Widget _buildBottomNavigation(BuildContext context, bool isDarkMode) {
     return BottomAppBar(
-      color: headerColor,
+      color: isDarkMode ? Colors.grey[900] : headerColor,
       notchMargin: 8,
       shape: const CircularNotchedRectangle(),
       child: SizedBox(
@@ -169,22 +171,30 @@ class ProfileScreen extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _navItem(Icons.home_outlined, Icons.home, 'Home', false, () {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BlocProvider.value(
-                    value: BlocProvider.of<ExpenseCubit>(context),
-                    child: const DashboardScreen(),
+            _navItem(
+              Icons.home_outlined,
+              Icons.home,
+              'Home',
+              false,
+              isDarkMode,
+              () {
+                Navigator.pushReplacement(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => BlocProvider.value(
+                      value: BlocProvider.of<ExpenseCubit>(context),
+                      child: const DashboardScreen(),
+                    ),
                   ),
-                ),
-              );
-            }),
+                );
+              },
+            ),
             _navItem(
               Icons.history_outlined,
               Icons.history,
               'History',
               false,
+              isDarkMode,
               () {
                 Navigator.push(
                   context,
@@ -203,6 +213,7 @@ class ProfileScreen extends StatelessWidget {
               Icons.pie_chart,
               'Budget',
               false,
+              isDarkMode,
               () {
                 Navigator.push(
                   context,
@@ -223,6 +234,7 @@ class ProfileScreen extends StatelessWidget {
               Icons.person,
               'Profile',
               true,
+              isDarkMode,
               () {},
             ),
           ],
@@ -236,6 +248,7 @@ class ProfileScreen extends StatelessWidget {
     IconData activeIcon,
     String label,
     bool active,
+    bool isDarkMode,
     VoidCallback onTap,
   ) {
     return GestureDetector(
@@ -246,7 +259,9 @@ class ProfileScreen extends StatelessWidget {
         children: [
           Icon(
             active ? activeIcon : icon,
-            color: active ? accentGreen : Colors.black54,
+            color: active
+                ? accentGreen
+                : (isDarkMode ? Colors.white70 : Colors.black54),
             size: 26,
           ),
           Text(
@@ -254,7 +269,9 @@ class ProfileScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-              color: active ? accentGreen : Colors.black54,
+              color: active
+                  ? accentGreen
+                  : (isDarkMode ? Colors.white70 : Colors.black54),
             ),
           ),
         ],
@@ -289,49 +306,28 @@ class _ProfileContent extends StatelessWidget {
                 ]),
                 const SizedBox(height: 25),
                 _buildSection('PREFERENCES', [
-                  // Push Notifications Toggle
                   _buildSwitchTile(
                     icon: Icons.notifications_outlined,
                     title: 'Push Notifications',
                     value: state.user.pushNotificationsEnabled,
                     onChanged: (value) {
                       context.read<ProfileCubit>().togglePushNotifications();
-                      _showSnackBar(
-                        context,
-                        value
-                            ? 'Push Notifications Enabled'
-                            : 'Push Notifications Disabled',
-                      );
                     },
                   ),
-
-                  // Dark Mode Toggle
                   _buildSwitchTile(
                     icon: Icons.dark_mode_outlined,
                     title: 'Dark Mode',
                     value: state.user.isDarkMode,
                     onChanged: (value) {
                       context.read<ProfileCubit>().toggleDarkMode();
-                      _showSnackBar(
-                        context,
-                        value ? 'Dark Mode Enabled' : 'Light Mode Enabled',
-                      );
                     },
                   ),
-
-                  // Biometric Toggle
                   _buildSwitchTile(
                     icon: Icons.fingerprint,
                     title: 'Biometric Login',
                     value: state.user.biometricEnabled,
                     onChanged: (value) {
                       context.read<ProfileCubit>().toggleBiometric();
-                      _showSnackBar(
-                        context,
-                        value
-                            ? 'Biometric Login Enabled'
-                            : 'Biometric Login Disabled',
-                      );
                     },
                   ),
                 ]),
@@ -345,7 +341,7 @@ class _ProfileContent extends StatelessWidget {
                 ]),
                 const SizedBox(height: 40),
                 _buildLogoutButton(context),
-                const SizedBox(height: 80), // Space for FAB
+                const SizedBox(height: 80),
               ],
             ),
           );
@@ -360,13 +356,17 @@ class _ProfileContent extends StatelessWidget {
   Widget _buildProfileHeader(BuildContext context, ProfileLoaded state) {
     return Column(
       children: [
-        // Profile Picture with subtle border
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDarkMode ? Colors.grey[800] : Colors.white,
             shape: BoxShape.circle,
-            border: Border.all(color: ProfileScreen.fabBorderColor, width: 2),
+            border: Border.all(
+              color: isDarkMode
+                  ? Colors.grey[600]!
+                  : ProfileScreen.fabBorderColor,
+              width: 2,
+            ),
           ),
           child: CircleAvatar(
             radius: 56,
@@ -390,14 +390,14 @@ class _ProfileContent extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 16),
-
-        // Edit Profile Button
         OutlinedButton.icon(
           onPressed: () => _showEditProfileSheet(context, state),
-          icon: const Icon(Icons.edit, size: 18),
-          label: const Text("Edit Profile"),
+          icon: Icon(Icons.edit, size: 18, color: ProfileScreen.accentGreen),
+          label: Text(
+            "Edit Profile",
+            style: TextStyle(color: ProfileScreen.accentGreen),
+          ),
           style: OutlinedButton.styleFrom(
-            foregroundColor: ProfileScreen.accentGreen,
             side: const BorderSide(color: ProfileScreen.accentGreen),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(20),
@@ -455,7 +455,6 @@ class _ProfileContent extends StatelessWidget {
           onChanged: (value) {
             if (value != null) {
               context.read<ProfileCubit>().updateCurrency(value);
-              _showSnackBar(context, 'Currency changed to $value');
             }
           },
           secondary: Container(
@@ -516,7 +515,7 @@ class _ProfileContent extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'RM ${state.user.smallExpensesLimit.toStringAsFixed(0)}',
+              '${state.user.currency} ${state.user.smallExpensesLimit.toStringAsFixed(0)}',
               style: const TextStyle(
                 color: ProfileScreen.accentGreen,
                 fontWeight: FontWeight.bold,
@@ -563,14 +562,18 @@ class _ProfileContent extends StatelessWidget {
                     width: 50,
                     height: 5,
                     decoration: BoxDecoration(
-                      color: Colors.grey[300],
+                      color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
                       borderRadius: BorderRadius.circular(10),
                     ),
                   ),
                   const SizedBox(height: 25),
-                  const Text(
+                  Text(
                     "Small Expenses Limit",
-                    style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isDarkMode ? Colors.white : Colors.black,
+                    ),
                   ),
                   const SizedBox(height: 8),
                   Text(
@@ -588,7 +591,7 @@ class _ProfileContent extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: Text(
-                      'RM ${currentLimit.toStringAsFixed(0)}',
+                      '${state.user.currency} ${currentLimit.toStringAsFixed(0)}',
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -603,7 +606,9 @@ class _ProfileContent extends StatelessWidget {
                     max: 200,
                     divisions: 19,
                     activeColor: ProfileScreen.accentGreen,
-                    inactiveColor: Colors.grey.shade300,
+                    inactiveColor: isDarkMode
+                        ? Colors.grey[700]
+                        : Colors.grey.shade300,
                     onChanged: (value) {
                       setState(() {
                         currentLimit = value;
@@ -617,8 +622,12 @@ class _ProfileContent extends StatelessWidget {
                         child: OutlinedButton(
                           onPressed: () => Navigator.pop(context),
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.grey,
-                            side: const BorderSide(color: Colors.grey),
+                            foregroundColor: isDarkMode
+                                ? Colors.white70
+                                : Colors.grey,
+                            side: BorderSide(
+                              color: isDarkMode ? Colors.white70 : Colors.grey,
+                            ),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(15),
                             ),
@@ -635,10 +644,6 @@ class _ProfileContent extends StatelessWidget {
                                 .read<ProfileCubit>()
                                 .updateSmallExpensesLimit(currentLimit);
                             Navigator.pop(context);
-                            _showSnackBar(
-                              context,
-                              'Small expenses limit updated to RM ${currentLimit.toStringAsFixed(0)}',
-                            );
                           },
                           style: ElevatedButton.styleFrom(
                             backgroundColor: ProfileScreen.accentGreen,
@@ -689,7 +694,7 @@ class _ProfileContent extends StatelessWidget {
                 width: 50,
                 height: 5,
                 decoration: BoxDecoration(
-                  color: Colors.grey[300],
+                  color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
                   borderRadius: BorderRadius.circular(10),
                 ),
               ),
@@ -703,8 +708,6 @@ class _ProfileContent extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 25),
-
-              // Change Picture
               Stack(
                 alignment: Alignment.center,
                 children: [
@@ -717,7 +720,6 @@ class _ProfileContent extends StatelessWidget {
                     right: 0,
                     child: GestureDetector(
                       onTap: () {
-                        // Add image picker logic here
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text('Image picker coming soon!'),
@@ -742,7 +744,6 @@ class _ProfileContent extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 30),
-
               TextField(
                 controller: nameController,
                 style: TextStyle(
@@ -759,11 +760,19 @@ class _ProfileContent extends StatelessWidget {
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: ProfileScreen.fabBorderColor),
+                    borderSide: BorderSide(
+                      color: isDarkMode
+                          ? Colors.grey[700]!
+                          : ProfileScreen.fabBorderColor,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: ProfileScreen.fabBorderColor),
+                    borderSide: BorderSide(
+                      color: isDarkMode
+                          ? Colors.grey[700]!
+                          : ProfileScreen.fabBorderColor,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
@@ -791,11 +800,19 @@ class _ProfileContent extends StatelessWidget {
                   ),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: ProfileScreen.fabBorderColor),
+                    borderSide: BorderSide(
+                      color: isDarkMode
+                          ? Colors.grey[700]!
+                          : ProfileScreen.fabBorderColor,
+                    ),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
-                    borderSide: BorderSide(color: ProfileScreen.fabBorderColor),
+                    borderSide: BorderSide(
+                      color: isDarkMode
+                          ? Colors.grey[700]!
+                          : ProfileScreen.fabBorderColor,
+                    ),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(15),
@@ -806,15 +823,12 @@ class _ProfileContent extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 30),
-
               ElevatedButton(
                 onPressed: () {
                   context.read<ProfileCubit>().updateFullName(
                     nameController.text,
                   );
-                  // Email update might need verification, so we'll just show a message
                   Navigator.pop(context);
-                  _showSnackBar(context, 'Profile updated successfully!');
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: ProfileScreen.accentGreen,
@@ -839,18 +853,6 @@ class _ProfileContent extends StatelessWidget {
     );
   }
 
-  void _showSnackBar(BuildContext context, String message) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(message),
-        backgroundColor: ProfileScreen.accentGreen,
-        duration: const Duration(seconds: 2),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-      ),
-    );
-  }
-
   Widget _buildSection(String title, List<Widget> children) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -869,7 +871,7 @@ class _ProfileContent extends StatelessWidget {
         ),
         Container(
           decoration: BoxDecoration(
-            color: isDarkMode ? Colors.grey[900] : Colors.white,
+            color: isDarkMode ? Colors.grey[850] : Colors.white,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isDarkMode
@@ -925,8 +927,6 @@ class _ProfileContent extends StatelessWidget {
       child: ElevatedButton.icon(
         onPressed: () {
           context.read<ProfileCubit>().logout();
-          // Navigate to login screen or show logout message
-          _showSnackBar(context, 'Logged out successfully');
         },
         icon: const Icon(Icons.logout, size: 20),
         label: const Text("Log Out"),

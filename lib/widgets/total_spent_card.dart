@@ -4,7 +4,9 @@ import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 
 class TotalSpentCard extends StatelessWidget {
-  const TotalSpentCard({super.key});
+  final bool isDarkMode;
+
+  const TotalSpentCard({super.key, this.isDarkMode = false});
 
   @override
   Widget build(BuildContext context) {
@@ -17,7 +19,7 @@ class TotalSpentCard extends StatelessWidget {
           width: double.infinity,
           padding: const EdgeInsets.all(20),
           decoration: BoxDecoration(
-            gradient: LinearGradient(
+            gradient: const LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
@@ -28,7 +30,12 @@ class TotalSpentCard extends StatelessWidget {
             borderRadius: BorderRadius.circular(20),
             boxShadow: [
               BoxShadow(
-                color: Color.fromARGB(255, 24, 143, 0).withOpacity(0.3),
+                color: const Color.fromARGB(
+                  255,
+                  24,
+                  143,
+                  0,
+                ).withOpacity(isDarkMode ? 0.2 : 0.3),
                 blurRadius: 20,
                 offset: const Offset(0, 8),
               ),

@@ -3,7 +3,9 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/expense_cubit.dart';
 
 class CategoryLegend extends StatelessWidget {
-  const CategoryLegend({super.key});
+  final bool isDarkMode;
+
+  const CategoryLegend({super.key, this.isDarkMode = false});
 
   @override
   Widget build(BuildContext context) {
@@ -38,7 +40,10 @@ class CategoryLegend extends StatelessWidget {
             const SizedBox(width: 4),
             Text(
               category,
-              style: const TextStyle(fontSize: 12, color: Colors.grey),
+              style: TextStyle(
+                fontSize: 12,
+                color: isDarkMode ? Colors.white70 : Colors.grey,
+              ),
             ),
           ],
         );

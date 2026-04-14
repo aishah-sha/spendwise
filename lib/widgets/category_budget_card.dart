@@ -4,11 +4,13 @@ import '../models/budget_model.dart';
 class CategoryBudgetCard extends StatelessWidget {
   final BudgetCategory category;
   final double spentAmount;
+  final bool isDarkMode;
 
   const CategoryBudgetCard({
     super.key,
     required this.category,
     required this.spentAmount,
+    this.isDarkMode = false,
   });
 
   static const Color accentGreen = Color(0xFF32BA32);
@@ -42,11 +44,17 @@ class CategoryBudgetCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDarkMode ? Colors.grey[850] : Colors.white,
         borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDarkMode ? Colors.grey[800]! : Colors.grey.shade200,
+          width: 1,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.05),
+            color: isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.grey.withOpacity(0.05),
             blurRadius: 8,
             offset: const Offset(0, 2),
           ),
@@ -62,8 +70,8 @@ class CategoryBudgetCard extends StatelessWidget {
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 colors: [
-                  progressColor.withOpacity(0.2),
-                  progressColor.withOpacity(0.1),
+                  progressColor.withOpacity(isDarkMode ? 0.3 : 0.2),
+                  progressColor.withOpacity(isDarkMode ? 0.15 : 0.1),
                 ],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
@@ -89,10 +97,10 @@ class CategoryBudgetCard extends StatelessWidget {
                     Expanded(
                       child: Text(
                         category.name,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w600,
-                          color: darkText,
+                          color: isDarkMode ? Colors.white : darkText,
                         ),
                         overflow: TextOverflow.ellipsis,
                         maxLines: 1,
@@ -105,7 +113,9 @@ class CategoryBudgetCard extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: progressColor.withOpacity(0.1),
+                        color: progressColor.withOpacity(
+                          isDarkMode ? 0.2 : 0.1,
+                        ),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
@@ -125,16 +135,19 @@ class CategoryBudgetCard extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
+                    Text(
                       'Budget',
-                      style: TextStyle(fontSize: 11, color: Colors.grey),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: isDarkMode ? Colors.white60 : Colors.grey,
+                      ),
                     ),
                     Text(
                       'RM ${budgetAmount.toStringAsFixed(2)}',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.bold,
-                        color: darkText,
+                        color: isDarkMode ? Colors.white : darkText,
                       ),
                     ),
                   ],
@@ -149,7 +162,9 @@ class CategoryBudgetCard extends StatelessWidget {
                       'Spent',
                       style: TextStyle(
                         fontSize: 11,
-                        color: progress >= 1.0 ? Colors.red : Colors.grey,
+                        color: progress >= 1.0
+                            ? Colors.red
+                            : (isDarkMode ? Colors.white60 : Colors.grey),
                       ),
                     ),
                     Text(
@@ -159,7 +174,9 @@ class CategoryBudgetCard extends StatelessWidget {
                         fontWeight: FontWeight.w600,
                         color: progress >= 1.0
                             ? Colors.red
-                            : Colors.grey.shade700,
+                            : (isDarkMode
+                                  ? Colors.white70
+                                  : Colors.grey.shade700),
                       ),
                     ),
                   ],
@@ -174,7 +191,9 @@ class CategoryBudgetCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(6),
                         child: LinearProgressIndicator(
                           value: progress.clamp(0.0, 1.0),
-                          backgroundColor: Colors.grey.shade200,
+                          backgroundColor: isDarkMode
+                              ? Colors.grey[800]
+                              : Colors.grey.shade200,
                           valueColor: AlwaysStoppedAnimation<Color>(
                             progressColor,
                           ),
@@ -189,7 +208,9 @@ class CategoryBudgetCard extends StatelessWidget {
                         vertical: 2,
                       ),
                       decoration: BoxDecoration(
-                        color: progressColor.withOpacity(0.1),
+                        color: progressColor.withOpacity(
+                          isDarkMode ? 0.2 : 0.1,
+                        ),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: Text(
@@ -213,8 +234,12 @@ class CategoryBudgetCard extends StatelessWidget {
                   ),
                   decoration: BoxDecoration(
                     color: remaining >= 0
-                        ? const Color(0xFF2196F3).withOpacity(0.08)
-                        : Colors.red.withOpacity(0.08),
+                        ? (isDarkMode
+                              ? const Color(0xFF2196F3).withOpacity(0.15)
+                              : const Color(0xFF2196F3).withOpacity(0.08))
+                        : (isDarkMode
+                              ? Colors.red.withOpacity(0.15)
+                              : Colors.red.withOpacity(0.08)),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Row(
@@ -271,7 +296,9 @@ class CategoryBudgetCard extends StatelessWidget {
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: Colors.red.withOpacity(0.1),
+                      color: isDarkMode
+                          ? Colors.red.withOpacity(0.2)
+                          : Colors.red.withOpacity(0.1),
                       borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/notification_cubit.dart';
+import '../cubit/profile_cubit.dart';
+import '../cubit/profile_state.dart';
 import '../models/notification_model.dart';
 
 class NotificationScreen extends StatelessWidget {
@@ -10,89 +12,138 @@ class NotificationScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Notifications'),
-        backgroundColor: Colors.white,
-        elevation: 1,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.pop(context),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              context.read<NotificationCubit>().markAllAsRead();
-            },
-            child: const Text(
-              'Mark all as read',
-              style: TextStyle(color: accentGreen),
-            ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.delete_outline),
-            onPressed: () {
-              _showClearAllDialog(context);
-            },
-          ),
-        ],
-      ),
-      body: BlocBuilder<NotificationCubit, NotificationState>(
-        builder: (context, state) {
-          if (state.notifications.isEmpty) {
-            return _buildEmptyState();
-          }
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
+      ],
+      child: BlocBuilder<ProfileCubit, ProfileState>(
+        builder: (context, profileState) {
+          bool isDarkMode = (profileState is ProfileLoaded)
+              ? profileState.user.isDarkMode
+              : false;
 
-          return ListView.builder(
-            padding: const EdgeInsets.all(16),
-            itemCount: state.notifications.length,
-            itemBuilder: (context, index) {
-              final notification = state.notifications[index];
-              return _buildNotificationItem(context, notification, index);
-            },
+          return Theme(
+            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+            child: Scaffold(
+              backgroundColor: isDarkMode ? Colors.black : Colors.white,
+              appBar: _buildAppBar(context, isDarkMode),
+              body: BlocBuilder<NotificationCubit, NotificationState>(
+                builder: (context, state) {
+                  if (state.notifications.isEmpty) {
+                    return _buildEmptyState(isDarkMode);
+                  }
+
+                  return ListView.builder(
+                    padding: const EdgeInsets.all(16),
+                    itemCount: state.notifications.length,
+                    itemBuilder: (context, index) {
+                      final notification = state.notifications[index];
+                      return _buildNotificationItem(
+                        context,
+                        notification,
+                        index,
+                        isDarkMode,
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
           );
         },
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  PreferredSizeWidget _buildAppBar(BuildContext context, bool isDarkMode) {
+    return AppBar(
+      title: Text(
+        'Notifications',
+        style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+      ),
+      backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
+      elevation: 1,
+      leading: IconButton(
+        icon: Icon(
+          Icons.arrow_back,
+          color: isDarkMode ? Colors.white : Colors.black,
+        ),
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            context.read<NotificationCubit>().markAllAsRead();
+          },
+          child: Text('Mark all as read', style: TextStyle(color: accentGreen)),
+        ),
+        IconButton(
+          icon: Icon(
+            Icons.delete_outline,
+            color: isDarkMode ? Colors.white : Colors.black,
+          ),
+          onPressed: () {
+            _showClearAllDialog(context, isDarkMode);
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState(bool isDarkMode) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.notifications_none, size: 80, color: Colors.grey.shade400),
+          Icon(
+            Icons.notifications_none,
+            size: 80,
+            color: isDarkMode ? Colors.white60 : Colors.grey.shade400,
+          ),
           const SizedBox(height: 16),
           Text(
             'No Notifications',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Colors.grey.shade700,
+              color: isDarkMode ? Colors.white70 : Colors.grey.shade700,
             ),
           ),
           const SizedBox(height: 8),
           Text(
             'You\'re all caught up!',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+            style: TextStyle(
+              fontSize: 14,
+              color: isDarkMode ? Colors.white60 : Colors.grey.shade500,
+            ),
           ),
         ],
       ),
     );
   }
 
-  void _showClearAllDialog(BuildContext context) {
+  void _showClearAllDialog(BuildContext context, bool isDarkMode) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Clear All Notifications'),
-        content: const Text(
+        backgroundColor: isDarkMode ? Colors.grey[850] : Colors.white,
+        title: Text(
+          'Clear All Notifications',
+          style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+        ),
+        content: Text(
           'Are you sure you want to clear all notifications? This action cannot be undone.',
+          style: TextStyle(color: isDarkMode ? Colors.white70 : Colors.black87),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: isDarkMode ? Colors.white70 : Colors.grey,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -116,18 +167,32 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
-  void _showDeleteSingleDialog(BuildContext context, String notificationId) {
+  void _showDeleteSingleDialog(
+    BuildContext context,
+    String notificationId,
+    bool isDarkMode,
+  ) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Delete Notification'),
-        content: const Text(
+        backgroundColor: isDarkMode ? Colors.grey[850] : Colors.white,
+        title: Text(
+          'Delete Notification',
+          style: TextStyle(color: isDarkMode ? Colors.white : Colors.black),
+        ),
+        content: Text(
           'Are you sure you want to delete this notification?',
+          style: TextStyle(color: isDarkMode ? Colors.white70 : Colors.black87),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: isDarkMode ? Colors.white70 : Colors.grey,
+              ),
+            ),
           ),
           TextButton(
             onPressed: () {
@@ -156,6 +221,7 @@ class NotificationScreen extends StatelessWidget {
     BuildContext context,
     NotificationModel notification,
     int index,
+    bool isDarkMode,
   ) {
     return Dismissible(
       key: Key(notification.id),
@@ -200,11 +266,15 @@ class NotificationScreen extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 12),
           padding: const EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: notification.isRead ? Colors.white : Colors.green.shade50,
+            color: notification.isRead
+                ? (isDarkMode ? Colors.grey[850] : Colors.white)
+                : (isDarkMode
+                      ? accentGreen.withOpacity(0.15)
+                      : Colors.green.shade50),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: notification.isRead
-                  ? Colors.grey.shade200
+                  ? (isDarkMode ? Colors.grey[700]! : Colors.grey.shade200)
                   : accentGreen.withOpacity(0.3),
             ),
           ),
@@ -241,8 +311,10 @@ class NotificationScreen extends StatelessWidget {
                             ? FontWeight.normal
                             : FontWeight.bold,
                         color: notification.isRead
-                            ? Colors.grey.shade700
-                            : Colors.black,
+                            ? (isDarkMode
+                                  ? Colors.white70
+                                  : Colors.grey.shade700)
+                            : (isDarkMode ? Colors.white : Colors.black),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -250,7 +322,9 @@ class NotificationScreen extends StatelessWidget {
                       notification.message,
                       style: TextStyle(
                         fontSize: 14,
-                        color: Colors.grey.shade600,
+                        color: isDarkMode
+                            ? Colors.white60
+                            : Colors.grey.shade600,
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -258,7 +332,9 @@ class NotificationScreen extends StatelessWidget {
                       _formatTime(notification.timestamp),
                       style: TextStyle(
                         fontSize: 11,
-                        color: Colors.grey.shade500,
+                        color: isDarkMode
+                            ? Colors.white60
+                            : Colors.grey.shade500,
                       ),
                     ),
                   ],
@@ -280,12 +356,12 @@ class NotificationScreen extends StatelessWidget {
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: () {
-                  _showDeleteSingleDialog(context, notification.id);
+                  _showDeleteSingleDialog(context, notification.id, isDarkMode);
                 },
                 child: Container(
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
+                    color: Colors.red.withOpacity(isDarkMode ? 0.2 : 0.1),
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: const Icon(Icons.close, size: 16, color: Colors.red),

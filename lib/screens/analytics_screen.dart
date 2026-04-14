@@ -6,6 +6,8 @@ import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/notification_cubit.dart';
+import '../cubit/profile_cubit.dart';
+import '../cubit/profile_state.dart';
 import '../widgets/total_spent_card.dart';
 import '../widgets/category_legend.dart';
 import '../widgets/notification_badge.dart';
@@ -15,104 +17,140 @@ import 'profile_screen.dart';
 import 'add_expense_screen.dart';
 import 'budget_screen.dart';
 
+const Color accentGreen = Color(0xFF32BA32);
+
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key});
 
   // --- THEME COLORS ---
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
-  static const Color accentGreen = Color(0xFF32BA32);
   static const Color darkText = Color(0xFF000000);
   static const Color fabBorderColor = Color(0xFFD4E5B0);
   static const Color cardBgColor = Colors.white;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: bgColor,
-      body: Column(
-        children: [
-          _buildTopHeader(context),
-          Expanded(
-            child: BlocBuilder<ExpenseCubit, ExpenseState>(
-              builder: (context, state) {
-                return SingleChildScrollView(
-                  padding: const EdgeInsets.all(20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Analytics',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.bold,
-                          color: darkText,
-                          letterSpacing: -0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                      _buildPeriodSelector(context, state),
-                      const SizedBox(height: 20),
-                      const TotalSpentCard(),
-                      const SizedBox(height: 24),
-                      const Text(
-                        'Spending by Category',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: darkText,
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      _buildCategoryCircleChart(context, state),
-                      const SizedBox(height: 24),
-                      _buildSpendingInsightsHeader(context, state),
-                      const SizedBox(height: 12),
-                      _buildEnhancedDailySpendingTrend(context, state),
-                      const SizedBox(height: 16),
-                      const CategoryLegend(),
-                      const SizedBox(height: 20),
-                    ],
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
+      ],
+      child: BlocBuilder<ProfileCubit, ProfileState>(
+        builder: (context, profileState) {
+          bool isDarkMode = (profileState is ProfileLoaded)
+              ? profileState.user.isDarkMode
+              : false;
+
+          return Theme(
+            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+            child: Scaffold(
+              backgroundColor: isDarkMode ? Colors.black : bgColor,
+              body: Column(
+                children: [
+                  _buildTopHeader(context, isDarkMode),
+                  Expanded(
+                    child: BlocBuilder<ExpenseCubit, ExpenseState>(
+                      builder: (context, state) {
+                        return SingleChildScrollView(
+                          padding: const EdgeInsets.all(20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Analytics',
+                                style: TextStyle(
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDarkMode ? Colors.white : darkText,
+                                  letterSpacing: -0.5,
+                                ),
+                              ),
+                              const SizedBox(height: 20),
+                              _buildPeriodSelector(context, state, isDarkMode),
+                              const SizedBox(height: 20),
+                              TotalSpentCard(isDarkMode: isDarkMode),
+                              const SizedBox(height: 24),
+                              Text(
+                                'Spending by Category',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                  color: isDarkMode ? Colors.white : darkText,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              _buildCategoryCircleChart(
+                                context,
+                                state,
+                                isDarkMode,
+                              ),
+                              const SizedBox(height: 24),
+                              _buildSpendingInsightsHeader(
+                                context,
+                                state,
+                                isDarkMode,
+                              ),
+                              const SizedBox(height: 12),
+                              _buildEnhancedDailySpendingTrend(
+                                context,
+                                state,
+                                isDarkMode,
+                              ),
+                              const SizedBox(height: 16),
+                              CategoryLegend(isDarkMode: isDarkMode),
+                              const SizedBox(height: 20),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: Container(
-        margin: const EdgeInsets.only(top: 30),
-        height: 70,
-        width: 70,
-        child: FloatingActionButton(
-          backgroundColor: Colors.white,
-          elevation: 4,
-          shape: const CircleBorder(
-            side: BorderSide(color: fabBorderColor, width: 4),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => BlocProvider(
-                  create: (context) => AddExpenseCubit(),
-                  child: const AddExpenseScreen(),
-                ),
+                ],
               ),
-            );
-          },
-          child: const Icon(Icons.add, color: accentGreen, size: 45),
-        ),
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.centerDocked,
+              floatingActionButton: _buildFab(context, isDarkMode),
+              bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
+            ),
+          );
+        },
       ),
-      bottomNavigationBar: _buildBottomNavigation(context),
     );
   }
 
-  Widget _buildTopHeader(BuildContext context) {
+  Widget _buildFab(BuildContext context, bool isDarkMode) {
+    return Container(
+      margin: const EdgeInsets.only(top: 30),
+      height: 70,
+      width: 70,
+      child: FloatingActionButton(
+        backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
+        elevation: 4,
+        shape: const CircleBorder(
+          side: BorderSide(color: fabBorderColor, width: 4),
+        ),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => BlocProvider(
+                create: (context) => AddExpenseCubit(),
+                child: const AddExpenseScreen(),
+              ),
+            ),
+          );
+        },
+        child: const Icon(Icons.add, color: accentGreen, size: 45),
+      ),
+    );
+  }
+
+  Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
-      decoration: const BoxDecoration(color: headerColor),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[900] : headerColor,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -133,12 +171,12 @@ class AnalyticsScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
+                Text(
                   'SpendWise',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
-                    color: darkText,
+                    color: isDarkMode ? Colors.white : darkText,
                   ),
                 ),
               ],
@@ -146,10 +184,14 @@ class AnalyticsScreen extends StatelessWidget {
           ),
           Row(
             children: [
-              // Notification Badge only (removed refresh button to avoid error)
-              BlocProvider(
-                create: (context) => NotificationCubit(),
-                child: const NotificationBadge(iconSize: 28),
+              IconTheme(
+                data: IconThemeData(
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
+                child: BlocProvider(
+                  create: (context) => NotificationCubit(),
+                  child: const NotificationBadge(iconSize: 28),
+                ),
               ),
             ],
           ),
@@ -158,7 +200,11 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildPeriodSelector(BuildContext context, ExpenseState state) {
+  Widget _buildPeriodSelector(
+    BuildContext context,
+    ExpenseState state,
+    bool isDarkMode,
+  ) {
     final periods = [
       {'label': 'Week', 'icon': Icons.calendar_view_week},
       {'label': 'Month', 'icon': Icons.calendar_view_month},
@@ -173,12 +219,16 @@ class AnalyticsScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDarkMode ? Colors.grey[850] : Colors.white,
             borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: fabBorderColor),
+            border: Border.all(
+              color: isDarkMode ? Colors.grey[700]! : fabBorderColor,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.1),
+                color: isDarkMode
+                    ? Colors.black.withOpacity(0.3)
+                    : Colors.grey.withOpacity(0.1),
                 blurRadius: 8,
                 offset: const Offset(0, 2),
               ),
@@ -207,13 +257,17 @@ class AnalyticsScreen extends StatelessWidget {
                       Icon(
                         period['icon'] as IconData,
                         size: 18,
-                        color: isSelected ? Colors.white : Colors.black54,
+                        color: isSelected
+                            ? Colors.white
+                            : (isDarkMode ? Colors.white70 : Colors.black54),
                       ),
                       const SizedBox(width: 6),
                       Text(
                         periodLabel,
                         style: TextStyle(
-                          color: isSelected ? Colors.white : Colors.black87,
+                          color: isSelected
+                              ? Colors.white
+                              : (isDarkMode ? Colors.white70 : Colors.black87),
                           fontWeight: isSelected
                               ? FontWeight.w600
                               : FontWeight.normal,
@@ -232,9 +286,11 @@ class AnalyticsScreen extends StatelessWidget {
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
           decoration: BoxDecoration(
-            color: cardBgColor,
+            color: isDarkMode ? Colors.grey[850] : cardBgColor,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: fabBorderColor),
+            border: Border.all(
+              color: isDarkMode ? Colors.grey[700]! : fabBorderColor,
+            ),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -245,7 +301,10 @@ class AnalyticsScreen extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     periodInfo['title'] as String,
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+                    ),
                   ),
                 ],
               ),
@@ -302,20 +361,20 @@ class AnalyticsScreen extends StatelessWidget {
   Widget _buildSpendingInsightsHeader(
     BuildContext context,
     ExpenseState state,
+    bool isDarkMode,
   ) {
     final period = state.selectedAnalyticsPeriod;
-    final totalSpent = state.totalSpent;
     final averageSpending = _calculateAverageSpending(state, period);
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
+        Text(
           'Daily Spending Trend',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: darkText,
+            color: isDarkMode ? Colors.white : darkText,
           ),
         ),
         Container(
@@ -392,6 +451,7 @@ class AnalyticsScreen extends StatelessWidget {
   Widget _buildEnhancedDailySpendingTrend(
     BuildContext context,
     ExpenseState state,
+    bool isDarkMode,
   ) {
     final period = state.selectedAnalyticsPeriod;
     final dailySpending = _getDailySpendingData(state, period);
@@ -401,17 +461,25 @@ class AnalyticsScreen extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(40),
         decoration: BoxDecoration(
-          color: cardBgColor,
+          color: isDarkMode ? Colors.grey[850] : cardBgColor,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: fabBorderColor),
+          border: Border.all(
+            color: isDarkMode ? Colors.grey[700]! : fabBorderColor,
+          ),
         ),
         child: Column(
           children: [
-            Icon(Icons.bar_chart, size: 48, color: Colors.grey.shade400),
+            Icon(
+              Icons.bar_chart,
+              size: 48,
+              color: isDarkMode ? Colors.white60 : Colors.grey.shade400,
+            ),
             const SizedBox(height: 12),
             Text(
               'No spending data for this period',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white60 : Colors.grey.shade600,
+              ),
             ),
           ],
         ),
@@ -424,12 +492,16 @@ class AnalyticsScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cardBgColor,
+        color: isDarkMode ? Colors.grey[850] : cardBgColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: fabBorderColor),
+        border: Border.all(
+          color: isDarkMode ? Colors.grey[700]! : fabBorderColor,
+        ),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.05),
+            color: isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.grey.withOpacity(0.05),
             blurRadius: 10,
             offset: const Offset(0, 2),
           ),
@@ -449,18 +521,21 @@ class AnalyticsScreen extends StatelessWidget {
                   label: 'Highest',
                   value: 'RM${maxSpending.toStringAsFixed(2)}',
                   color: Colors.red,
+                  isDarkMode: isDarkMode,
                 ),
                 _buildStatChip(
                   icon: Icons.arrow_downward,
                   label: 'Lowest',
                   value: 'RM${minSpending.toStringAsFixed(2)}',
                   color: Colors.green,
+                  isDarkMode: isDarkMode,
                 ),
                 _buildStatChip(
                   icon: Icons.show_chart,
                   label: 'Days',
                   value: '${sortedDates.length}',
                   color: accentGreen,
+                  isDarkMode: isDarkMode,
                 ),
               ],
             ),
@@ -480,23 +555,23 @@ class AnalyticsScreen extends StatelessWidget {
                     children: [
                       Text(
                         'RM${maxSpending.toStringAsFixed(0)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
-                          color: Colors.grey,
+                          color: isDarkMode ? Colors.white60 : Colors.grey,
                         ),
                       ),
                       Text(
                         'RM${(maxSpending / 2).toStringAsFixed(0)}',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
-                          color: Colors.grey,
+                          color: isDarkMode ? Colors.white60 : Colors.grey,
                         ),
                       ),
                       Text(
                         '0',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 10,
-                          color: Colors.grey,
+                          color: isDarkMode ? Colors.white60 : Colors.grey,
                         ),
                       ),
                     ],
@@ -534,7 +609,9 @@ class AnalyticsScreen extends StatelessWidget {
                                         : FontWeight.normal,
                                     color: isHighest
                                         ? Colors.red
-                                        : Colors.grey.shade600,
+                                        : (isDarkMode
+                                              ? Colors.white60
+                                              : Colors.grey.shade600),
                                   ),
                                 ),
                               ),
@@ -561,9 +638,11 @@ class AnalyticsScreen extends StatelessWidget {
                             // Date label
                             Text(
                               _getDateLabel(date, period),
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 10,
-                                color: Colors.grey,
+                                color: isDarkMode
+                                    ? Colors.white60
+                                    : Colors.grey,
                               ),
                               textAlign: TextAlign.center,
                             ),
@@ -586,11 +665,12 @@ class AnalyticsScreen extends StatelessWidget {
     required String label,
     required String value,
     required Color color,
+    required bool isDarkMode,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withOpacity(isDarkMode ? 0.2 : 0.1),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -599,7 +679,10 @@ class AnalyticsScreen extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             label,
-            style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
+            style: TextStyle(
+              fontSize: 10,
+              color: isDarkMode ? Colors.white60 : Colors.grey.shade600,
+            ),
           ),
           Text(
             value,
@@ -626,7 +709,11 @@ class AnalyticsScreen extends StatelessWidget {
   }
 
   // --- CATEGORY CIRCLE CHART ---
-  Widget _buildCategoryCircleChart(BuildContext context, ExpenseState state) {
+  Widget _buildCategoryCircleChart(
+    BuildContext context,
+    ExpenseState state,
+    bool isDarkMode,
+  ) {
     final categories = state.sortedCategoryTotals;
     final total = state.totalSpent;
 
@@ -634,26 +721,33 @@ class AnalyticsScreen extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(40),
         decoration: BoxDecoration(
-          color: cardBgColor,
+          color: isDarkMode ? Colors.grey[850] : cardBgColor,
           borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: fabBorderColor),
+          border: Border.all(
+            color: isDarkMode ? Colors.grey[700]! : fabBorderColor,
+          ),
         ),
         child: Column(
           children: [
             Icon(
               Icons.pie_chart_outline,
               size: 48,
-              color: Colors.grey.shade400,
+              color: isDarkMode ? Colors.white60 : Colors.grey.shade400,
             ),
             const SizedBox(height: 12),
             Text(
               'No category data available',
-              style: TextStyle(color: Colors.grey.shade600),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white60 : Colors.grey.shade600,
+              ),
             ),
             const SizedBox(height: 8),
             Text(
               'Add expenses to see insights',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              style: TextStyle(
+                fontSize: 12,
+                color: isDarkMode ? Colors.white60 : Colors.grey.shade500,
+              ),
             ),
           ],
         ),
@@ -663,9 +757,11 @@ class AnalyticsScreen extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: cardBgColor,
+        color: isDarkMode ? Colors.grey[850] : cardBgColor,
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: fabBorderColor),
+        border: Border.all(
+          color: isDarkMode ? Colors.grey[700]! : fabBorderColor,
+        ),
       ),
       child: Column(
         children: [
@@ -676,6 +772,7 @@ class AnalyticsScreen extends StatelessWidget {
                 categories: categories,
                 total: total,
                 cubit: context.read<ExpenseCubit>(),
+                isDarkMode: isDarkMode,
               ),
               size: const Size(200, 200),
             ),
@@ -698,10 +795,20 @@ class AnalyticsScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(entry.key)),
+                  Expanded(
+                    child: Text(
+                      entry.key,
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.white : darkText,
+                      ),
+                    ),
+                  ),
                   Text(
                     '${percentage.toStringAsFixed(1)}%',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      color: isDarkMode ? Colors.white : darkText,
+                    ),
                   ),
                   const SizedBox(width: 16),
                   Text(
@@ -720,7 +827,10 @@ class AnalyticsScreen extends StatelessWidget {
               padding: const EdgeInsets.only(top: 8),
               child: Text(
                 '+ ${categories.length - 5} more categories',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDarkMode ? Colors.white60 : Colors.grey.shade500,
+                ),
               ),
             ),
         ],
@@ -729,9 +839,9 @@ class AnalyticsScreen extends StatelessWidget {
   }
 
   // --- BOTTOM NAVIGATION ---
-  Widget _buildBottomNavigation(BuildContext context) {
+  Widget _buildBottomNavigation(BuildContext context, bool isDarkMode) {
     return BottomAppBar(
-      color: headerColor,
+      color: isDarkMode ? Colors.grey[900] : headerColor,
       notchMargin: 8,
       shape: const CircularNotchedRectangle(),
       child: SizedBox(
@@ -740,11 +850,11 @@ class AnalyticsScreen extends StatelessWidget {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             _navItem(
-              context,
               Icons.home_outlined,
               Icons.home,
               'Home',
               false,
+              isDarkMode,
               () {
                 Navigator.pushReplacement(
                   context,
@@ -755,11 +865,11 @@ class AnalyticsScreen extends StatelessWidget {
               },
             ),
             _navItem(
-              context,
               Icons.history_outlined,
               Icons.history,
               'History',
               false,
+              isDarkMode,
               () {
                 Navigator.push(
                   context,
@@ -771,11 +881,11 @@ class AnalyticsScreen extends StatelessWidget {
             ),
             const SizedBox(width: 40),
             _navItem(
-              context,
               Icons.pie_chart_outline,
               Icons.pie_chart,
               'Budget',
               false,
+              isDarkMode,
               () {
                 Navigator.pushReplacement(
                   context,
@@ -784,11 +894,11 @@ class AnalyticsScreen extends StatelessWidget {
               },
             ),
             _navItem(
-              context,
               Icons.person_outline,
               Icons.person,
               'Profile',
               false,
+              isDarkMode,
               () {
                 Navigator.push(
                   context,
@@ -805,11 +915,11 @@ class AnalyticsScreen extends StatelessWidget {
   }
 
   Widget _navItem(
-    BuildContext context,
     IconData icon,
     IconData activeIcon,
     String label,
     bool active,
+    bool isDarkMode,
     VoidCallback onTap,
   ) {
     return GestureDetector(
@@ -820,14 +930,18 @@ class AnalyticsScreen extends StatelessWidget {
         children: [
           Icon(
             active ? activeIcon : icon,
-            color: active ? accentGreen : Colors.black54,
+            color: active
+                ? accentGreen
+                : (isDarkMode ? Colors.white70 : Colors.black54),
             size: 26,
           ),
           Text(
             label,
             style: TextStyle(
               fontSize: 12,
-              color: active ? accentGreen : Colors.black54,
+              color: active
+                  ? accentGreen
+                  : (isDarkMode ? Colors.white70 : Colors.black54),
             ),
           ),
         ],
@@ -859,11 +973,13 @@ class CategoryCirclePainter extends CustomPainter {
   final List<MapEntry<String, double>> categories;
   final double total;
   final ExpenseCubit cubit;
+  final bool isDarkMode;
 
   CategoryCirclePainter({
     required this.categories,
     required this.total,
     required this.cubit,
+    this.isDarkMode = false,
   });
 
   @override
@@ -886,18 +1002,22 @@ class CategoryCirclePainter extends CustomPainter {
       startAngle += sweepAngle;
     }
 
-    canvas.drawCircle(center, radius * 0.6, Paint()..color = Colors.white);
+    canvas.drawCircle(
+      center,
+      radius * 0.6,
+      Paint()..color = isDarkMode ? Colors.grey[850]! : Colors.white,
+    );
 
     final textPainter = TextPainter(
       text: TextSpan(
         text: '${categories.length}',
-        style: const TextStyle(
-          color: Color(0xFF32BA32),
+        style: TextStyle(
+          color: accentGreen,
           fontSize: 24,
           fontWeight: FontWeight.bold,
         ),
       ),
-      textDirection: ui.TextDirection.ltr, // ✅ Fixed with ui prefix
+      textDirection: ui.TextDirection.ltr,
     );
     textPainter.layout();
     textPainter.paint(

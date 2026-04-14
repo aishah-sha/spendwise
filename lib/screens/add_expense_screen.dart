@@ -6,6 +6,7 @@ import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/notification_cubit.dart';
 import '../cubit/profile_cubit.dart';
+import '../cubit/profile_state.dart';
 import '../cubit/receipt_cubit.dart';
 import '../models/receipt_model.dart';
 import '../widgets/notification_badge.dart';
@@ -29,141 +30,171 @@ class AddExpenseScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: bgColor,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: Container(
-        margin: const EdgeInsets.only(top: 30),
-        height: 70,
-        width: 70,
-        child: FloatingActionButton(
-          backgroundColor: Colors.white,
-          elevation: 4,
-          shape: const CircleBorder(
-            side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
-          ),
-          onPressed: () => print('FAB tapped'),
-          child: const Icon(Icons.add, color: accentGreen, size: 45),
-        ),
-      ),
-      bottomNavigationBar: _buildBottomNavigation(
-        context,
-        headerColor,
-        accentGreen,
-      ),
-      body: Column(
-        children: [
-          _buildTopHeader(context),
-          Expanded(
-            child: BlocConsumer<AddExpenseCubit, AddExpenseState>(
-              listener: (context, state) {
-                if (state.errorMessage != null &&
-                    state.errorMessage!.isNotEmpty) {
-                  _showErrorDialog(context, state.errorMessage!);
-                }
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
+      ],
+      child: BlocBuilder<ProfileCubit, ProfileState>(
+        builder: (context, profileState) {
+          bool isDarkMode = (profileState is ProfileLoaded)
+              ? profileState.user.isDarkMode
+              : false;
 
-                if (state.scannedReceipt != null &&
-                    state.scannedReceipt!.amount == 0.0) {
-                  _showManualEntryDialog(context, state.scannedReceipt!);
-                }
+          return Theme(
+            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+            child: Scaffold(
+              backgroundColor: isDarkMode ? Colors.black : bgColor,
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.centerDocked,
+              floatingActionButton: _buildFab(context, isDarkMode),
+              bottomNavigationBar: _buildBottomNavigation(
+                context,
+                isDarkMode,
+                accentGreen,
+              ),
+              body: Column(
+                children: [
+                  _buildTopHeader(context, isDarkMode),
+                  Expanded(
+                    child: BlocConsumer<AddExpenseCubit, AddExpenseState>(
+                      listener: (context, state) {
+                        if (state.errorMessage != null &&
+                            state.errorMessage!.isNotEmpty) {
+                          _showErrorDialog(context, state.errorMessage!);
+                        }
 
-                // Handle successful expense save - auto navigate back
-                if (state.expenseSavedSuccessfully) {
-                  // Clear the saved flag
-                  context.read<AddExpenseCubit>().resetSavedFlag();
+                        if (state.scannedReceipt != null &&
+                            state.scannedReceipt!.amount == 0.0) {
+                          _showManualEntryDialog(
+                            context,
+                            state.scannedReceipt!,
+                          );
+                        }
 
-                  // Show success message
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Expense added successfully!'),
-                      backgroundColor: accentGreen,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
+                        // Handle successful expense save - auto navigate back
+                        if (state.expenseSavedSuccessfully) {
+                          // Clear the saved flag
+                          context.read<AddExpenseCubit>().resetSavedFlag();
 
-                  // Auto navigate back to previous screen
-                  Navigator.pop(context);
-                }
-
-                // Handle successful expense edit
-                if (state.expenseEditedSuccessfully) {
-                  context.read<AddExpenseCubit>().resetEditedFlag();
-
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Expense updated successfully!'),
-                      backgroundColor: accentGreen,
-                      duration: Duration(seconds: 2),
-                    ),
-                  );
-
-                  Navigator.pop(context);
-                }
-
-                // FIX: Pass Cubit to the Edit Screen via BlocProvider.value
-                if (state.expenseToEdit != null) {
-                  final cubit = context.read<AddExpenseCubit>();
-                  WidgetsBinding.instance.addPostFrameCallback((_) {
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => BlocProvider.value(
-                          value: cubit,
-                          child: ManualEntryScreen(
-                            receipt: ReceiptModel(
-                              id: state.expenseToEdit!.id,
-                              date: state.expenseToEdit!.date,
-                              amount: state.expenseToEdit!.amount,
-                              receiptType: 'manual',
-                              merchantName: state.expenseToEdit!.title,
+                          // Show success message
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Expense added successfully!'),
+                              backgroundColor: accentGreen,
+                              duration: Duration(seconds: 2),
                             ),
-                            isEditing: true,
-                            expenseToEdit: state.expenseToEdit,
-                          ),
-                        ),
-                      ),
-                    ).then((_) => cubit.clearScannedReceipt());
-                  });
-                }
-              },
-              builder: (context, state) {
-                return Stack(
-                  children: [
-                    SingleChildScrollView(
-                      padding: const EdgeInsets.all(20.0),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildHeader(context, state),
-                          const SizedBox(height: 20),
-                          _buildOptionsGrid(context),
-                          const SizedBox(height: 30),
-                          _buildRecentUploadsHeader(),
-                          const SizedBox(height: 15),
-                          _buildRecentUploadsList(state, context),
-                          const SizedBox(height: 20),
-                          _buildViewAllButton(context),
-                        ],
-                      ),
+                          );
+
+                          // Auto navigate back to previous screen
+                          Navigator.pop(context);
+                        }
+
+                        // Handle successful expense edit
+                        if (state.expenseEditedSuccessfully) {
+                          context.read<AddExpenseCubit>().resetEditedFlag();
+
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(
+                              content: Text('Expense updated successfully!'),
+                              backgroundColor: accentGreen,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+
+                          Navigator.pop(context);
+                        }
+
+                        // FIX: Pass Cubit to the Edit Screen via BlocProvider.value
+                        if (state.expenseToEdit != null) {
+                          final cubit = context.read<AddExpenseCubit>();
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => BlocProvider.value(
+                                  value: cubit,
+                                  child: ManualEntryScreen(
+                                    receipt: ReceiptModel(
+                                      id: state.expenseToEdit!.id,
+                                      date: state.expenseToEdit!.date,
+                                      amount: state.expenseToEdit!.amount,
+                                      receiptType: 'manual',
+                                      merchantName: state.expenseToEdit!.title,
+                                    ),
+                                    isEditing: true,
+                                    expenseToEdit: state.expenseToEdit,
+                                  ),
+                                ),
+                              ),
+                            ).then((_) => cubit.clearScannedReceipt());
+                          });
+                        }
+                      },
+                      builder: (context, state) {
+                        return Stack(
+                          children: [
+                            SingleChildScrollView(
+                              padding: const EdgeInsets.all(20.0),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  _buildHeader(context, state, isDarkMode),
+                                  const SizedBox(height: 20),
+                                  _buildOptionsGrid(context, isDarkMode),
+                                  const SizedBox(height: 30),
+                                  _buildRecentUploadsHeader(isDarkMode),
+                                  const SizedBox(height: 15),
+                                  _buildRecentUploadsList(
+                                    state,
+                                    context,
+                                    isDarkMode,
+                                  ),
+                                  const SizedBox(height: 20),
+                                  _buildViewAllButton(context, isDarkMode),
+                                ],
+                              ),
+                            ),
+                            if (state.isLoading)
+                              Container(
+                                color: Colors.black.withOpacity(0.3),
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    color: accentGreen,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
                     ),
-                    if (state.isLoading)
-                      Container(
-                        color: Colors.black.withOpacity(0.3),
-                        child: const Center(
-                          child: CircularProgressIndicator(color: accentGreen),
-                        ),
-                      ),
-                  ],
-                );
-              },
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
-  Widget _buildOptionsGrid(BuildContext context) {
+  Widget _buildFab(BuildContext context, bool isDarkMode) {
+    return Container(
+      margin: const EdgeInsets.only(top: 30),
+      height: 70,
+      width: 70,
+      child: FloatingActionButton(
+        backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
+        elevation: 4,
+        shape: const CircleBorder(
+          side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
+        ),
+        onPressed: () => print('FAB tapped'),
+        child: const Icon(Icons.add, color: accentGreen, size: 45),
+      ),
+    );
+  }
+
+  Widget _buildOptionsGrid(BuildContext context, bool isDarkMode) {
     return Column(
       children: [
         _buildOptionCard(
@@ -171,6 +202,7 @@ class AddExpenseScreen extends StatelessWidget {
           title: 'Scan Receipt',
           subtitle: 'Use camera to capture receipt',
           color: Colors.blue,
+          isDarkMode: isDarkMode,
           onTap: () async {
             print("🔴 SCAN RECEIPT TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
@@ -216,6 +248,7 @@ class AddExpenseScreen extends StatelessWidget {
           title: 'Upload Image',
           subtitle: 'Select single image from gallery',
           color: Colors.purple,
+          isDarkMode: isDarkMode,
           onTap: () async {
             print("🟣 UPLOAD IMAGE TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
@@ -255,6 +288,7 @@ class AddExpenseScreen extends StatelessWidget {
           title: 'Upload Multiple',
           subtitle: 'Select multiple receipts at once',
           color: Colors.teal,
+          isDarkMode: isDarkMode,
           onTap: () async {
             print("🟢 MULTIPLE UPLOAD TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
@@ -278,6 +312,7 @@ class AddExpenseScreen extends StatelessWidget {
           title: 'Manual Entry',
           subtitle: 'Enter details manually',
           color: Colors.orange,
+          isDarkMode: isDarkMode,
           onTap: () async {
             final cubit = context.read<AddExpenseCubit>();
             final expenseToEdit = cubit.state.expenseToEdit;
@@ -316,10 +351,12 @@ class AddExpenseScreen extends StatelessWidget {
 
   // --- UI Helper Methods ---
 
-  Widget _buildTopHeader(BuildContext context) {
+  Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
-      decoration: const BoxDecoration(color: headerColor),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[900] : headerColor,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -340,9 +377,13 @@ class AddExpenseScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 10),
-                const Text(
+                Text(
                   'SpendWise',
-                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  style: TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.bold,
+                    color: isDarkMode ? Colors.white : darkText,
+                  ),
                 ),
               ],
             ),
@@ -361,13 +402,22 @@ class AddExpenseScreen extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Icon(Icons.bar_chart, size: 28),
+                child: Icon(
+                  Icons.bar_chart,
+                  size: 28,
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
               ),
               const SizedBox(width: 15),
-              // Notification badge - Updated
-              BlocProvider(
-                create: (context) => NotificationCubit(),
-                child: const NotificationBadge(iconSize: 28),
+              // Notification badge
+              IconTheme(
+                data: IconThemeData(
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
+                child: BlocProvider(
+                  create: (context) => NotificationCubit(),
+                  child: const NotificationBadge(iconSize: 28),
+                ),
               ),
             ],
           ),
@@ -376,16 +426,20 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildHeader(BuildContext context, AddExpenseState state) {
+  Widget _buildHeader(
+    BuildContext context,
+    AddExpenseState state,
+    bool isDarkMode,
+  ) {
     final isEditing = state.expenseToEdit != null;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           isEditing ? 'Edit Expense' : 'Add New Expense',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 20,
-            color: darkText,
+            color: isDarkMode ? Colors.white : darkText,
             fontWeight: FontWeight.bold,
           ),
         ),
@@ -394,7 +448,10 @@ class AddExpenseScreen extends StatelessWidget {
           isEditing
               ? 'Update your expense details'
               : 'Choose how you\'d like to add your expense',
-          style: const TextStyle(fontSize: 16, color: darkText),
+          style: TextStyle(
+            fontSize: 16,
+            color: isDarkMode ? Colors.white70 : darkText,
+          ),
         ),
       ],
     );
@@ -405,6 +462,7 @@ class AddExpenseScreen extends StatelessWidget {
     required String title,
     required String subtitle,
     required Color color,
+    required bool isDarkMode,
     required VoidCallback onTap,
   }) {
     return GestureDetector(
@@ -424,7 +482,7 @@ class AddExpenseScreen extends StatelessWidget {
           borderRadius: BorderRadius.circular(15),
           boxShadow: [
             BoxShadow(
-              color: const Color.fromARGB(255, 255, 255, 255).withOpacity(0.3),
+              color: Colors.white.withOpacity(isDarkMode ? 0.1 : 0.3),
               blurRadius: 20,
               offset: const Offset(0, 10),
             ),
@@ -451,63 +509,73 @@ class AddExpenseScreen extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: Color.fromARGB(255, 255, 255, 255),
+                      color: Colors.white,
                     ),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: const Color.fromARGB(255, 255, 255, 255),
-                    ),
+                    style: const TextStyle(fontSize: 13, color: Colors.white),
                   ),
                 ],
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              size: 16,
-              color: Color.fromARGB(255, 255, 255, 255),
-            ),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.white),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildRecentUploadsHeader() {
-    return const Row(
+  Widget _buildRecentUploadsHeader(bool isDarkMode) {
+    return Row(
       children: [
-        Expanded(child: Divider(color: Colors.black26, thickness: 1)),
+        Expanded(
+          child: Divider(
+            color: isDarkMode ? Colors.white24 : Colors.black26,
+            thickness: 1,
+          ),
+        ),
         Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
             'Recent Uploads',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: darkText,
+              color: isDarkMode ? Colors.white : darkText,
             ),
           ),
         ),
-        Expanded(child: Divider(color: Colors.black26, thickness: 1)),
+        Expanded(
+          child: Divider(
+            color: isDarkMode ? Colors.white24 : Colors.black26,
+            thickness: 1,
+          ),
+        ),
       ],
     );
   }
 
-  Widget _buildRecentUploadsList(AddExpenseState state, BuildContext context) {
+  Widget _buildRecentUploadsList(
+    AddExpenseState state,
+    BuildContext context,
+    bool isDarkMode,
+  ) {
     if (state.recentUploads.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: headerColor,
+          color: isDarkMode ? Colors.grey[850] : headerColor,
           borderRadius: BorderRadius.circular(15),
         ),
-        child: const Center(
+        child: Center(
           child: Text(
             'No recent uploads',
-            style: TextStyle(fontSize: 16, color: Colors.grey),
+            style: TextStyle(
+              fontSize: 16,
+              color: isDarkMode ? Colors.white60 : Colors.grey,
+            ),
           ),
         ),
       );
@@ -537,8 +605,12 @@ class AddExpenseScreen extends StatelessWidget {
             margin: const EdgeInsets.only(bottom: 12),
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: const Color.fromARGB(255, 252, 252, 252),
+              color: isDarkMode ? Colors.grey[850] : Colors.white,
               borderRadius: BorderRadius.circular(15),
+              border: Border.all(
+                color: isDarkMode ? Colors.grey[800]! : Colors.grey.shade200,
+                width: 1,
+              ),
             ),
             child: Row(
               children: [
@@ -556,7 +628,7 @@ class AddExpenseScreen extends StatelessWidget {
                         : null,
                   ),
                   child: receipt.imagePath == null
-                      ? const Icon(Icons.receipt, color: accentGreen, size: 30)
+                      ? Icon(Icons.receipt, color: accentGreen, size: 30)
                       : null,
                 ),
                 const SizedBox(width: 16),
@@ -566,10 +638,10 @@ class AddExpenseScreen extends StatelessWidget {
                     children: [
                       Text(
                         receipt.merchantName ?? 'Unknown Merchant',
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          color: darkText,
+                          color: isDarkMode ? Colors.white : darkText,
                         ),
                       ),
                       const SizedBox(height: 4),
@@ -577,7 +649,9 @@ class AddExpenseScreen extends StatelessWidget {
                         receipt.categorySummary,
                         style: TextStyle(
                           fontSize: 12,
-                          color: darkText.withOpacity(0.6),
+                          color: isDarkMode
+                              ? Colors.white60
+                              : darkText.withOpacity(0.6),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -585,7 +659,9 @@ class AddExpenseScreen extends StatelessWidget {
                         receipt.formattedDate,
                         style: TextStyle(
                           fontSize: 10,
-                          color: darkText.withOpacity(0.4),
+                          color: isDarkMode
+                              ? Colors.white38
+                              : darkText.withOpacity(0.4),
                         ),
                       ),
                     ],
@@ -607,7 +683,9 @@ class AddExpenseScreen extends StatelessWidget {
                         '${receipt.totalItemCount} items',
                         style: TextStyle(
                           fontSize: 10,
-                          color: darkText.withOpacity(0.4),
+                          color: isDarkMode
+                              ? Colors.white38
+                              : darkText.withOpacity(0.4),
                         ),
                       ),
                   ],
@@ -620,11 +698,11 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildViewAllButton(BuildContext context) {
+  Widget _buildViewAllButton(BuildContext context, bool isDarkMode) {
     return Center(
       child: TextButton(
         onPressed: () => context.read<AddExpenseCubit>().viewAll(),
-        child: const Text(
+        child: Text(
           'View All',
           style: TextStyle(
             fontSize: 16,
@@ -639,11 +717,11 @@ class AddExpenseScreen extends StatelessWidget {
   // FIXED Bottom Navigation Bar
   Widget _buildBottomNavigation(
     BuildContext context,
-    Color headerColor,
+    bool isDarkMode,
     Color activeColor,
   ) {
     return BottomAppBar(
-      color: headerColor,
+      color: isDarkMode ? Colors.grey[900] : headerColor,
       notchMargin: 8,
       shape: const CircularNotchedRectangle(),
       child: SizedBox(
@@ -656,6 +734,7 @@ class AddExpenseScreen extends StatelessWidget {
               Icons.home,
               'Home',
               false,
+              isDarkMode,
               activeColor,
               () {
                 // Navigate to Dashboard
@@ -675,6 +754,7 @@ class AddExpenseScreen extends StatelessWidget {
               Icons.history,
               'History',
               false,
+              isDarkMode,
               activeColor,
               () {
                 // Navigate to History Screen
@@ -689,13 +769,13 @@ class AddExpenseScreen extends StatelessWidget {
                 );
               },
             ),
-
             const SizedBox(width: 40), // Gap for the FAB notch
             _navItem(
               Icons.pie_chart_outline,
               Icons.pie_chart,
               'Budget',
               false,
+              isDarkMode,
               activeColor,
               () {
                 // Navigate to Budget Screen
@@ -715,6 +795,7 @@ class AddExpenseScreen extends StatelessWidget {
               Icons.person,
               'Profile',
               false,
+              isDarkMode,
               activeColor,
               () {
                 Navigator.push(
@@ -742,6 +823,7 @@ class AddExpenseScreen extends StatelessWidget {
     IconData activeIcon,
     String label,
     bool active,
+    bool isDarkMode,
     Color activeColor,
     VoidCallback onTap,
   ) {
@@ -753,7 +835,9 @@ class AddExpenseScreen extends StatelessWidget {
         children: [
           Icon(
             active ? activeIcon : icon,
-            color: active ? activeColor : Colors.black54,
+            color: active
+                ? activeColor
+                : (isDarkMode ? Colors.white70 : Colors.black54),
             size: 26,
           ),
           Text(
@@ -761,7 +845,9 @@ class AddExpenseScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-              color: active ? activeColor : Colors.black54,
+              color: active
+                  ? activeColor
+                  : (isDarkMode ? Colors.white70 : Colors.black54),
             ),
           ),
         ],
@@ -790,7 +876,7 @@ void _showMultipleReceiptsDialog(
   BuildContext context,
   List<ReceiptModel> receipts,
 ) {
-  final accentGreen = AddExpenseScreen.accentGreen; // Get the color from class
+  final accentGreen = AddExpenseScreen.accentGreen;
 
   showDialog(
     context: context,
@@ -844,8 +930,7 @@ void _showMultipleReceiptsDialog(
             // Clear multiple receipts
             final cubit = context.read<AddExpenseCubit>();
             if (cubit.state.multipleReceipts.isNotEmpty) {
-              // You need to add this method or use an alternative
-              cubit.clearScannedReceipt(); // Alternative method
+              cubit.clearScannedReceipt();
             }
           },
           child: const Text('Cancel'),

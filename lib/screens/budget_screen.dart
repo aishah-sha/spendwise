@@ -4,6 +4,7 @@ import '../cubit/budget_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 import '../cubit/profile_cubit.dart';
+import '../cubit/profile_state.dart';
 import '../cubit/notification_cubit.dart';
 import '../models/expense_model.dart';
 import '../widgets/notification_badge.dart';
@@ -31,56 +32,73 @@ class BudgetScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: bgColor,
-      body: MultiBlocProvider(
-        providers: [
-          BlocProvider.value(value: context.read<BudgetCubit>()),
-          BlocProvider.value(value: context.read<ExpenseCubit>()),
-          BlocProvider(create: (context) => NotificationCubit()),
-        ],
-        child: const BudgetView(),
-      ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: Container(
-        margin: const EdgeInsets.only(top: 30),
-        height: 70,
-        width: 70,
-        child: FloatingActionButton(
-          backgroundColor: Colors.white,
-          elevation: 4,
-          shape: const CircleBorder(
-            side: BorderSide(color: fabBorderColor, width: 4),
-          ),
-          onPressed: () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => BlocProvider(
-                  create: (context) => AddExpenseCubit(),
-                  child: const AddExpenseScreen(),
-                ),
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: context.read<BudgetCubit>()),
+        BlocProvider.value(value: context.read<ExpenseCubit>()),
+        BlocProvider(create: (context) => NotificationCubit()),
+        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
+      ],
+      child: BlocBuilder<ProfileCubit, ProfileState>(
+        builder: (context, profileState) {
+          bool isDarkMode = (profileState is ProfileLoaded)
+              ? profileState.user.isDarkMode
+              : false;
+
+          return Theme(
+            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+            child: Scaffold(
+              backgroundColor: isDarkMode ? Colors.black : bgColor,
+              body: const BudgetView(),
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.centerDocked,
+              floatingActionButton: _buildFab(context, isDarkMode),
+              bottomNavigationBar: _buildBottomNavigation(
+                context,
+                isDarkMode,
+                accentGreen,
               ),
-            );
-          },
-          child: const Icon(Icons.add, color: accentGreen, size: 45),
-        ),
+            ),
+          );
+        },
       ),
-      bottomNavigationBar: _buildBottomNavigation(
-        context,
-        headerColor,
-        accentGreen,
+    );
+  }
+
+  Widget _buildFab(BuildContext context, bool isDarkMode) {
+    return Container(
+      margin: const EdgeInsets.only(top: 30),
+      height: 70,
+      width: 70,
+      child: FloatingActionButton(
+        backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
+        elevation: 4,
+        shape: const CircleBorder(
+          side: BorderSide(color: fabBorderColor, width: 4),
+        ),
+        onPressed: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => BlocProvider(
+                create: (context) => AddExpenseCubit(),
+                child: const AddExpenseScreen(),
+              ),
+            ),
+          );
+        },
+        child: const Icon(Icons.add, color: accentGreen, size: 45),
       ),
     );
   }
 
   Widget _buildBottomNavigation(
     BuildContext context,
-    Color headerColor,
+    bool isDarkMode,
     Color activeColor,
   ) {
     return BottomAppBar(
-      color: headerColor,
+      color: isDarkMode ? Colors.grey[900] : headerColor,
       notchMargin: 8,
       shape: const CircularNotchedRectangle(),
       child: SizedBox(
@@ -93,6 +111,7 @@ class BudgetScreen extends StatelessWidget {
               Icons.home,
               'Home',
               false,
+              isDarkMode,
               activeColor,
               () {
                 Navigator.pushReplacement(
@@ -111,6 +130,7 @@ class BudgetScreen extends StatelessWidget {
               Icons.history,
               'History',
               false,
+              isDarkMode,
               activeColor,
               () {
                 Navigator.push(
@@ -130,6 +150,7 @@ class BudgetScreen extends StatelessWidget {
               Icons.pie_chart,
               'Budget',
               true,
+              isDarkMode,
               activeColor,
               () {},
             ),
@@ -138,6 +159,7 @@ class BudgetScreen extends StatelessWidget {
               Icons.person,
               'Profile',
               false,
+              isDarkMode,
               activeColor,
               () {
                 Navigator.push(
@@ -165,6 +187,7 @@ class BudgetScreen extends StatelessWidget {
     IconData activeIcon,
     String label,
     bool active,
+    bool isDarkMode,
     Color activeColor,
     VoidCallback onTap,
   ) {
@@ -176,7 +199,9 @@ class BudgetScreen extends StatelessWidget {
         children: [
           Icon(
             active ? activeIcon : icon,
-            color: active ? activeColor : Colors.black54,
+            color: active
+                ? activeColor
+                : (isDarkMode ? Colors.white70 : Colors.black54),
             size: 26,
           ),
           Text(
@@ -184,7 +209,9 @@ class BudgetScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-              color: active ? activeColor : Colors.black54,
+              color: active
+                  ? activeColor
+                  : (isDarkMode ? Colors.white70 : Colors.black54),
             ),
           ),
         ],
@@ -211,6 +238,12 @@ class BudgetView extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
+    // Get dark mode state
+    final profileState = context.watch<ProfileCubit>().state;
+    final bool isDarkMode = (profileState is ProfileLoaded)
+        ? profileState.user.isDarkMode
+        : false;
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BudgetCubit>().loadBudget(forceRefresh: true);
     });
@@ -232,7 +265,9 @@ class BudgetView extends StatelessWidget {
                 const SizedBox(height: 16),
                 Text(
                   'Error: ${budgetState.message}',
-                  style: const TextStyle(color: Colors.grey),
+                  style: TextStyle(
+                    color: isDarkMode ? Colors.white70 : Colors.grey,
+                  ),
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
@@ -289,23 +324,24 @@ class BudgetView extends StatelessWidget {
 
               return Column(
                 children: [
-                  _buildTopHeader(context),
+                  _buildTopHeader(context, isDarkMode),
                   Expanded(
                     child: SingleChildScrollView(
                       padding: const EdgeInsets.all(16.0),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          _buildHeaderRow(context),
+                          _buildHeaderRow(context, isDarkMode),
                           const SizedBox(height: 16),
                           _buildMonthlyBudgetSection(
                             budget,
                             totalSpending,
                             screenWidth,
                             context,
+                            isDarkMode,
                           ),
                           const SizedBox(height: 20),
-                          _buildCategoryHeader(),
+                          _buildCategoryHeader(isDarkMode),
                           const SizedBox(height: 12),
                           ConstrainedBox(
                             constraints: BoxConstraints(
@@ -316,6 +352,7 @@ class BudgetView extends StatelessWidget {
                               budget,
                               categorySpending,
                               context,
+                              isDarkMode,
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -329,7 +366,7 @@ class BudgetView extends StatelessWidget {
           );
         }
 
-        return _buildEmptyState(context);
+        return _buildEmptyState(context, isDarkMode);
       },
     );
   }
@@ -364,7 +401,7 @@ class BudgetView extends StatelessWidget {
     return categoryMap[category] ?? category;
   }
 
-  Widget _buildHeaderRow(BuildContext context) {
+  Widget _buildHeaderRow(BuildContext context, bool isDarkMode) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -372,19 +409,22 @@ class BudgetView extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
+              Text(
                 'Budget',
                 style: TextStyle(
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
-                  color: darkText,
+                  color: isDarkMode ? Colors.white : darkText,
                   letterSpacing: -0.5,
                 ),
               ),
               const SizedBox(height: 4),
               Text(
                 'Manage your spending limits',
-                style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+                style: TextStyle(
+                  fontSize: 13,
+                  color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+                ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -438,9 +478,10 @@ class BudgetView extends StatelessWidget {
     double totalSpending,
     double screenWidth,
     BuildContext context,
+    bool isDarkMode,
   ) {
     if (budget.monthlyLimit <= 0) {
-      return _buildNoBudgetCard(context);
+      return _buildNoBudgetCard(context, isDarkMode);
     }
 
     final double progress = budget.monthlyLimit > 0
@@ -496,7 +537,7 @@ class BudgetView extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.green.withOpacity(0.3),
+            color: Colors.green.withOpacity(isDarkMode ? 0.2 : 0.3),
             blurRadius: 15,
             offset: const Offset(0, 8),
           ),
@@ -639,37 +680,42 @@ class BudgetView extends StatelessWidget {
     );
   }
 
-  Widget _buildCategoryHeader() {
+  Widget _buildCategoryHeader(bool isDarkMode) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
+        Text(
           'Category Budgets',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: darkText,
+            color: isDarkMode ? Colors.white : darkText,
           ),
         ),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDarkMode ? Colors.grey[800] : Colors.white,
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(
+              color: isDarkMode ? Colors.grey[700]! : Colors.grey.shade200,
+            ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'This Month',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 11,
+                  color: isDarkMode ? Colors.white70 : Colors.grey,
+                ),
               ),
               const SizedBox(width: 2),
               Icon(
                 Icons.keyboard_arrow_down,
                 size: 14,
-                color: Colors.grey.shade600,
+                color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
               ),
             ],
           ),
@@ -682,6 +728,7 @@ class BudgetView extends StatelessWidget {
     Budget budget,
     Map<String, double> categorySpending,
     BuildContext context,
+    bool isDarkMode,
   ) {
     final List<BudgetCategory> activeCategories = [];
     for (var category in budget.categories) {
@@ -695,7 +742,7 @@ class BudgetView extends StatelessWidget {
         width: double.infinity,
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDarkMode ? Colors.grey[850] : Colors.white,
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
@@ -704,17 +751,23 @@ class BudgetView extends StatelessWidget {
             Icon(
               Icons.category_outlined,
               size: 40,
-              color: Colors.grey.shade400,
+              color: isDarkMode ? Colors.grey[600] : Colors.grey.shade400,
             ),
             const SizedBox(height: 12),
             Text(
               'No category budgets set',
-              style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+              style: TextStyle(
+                fontSize: 14,
+                color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
               'Tap + to set category budgets',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              style: TextStyle(
+                fontSize: 12,
+                color: isDarkMode ? Colors.grey[500] : Colors.grey.shade500,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 12),
@@ -737,7 +790,7 @@ class BudgetView extends StatelessWidget {
               ),
               style: OutlinedButton.styleFrom(
                 foregroundColor: accentGreen,
-                side: BorderSide(color: accentGreen),
+                side: const BorderSide(color: accentGreen),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -782,22 +835,25 @@ class BudgetView extends StatelessWidget {
               spent: spent,
             ),
             spentAmount: spent,
+            isDarkMode: isDarkMode, // Add this line
           ),
         );
       },
     );
   }
 
-  Widget _buildNoBudgetCard(BuildContext context) {
+  Widget _buildNoBudgetCard(BuildContext context, bool isDarkMode) {
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: isDarkMode ? Colors.grey[850] : Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.grey.withOpacity(0.1),
+            color: isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.grey.withOpacity(0.1),
             blurRadius: 8,
             offset: const Offset(0, 4),
           ),
@@ -809,21 +865,24 @@ class BudgetView extends StatelessWidget {
           Icon(
             Icons.account_balance_wallet_outlined,
             size: 48,
-            color: Colors.grey.shade400,
+            color: isDarkMode ? Colors.grey[600] : Colors.grey.shade400,
           ),
           const SizedBox(height: 12),
-          const Text(
+          Text(
             'No Monthly Budget Set',
             style: TextStyle(
               fontSize: 16,
               fontWeight: FontWeight.bold,
-              color: darkText,
+              color: isDarkMode ? Colors.white : darkText,
             ),
           ),
           const SizedBox(height: 6),
           Text(
             'Tap + to set your monthly budget',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
+            style: TextStyle(
+              fontSize: 13,
+              color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+            ),
             textAlign: TextAlign.center,
           ),
           const SizedBox(height: 12),
@@ -855,27 +914,34 @@ class BudgetView extends StatelessWidget {
     );
   }
 
-  Widget _buildEmptyState(BuildContext context) {
+  Widget _buildEmptyState(BuildContext context, bool isDarkMode) {
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(
+            Icon(
               Icons.account_balance_wallet,
               size: 56,
-              color: Colors.grey,
+              color: isDarkMode ? Colors.grey[600] : Colors.grey,
             ),
             const SizedBox(height: 12),
-            const Text(
+            Text(
               'No Budget Found',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: isDarkMode ? Colors.white : darkText,
+              ),
             ),
             const SizedBox(height: 6),
             Text(
               'Create a budget to get started',
-              style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+              style: TextStyle(
+                color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
+                fontSize: 13,
+              ),
             ),
             const SizedBox(height: 12),
             ElevatedButton.icon(
@@ -913,10 +979,12 @@ class BudgetView extends StatelessWidget {
     );
   }
 
-  Widget _buildTopHeader(BuildContext context) {
+  Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 16, right: 16, bottom: 12),
-      decoration: const BoxDecoration(color: headerColor),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[900] : headerColor,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -937,12 +1005,12 @@ class BudgetView extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 8),
-                const Text(
+                Text(
                   'SpendWise',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: darkText,
+                    color: isDarkMode ? Colors.white : darkText,
                   ),
                 ),
               ],
@@ -962,11 +1030,19 @@ class BudgetView extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Icon(Icons.bar_chart, size: 24),
+                child: Icon(
+                  Icons.bar_chart,
+                  size: 24,
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
               ),
               const SizedBox(width: 12),
-              // Use the reusable notification badge
-              const NotificationBadge(iconSize: 24),
+              IconTheme(
+                data: IconThemeData(
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
+                child: const NotificationBadge(iconSize: 24),
+              ),
             ],
           ),
         ],
