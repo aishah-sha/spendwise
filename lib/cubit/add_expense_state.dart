@@ -1,4 +1,3 @@
-// lib/cubit/add_expense_state.dart
 import 'package:equatable/equatable.dart';
 import '../models/expense_model.dart';
 import '../models/receipt_model.dart';
@@ -9,7 +8,11 @@ class AddExpenseState extends Equatable {
   final String? errorMessage;
   final ReceiptModel? scannedReceipt;
   final String? capturedImagePath;
-  final ExpenseModel? expenseToEdit; // Add this for editing
+  final ExpenseModel? expenseToEdit;
+  final bool expenseSavedSuccessfully;
+  final bool expenseEditedSuccessfully;
+  final List<ReceiptModel> multipleReceipts;
+  final int currentReceiptIndex;
 
   const AddExpenseState({
     required this.recentUploads,
@@ -18,17 +21,24 @@ class AddExpenseState extends Equatable {
     this.scannedReceipt,
     this.capturedImagePath,
     this.expenseToEdit,
+    this.expenseSavedSuccessfully = false,
+    this.expenseEditedSuccessfully = false,
+    this.multipleReceipts = const [],
+    this.currentReceiptIndex = 0,
   });
 
   factory AddExpenseState.initial() {
     return AddExpenseState(
-      recentUploads:
-          [], // Start with empty list - will be populated from user data
+      recentUploads: [],
       isLoading: false,
       errorMessage: null,
       scannedReceipt: null,
       capturedImagePath: null,
       expenseToEdit: null,
+      expenseSavedSuccessfully: false,
+      expenseEditedSuccessfully: false,
+      multipleReceipts: [],
+      currentReceiptIndex: 0,
     );
   }
 
@@ -40,6 +50,10 @@ class AddExpenseState extends Equatable {
     String? capturedImagePath,
     ExpenseModel? expenseToEdit,
     bool clearExpenseToEdit = false,
+    bool? expenseSavedSuccessfully,
+    bool? expenseEditedSuccessfully,
+    List<ReceiptModel>? multipleReceipts,
+    int? currentReceiptIndex,
   }) {
     return AddExpenseState(
       recentUploads: recentUploads ?? this.recentUploads,
@@ -50,21 +64,22 @@ class AddExpenseState extends Equatable {
       expenseToEdit: clearExpenseToEdit
           ? null
           : (expenseToEdit ?? this.expenseToEdit),
+      expenseSavedSuccessfully:
+          expenseSavedSuccessfully ?? this.expenseSavedSuccessfully,
+      expenseEditedSuccessfully:
+          expenseEditedSuccessfully ?? this.expenseEditedSuccessfully,
+      multipleReceipts: multipleReceipts ?? this.multipleReceipts,
+      currentReceiptIndex: currentReceiptIndex ?? this.currentReceiptIndex,
     );
   }
 
   // Helper method to add a receipt to recent uploads
   AddExpenseState addReceipt(ReceiptModel receipt) {
     final updatedList = List<ReceiptModel>.from(recentUploads);
-
-    // Add new receipt at the beginning
     updatedList.insert(0, receipt);
-
-    // Keep only last 20 receipts to avoid memory issues
     if (updatedList.length > 20) {
       updatedList.removeLast();
     }
-
     return copyWith(recentUploads: updatedList);
   }
 
@@ -79,6 +94,29 @@ class AddExpenseState extends Equatable {
     return copyWith(recentUploads: []);
   }
 
+  // Helper method to get next receipt from multiple uploads
+  ReceiptModel? getNextReceipt() {
+    if (currentReceiptIndex + 1 < multipleReceipts.length) {
+      return multipleReceipts[currentReceiptIndex + 1];
+    }
+    return null;
+  }
+
+  // Helper method to advance to next receipt
+  AddExpenseState advanceToNextReceipt() {
+    if (currentReceiptIndex + 1 < multipleReceipts.length) {
+      return copyWith(
+        currentReceiptIndex: currentReceiptIndex + 1,
+        scannedReceipt: multipleReceipts[currentReceiptIndex + 1],
+      );
+    }
+    return copyWith(
+      multipleReceipts: [],
+      currentReceiptIndex: 0,
+      scannedReceipt: null,
+    );
+  }
+
   @override
   List<Object?> get props => [
     recentUploads,
@@ -87,5 +125,9 @@ class AddExpenseState extends Equatable {
     scannedReceipt,
     capturedImagePath,
     expenseToEdit,
+    expenseSavedSuccessfully,
+    expenseEditedSuccessfully,
+    multipleReceipts,
+    currentReceiptIndex,
   ];
 }

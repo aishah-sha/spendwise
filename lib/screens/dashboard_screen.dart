@@ -5,6 +5,8 @@ import 'package:spendwise/cubit/profile_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 import '../cubit/add_expense_cubit.dart';
+import '../cubit/notification_cubit.dart';
+import '../widgets/notification_badge.dart';
 import 'add_expense_screen.dart';
 import 'budget_screen.dart';
 import 'expense_history_screen.dart';
@@ -13,6 +15,7 @@ import 'analytics_screen.dart'; // Add this import
 // Import budget cubit
 import '../cubit/budget_cubit.dart';
 import '../cubit/budget_cubit.dart' as budget_cubit;
+import 'notification_screen.dart';
 import 'profile_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -161,7 +164,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // Header matching the brand bar at the top
   Widget _buildTopHeader(BuildContext context) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
@@ -192,7 +194,7 @@ class DashboardScreen extends StatelessWidget {
           ),
           Row(
             children: [
-              // Chart icon - Clickable - Now navigates to Analytics Screen
+              // Chart icon
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -208,12 +210,10 @@ class DashboardScreen extends StatelessWidget {
                 child: const Icon(Icons.bar_chart, size: 28),
               ),
               const SizedBox(width: 15),
-              // Notifications icon - Clickable
-              GestureDetector(
-                onTap: () {
-                  _showNotificationsDialog(context);
-                },
-                child: const Icon(Icons.notifications, size: 28),
+              // Notification badge - Updated
+              BlocProvider(
+                create: (context) => NotificationCubit(),
+                child: const NotificationBadge(iconSize: 28),
               ),
             ],
           ),
@@ -797,39 +797,6 @@ class DashboardScreen extends StatelessWidget {
             _buildStatRow(
               'Transactions:',
               '${expenseState.allExpenses.length}',
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showNotificationsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Notifications'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.notifications_none, size: 60, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text(
-              'No new notifications',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Check back later for updates',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey),
             ),
           ],
         ),

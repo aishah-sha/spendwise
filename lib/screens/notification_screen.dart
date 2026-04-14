@@ -32,29 +32,7 @@ class NotificationScreen extends StatelessWidget {
           IconButton(
             icon: const Icon(Icons.delete_outline),
             onPressed: () {
-              showDialog(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: const Text('Clear All Notifications'),
-                  content: const Text(
-                    'Are you sure you want to clear all notifications?',
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: const Text('Cancel'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        context.read<NotificationCubit>().clearNotifications();
-                        Navigator.pop(context);
-                      },
-                      style: TextButton.styleFrom(foregroundColor: Colors.red),
-                      child: const Text('Clear'),
-                    ),
-                  ],
-                ),
-              );
+              _showClearAllDialog(context);
             },
           ),
         ],
@@ -62,32 +40,7 @@ class NotificationScreen extends StatelessWidget {
       body: BlocBuilder<NotificationCubit, NotificationState>(
         builder: (context, state) {
           if (state.notifications.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.notifications_none,
-                    size: 80,
-                    color: Colors.grey.shade400,
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No Notifications',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'You\'re all caught up!',
-                    style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
-                  ),
-                ],
-              ),
-            );
+            return _buildEmptyState();
           }
 
           return ListView.builder(
@@ -95,7 +48,7 @@ class NotificationScreen extends StatelessWidget {
             itemCount: state.notifications.length,
             itemBuilder: (context, index) {
               final notification = state.notifications[index];
-              return _buildNotificationItem(context, notification);
+              return _buildNotificationItem(context, notification, index);
             },
           );
         },
@@ -103,9 +56,106 @@ class NotificationScreen extends StatelessWidget {
     );
   }
 
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.notifications_none, size: 80, color: Colors.grey.shade400),
+          const SizedBox(height: 16),
+          Text(
+            'No Notifications',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'You\'re all caught up!',
+            style: TextStyle(fontSize: 14, color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showClearAllDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Notifications'),
+        content: const Text(
+          'Are you sure you want to clear all notifications? This action cannot be undone.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              context.read<NotificationCubit>().clearNotifications();
+              Navigator.pop(context);
+
+              // Show snackbar confirmation
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('All notifications cleared'),
+                  backgroundColor: Colors.red,
+                  duration: Duration(seconds: 2),
+                ),
+              );
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showDeleteSingleDialog(BuildContext context, String notificationId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Notification'),
+        content: const Text(
+          'Are you sure you want to delete this notification?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              context.read<NotificationCubit>().deleteNotification(
+                notificationId,
+              );
+              Navigator.pop(context);
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Notification deleted'),
+                  backgroundColor: Colors.red,
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildNotificationItem(
     BuildContext context,
     NotificationModel notification,
+    int index,
   ) {
     return Dismissible(
       key: Key(notification.id),
@@ -120,11 +170,31 @@ class NotificationScreen extends StatelessWidget {
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       onDismissed: (direction) {
-        context.read<NotificationCubit>().markAsRead(notification.id);
+        // Delete the notification when swiped
+        context.read<NotificationCubit>().deleteNotification(notification.id);
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: const Text('Notification deleted'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 1),
+            action: SnackBarAction(
+              label: 'Undo',
+              textColor: Colors.white,
+              onPressed: () {
+                // Optional: Add undo functionality
+                // context.read<NotificationCubit>().undoDelete();
+              },
+            ),
+          ),
+        );
       },
       child: GestureDetector(
         onTap: () {
-          context.read<NotificationCubit>().markAsRead(notification.id);
+          // Mark as read when tapped (if not already read)
+          if (!notification.isRead) {
+            context.read<NotificationCubit>().markAsRead(notification.id);
+          }
         },
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -205,6 +275,22 @@ class NotificationScreen extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                 ),
+
+              // Delete button (optional - as an alternative to swipe)
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: () {
+                  _showDeleteSingleDialog(context, notification.id);
+                },
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Icon(Icons.close, size: 16, color: Colors.red),
+                ),
+              ),
             ],
           ),
         ),
@@ -216,9 +302,11 @@ class NotificationScreen extends StatelessWidget {
     switch (type) {
       case NotificationType.monthlyBudgetExceeded:
       case NotificationType.categoryBudgetExceeded:
+      case NotificationType.budgetExceeded:
         return Icons.warning_amber_rounded;
       case NotificationType.monthlyBudgetNearLimit:
       case NotificationType.categoryBudgetNearLimit:
+      case NotificationType.budgetNearLimit:
         return Icons.trending_up;
       default:
         return Icons.notifications;
@@ -229,9 +317,11 @@ class NotificationScreen extends StatelessWidget {
     switch (type) {
       case NotificationType.monthlyBudgetExceeded:
       case NotificationType.categoryBudgetExceeded:
+      case NotificationType.budgetExceeded:
         return Colors.red;
       case NotificationType.monthlyBudgetNearLimit:
       case NotificationType.categoryBudgetNearLimit:
+      case NotificationType.budgetNearLimit:
         return Colors.orange;
       default:
         return accentGreen;
@@ -245,11 +335,13 @@ class NotificationScreen extends StatelessWidget {
     if (difference.inMinutes < 1) {
       return 'Just now';
     } else if (difference.inHours < 1) {
-      return '${difference.inMinutes} minutes ago';
+      return '${difference.inMinutes} ${difference.inMinutes == 1 ? 'minute' : 'minutes'} ago';
     } else if (difference.inHours < 24) {
-      return '${difference.inHours} hours ago';
+      return '${difference.inHours} ${difference.inHours == 1 ? 'hour' : 'hours'} ago';
     } else if (difference.inDays == 1) {
       return 'Yesterday';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} days ago';
     } else {
       return '${time.day}/${time.month}/${time.year}';
     }

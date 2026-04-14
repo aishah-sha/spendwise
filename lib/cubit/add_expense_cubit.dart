@@ -1,4 +1,3 @@
-// lib/cubit/add_expense_cubit.dart
 import 'package:bloc/bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'dart:io';
@@ -19,6 +18,10 @@ class AddExpenseState extends Equatable {
   final ReceiptModel? scannedReceipt;
   final File? capturedImage;
   final ExpenseModel? expenseToEdit;
+  final bool expenseSavedSuccessfully;
+  final bool expenseEditedSuccessfully;
+  final List<ReceiptModel> multipleReceipts; // For multiple uploads
+  final int currentReceiptIndex; // Track which receipt is being processed
 
   const AddExpenseState({
     required this.recentUploads,
@@ -27,16 +30,24 @@ class AddExpenseState extends Equatable {
     this.scannedReceipt,
     this.capturedImage,
     this.expenseToEdit,
+    this.expenseSavedSuccessfully = false,
+    this.expenseEditedSuccessfully = false,
+    this.multipleReceipts = const [],
+    this.currentReceiptIndex = 0,
   });
 
   factory AddExpenseState.initial() {
     return AddExpenseState(
-      recentUploads: [], // Start with empty list
+      recentUploads: [],
       isLoading: false,
       errorMessage: null,
       scannedReceipt: null,
       capturedImage: null,
       expenseToEdit: null,
+      expenseSavedSuccessfully: false,
+      expenseEditedSuccessfully: false,
+      multipleReceipts: [],
+      currentReceiptIndex: 0,
     );
   }
 
@@ -48,16 +59,26 @@ class AddExpenseState extends Equatable {
     File? capturedImage,
     ExpenseModel? expenseToEdit,
     bool clearExpenseToEdit = false,
+    bool? expenseSavedSuccessfully,
+    bool? expenseEditedSuccessfully,
+    List<ReceiptModel>? multipleReceipts,
+    int? currentReceiptIndex,
   }) {
     return AddExpenseState(
       recentUploads: recentUploads ?? this.recentUploads,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage,
       scannedReceipt: scannedReceipt,
-      capturedImage: capturedImage,
+      capturedImage: capturedImage ?? this.capturedImage,
       expenseToEdit: clearExpenseToEdit
           ? null
           : (expenseToEdit ?? this.expenseToEdit),
+      expenseSavedSuccessfully:
+          expenseSavedSuccessfully ?? this.expenseSavedSuccessfully,
+      expenseEditedSuccessfully:
+          expenseEditedSuccessfully ?? this.expenseEditedSuccessfully,
+      multipleReceipts: multipleReceipts ?? this.multipleReceipts,
+      currentReceiptIndex: currentReceiptIndex ?? this.currentReceiptIndex,
     );
   }
 
@@ -69,6 +90,10 @@ class AddExpenseState extends Equatable {
     scannedReceipt,
     capturedImage,
     expenseToEdit,
+    expenseSavedSuccessfully,
+    expenseEditedSuccessfully,
+    multipleReceipts,
+    currentReceiptIndex,
   ];
 }
 
@@ -91,11 +116,9 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
   AddExpenseCubit({ExpenseModel? expenseToEdit})
     : super(AddExpenseState.initial()) {
     if (expenseToEdit != null) {
-      // Initialize with expense data for editing
       _initializeWithExpense(expenseToEdit);
       emit(state.copyWith(expenseToEdit: expenseToEdit));
     }
-    // Load saved receipts when cubit is created
     _loadSavedReceipts();
   }
 
@@ -115,7 +138,6 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
       }
     } catch (e) {
       print('Error loading saved receipts: $e');
-      // If there's an error, just keep the empty list
     }
   }
 
@@ -184,112 +206,121 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     );
   }
 
-  // Add receipt to recent uploads (now with persistence)
+  // Reset saved flags
+  void resetSavedFlag() {
+    emit(state.copyWith(expenseSavedSuccessfully: false));
+  }
+
+  void resetEditedFlag() {
+    emit(state.copyWith(expenseEditedSuccessfully: false));
+  }
+
+  // Add receipt to recent uploads
   Future<void> addReceipt(ReceiptModel receipt) async {
     final updatedUploads = List<ReceiptModel>.from(state.recentUploads);
 
-    // Check if receipt already exists (avoid duplicates)
     final existingIndex = updatedUploads.indexWhere((r) => r.id == receipt.id);
     if (existingIndex != -1) {
-      // Replace existing
       updatedUploads[existingIndex] = receipt;
     } else {
-      // Add new at the beginning
       updatedUploads.insert(0, receipt);
     }
 
-    // Keep only the 20 most recent uploads
     if (updatedUploads.length > 20) {
       updatedUploads.removeLast();
     }
 
-    // Save to persistent storage
     await _saveReceiptsToStorage(updatedUploads);
-
     emit(state.copyWith(recentUploads: updatedUploads, isLoading: false));
   }
 
-  // Remove receipt from recent uploads (now with persistence)
+  // Remove receipt from recent uploads
   Future<void> removeReceipt(String receiptId) async {
     final updatedUploads = state.recentUploads
         .where((r) => r.id != receiptId)
         .toList();
 
-    // Save to persistent storage
     await _saveReceiptsToStorage(updatedUploads);
-
     emit(state.copyWith(recentUploads: updatedUploads));
   }
 
-  // Clear all recent uploads (now with persistence)
+  // Clear all recent uploads
   Future<void> clearRecentUploads() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_receiptsStorageKey);
     emit(state.copyWith(recentUploads: []));
   }
 
-  Future<void> scanReceipt() async {
+  void clearMultipleReceipts() {
+    emit(state.copyWith(multipleReceipts: [], currentReceiptIndex: 0));
+  }
+
+  // NEW: Upload multiple images at once
+  Future<void> uploadMultipleImages() async {
     emit(state.copyWith(isLoading: true, errorMessage: null));
 
     try {
-      // Pick image from camera
-      final XFile? image = await _mlKitService.pickImageFromCamera();
+      // Pick multiple images from gallery
+      final List<XFile>? images = await ImagePicker().pickMultiImage();
 
-      if (image == null) {
+      if (images == null || images.isEmpty) {
         emit(
-          state.copyWith(
-            isLoading: false,
-            errorMessage: 'Camera cancelled or no image captured',
-          ),
+          state.copyWith(isLoading: false, errorMessage: 'No images selected'),
         );
         return;
       }
 
-      final File imageFile = File(image.path);
-      emit(state.copyWith(capturedImage: imageFile, isLoading: true));
+      List<ReceiptModel> processedReceipts = [];
 
-      // Process with ML Kit
-      final receiptData = await _mlKitService.processReceiptImage(imageFile);
+      for (XFile image in images) {
+        final File imageFile = File(image.path);
 
-      // Handle items safely
-      List<ReceiptItem> items = [];
-      if (receiptData['items'] != null) {
-        try {
-          items = (receiptData['items'] as List).map((item) {
-            return ReceiptItem(
-              name: item['name']?.toString() ?? '',
-              price: (item['price'] as num?)?.toDouble() ?? 0.0,
-              quantity: (item['quantity'] as num?)?.toInt() ?? 1,
-              category: item['category']?.toString() ?? 'Food',
-            );
-          }).toList();
-        } catch (e) {
-          print('Error parsing items: $e');
+        // Process each image with ML Kit
+        final receiptData = await _mlKitService.processReceiptImage(imageFile);
+
+        List<ReceiptItem> items = [];
+        if (receiptData['items'] != null) {
+          try {
+            items = (receiptData['items'] as List).map((item) {
+              return ReceiptItem(
+                name: item['name']?.toString() ?? '',
+                price: (item['price'] as num?)?.toDouble() ?? 0.0,
+                quantity: (item['quantity'] as num?)?.toInt() ?? 1,
+                category: item['category']?.toString() ?? 'Food',
+              );
+            }).toList();
+          } catch (e) {
+            print('Error parsing items: $e');
+          }
         }
+
+        final scannedReceipt = ReceiptModel(
+          id:
+              DateTime.now().millisecondsSinceEpoch.toString() +
+              '_${processedReceipts.length}',
+          date: DateTime.now(),
+          amount: (receiptData['totalAmount'] as num?)?.toDouble() ?? 0.0,
+          imagePath: image.path,
+          receiptType: 'upload',
+          merchantName:
+              receiptData['merchantName']?.toString() ?? 'Unknown Store',
+          items: items,
+        );
+
+        processedReceipts.add(scannedReceipt);
       }
 
-      // Create receipt model from scanned data using your ReceiptModel
-      final scannedReceipt = ReceiptModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        date: DateTime.now(),
-        amount: (receiptData['totalAmount'] as num?)?.toDouble() ?? 0.0,
-        imagePath: image.path,
-        receiptType: 'scan',
-        merchantName:
-            receiptData['merchantName']?.toString() ?? 'Unknown Store',
-        items: items,
-      );
-
-      // Auto-fill form fields with scanned data
-      title = scannedReceipt.merchantName ?? '';
-      amount = scannedReceipt.amount;
+      // Save all processed receipts to recent uploads
+      for (var receipt in processedReceipts) {
+        await addReceipt(receipt);
+      }
 
       emit(
         state.copyWith(
           isLoading: false,
-          scannedReceipt: scannedReceipt,
-          errorMessage: scannedReceipt.amount == 0.0
-              ? 'Could not detect amount. Please verify and edit.'
+          multipleReceipts: processedReceipts,
+          errorMessage: processedReceipts.length > 0
+              ? 'Successfully processed ${processedReceipts.length} receipts'
               : null,
         ),
       );
@@ -297,17 +328,17 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
       emit(
         state.copyWith(
           isLoading: false,
-          errorMessage: 'Error scanning receipt: $e',
+          errorMessage: 'Error uploading multiple images: $e',
         ),
       );
     }
   }
 
+  // NEW: Upload single image (original method but improved)
   Future<void> uploadImage() async {
     emit(state.copyWith(isLoading: true, errorMessage: null));
 
     try {
-      // Pick image from gallery using the service
       final File? image = await _imagePickerService.pickImageFromGallery();
 
       if (image == null) {
@@ -319,10 +350,8 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
 
       emit(state.copyWith(capturedImage: image, isLoading: true));
 
-      // Process with ML Kit
       final receiptData = await _mlKitService.processReceiptImage(image);
 
-      // Handle items safely
       List<ReceiptItem> items = [];
       if (receiptData['items'] != null) {
         try {
@@ -339,7 +368,6 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         }
       }
 
-      // Create receipt model from processed data using your ReceiptModel
       final scannedReceipt = ReceiptModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         date: DateTime.now(),
@@ -351,7 +379,6 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         items: items,
       );
 
-      // Auto-fill form fields
       title = scannedReceipt.merchantName ?? '';
       amount = scannedReceipt.amount;
 
@@ -369,6 +396,76 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         state.copyWith(
           isLoading: false,
           errorMessage: 'Error uploading image: $e',
+        ),
+      );
+    }
+  }
+
+  Future<void> scanReceipt() async {
+    emit(state.copyWith(isLoading: true, errorMessage: null));
+
+    try {
+      final XFile? image = await _mlKitService.pickImageFromCamera();
+
+      if (image == null) {
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage: 'Camera cancelled or no image captured',
+          ),
+        );
+        return;
+      }
+
+      final File imageFile = File(image.path);
+      emit(state.copyWith(capturedImage: imageFile, isLoading: true));
+
+      final receiptData = await _mlKitService.processReceiptImage(imageFile);
+
+      List<ReceiptItem> items = [];
+      if (receiptData['items'] != null) {
+        try {
+          items = (receiptData['items'] as List).map((item) {
+            return ReceiptItem(
+              name: item['name']?.toString() ?? '',
+              price: (item['price'] as num?)?.toDouble() ?? 0.0,
+              quantity: (item['quantity'] as num?)?.toInt() ?? 1,
+              category: item['category']?.toString() ?? 'Food',
+            );
+          }).toList();
+        } catch (e) {
+          print('Error parsing items: $e');
+        }
+      }
+
+      final scannedReceipt = ReceiptModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        date: DateTime.now(),
+        amount: (receiptData['totalAmount'] as num?)?.toDouble() ?? 0.0,
+        imagePath: image.path,
+        receiptType: 'scan',
+        merchantName:
+            receiptData['merchantName']?.toString() ?? 'Unknown Store',
+        items: items,
+      );
+
+      title = scannedReceipt.merchantName ?? '';
+      amount = scannedReceipt.amount;
+
+      emit(
+        state.copyWith(
+          isLoading: false,
+          scannedReceipt: scannedReceipt,
+          errorMessage: scannedReceipt.amount == 0.0
+              ? 'Could not detect amount. Please verify and edit.'
+              : null,
+        ),
+      );
+    } catch (e) {
+      emit(
+        state.copyWith(
+          isLoading: false,
+          errorMessage: 'Error scanning receipt: $e',
         ),
       );
     }
@@ -418,12 +515,10 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
   }
 
   void viewAll() {
-    // This would navigate to a screen showing all receipts
-    // For now, just emit a state that could be listened to
     emit(state.copyWith(errorMessage: null));
   }
 
-  // Save expense (add or update)
+  // Save expense (add or update) - UPDATED with success flags
   Future<void> saveExpense(ExpenseCubit expenseCubit) async {
     emit(state.copyWith(isLoading: true, errorMessage: null));
 
@@ -467,14 +562,30 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
                 : null),
       );
 
-      // Save to ExpenseCubit (for Dashboard and History)
+      // Save to ExpenseCubit
       if (state.expenseToEdit != null) {
         expenseCubit.updateExpense(expense);
+        // Set success flag for edit
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage: null,
+            expenseEditedSuccessfully: true,
+          ),
+        );
       } else {
         expenseCubit.addExpense(expense);
+        // Set success flag for save
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage: null,
+            expenseSavedSuccessfully: true,
+          ),
+        );
       }
 
-      // Create receipt for recent uploads using your ReceiptModel
+      // Create receipt for recent uploads
       final receipt = ReceiptModel(
         id: expense.id,
         date: expense.date,
@@ -491,13 +602,8 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         ocrStatus: state.scannedReceipt?.ocrStatus,
       );
 
-      // Add to recent uploads (now saves to persistent storage)
       await addReceipt(receipt);
-
-      // Clear editing state
       resetForm();
-
-      emit(state.copyWith(isLoading: false, errorMessage: null));
     } catch (e) {
       emit(
         state.copyWith(

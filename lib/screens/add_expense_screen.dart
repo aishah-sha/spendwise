@@ -4,14 +4,17 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
+import '../cubit/notification_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import '../cubit/receipt_cubit.dart';
 import '../models/receipt_model.dart';
+import '../widgets/notification_badge.dart';
 import 'analytics_screen.dart';
 import 'budget_screen.dart';
 import 'manual_entry_screen.dart';
 import 'expense_history_screen.dart';
 import 'dashboard_screen.dart';
+import 'notification_screen.dart';
 import 'profile_screen.dart';
 import 'receipt_scanner_screen.dart';
 
@@ -64,12 +67,37 @@ class AddExpenseScreen extends StatelessWidget {
                   _showManualEntryDialog(context, state.scannedReceipt!);
                 }
 
-                // FIX: Add this to handle successful uploads
-                if (state.scannedReceipt != null &&
-                    state.scannedReceipt!.amount > 0 &&
-                    !state.isLoading) {
-                  // This will be handled by the onTap callback
-                  // We just need to make sure we don't show duplicate dialogs
+                // Handle successful expense save - auto navigate back
+                if (state.expenseSavedSuccessfully) {
+                  // Clear the saved flag
+                  context.read<AddExpenseCubit>().resetSavedFlag();
+
+                  // Show success message
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Expense added successfully!'),
+                      backgroundColor: accentGreen,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+
+                  // Auto navigate back to previous screen
+                  Navigator.pop(context);
+                }
+
+                // Handle successful expense edit
+                if (state.expenseEditedSuccessfully) {
+                  context.read<AddExpenseCubit>().resetEditedFlag();
+
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Expense updated successfully!'),
+                      backgroundColor: accentGreen,
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+
+                  Navigator.pop(context);
                 }
 
                 // FIX: Pass Cubit to the Edit Screen via BlocProvider.value
@@ -147,7 +175,6 @@ class AddExpenseScreen extends StatelessWidget {
             print("🔴 SCAN RECEIPT TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
 
-            // Navigate to scanner with both cubits
             final scannedReceipt = await Navigator.push<ReceiptModel?>(
               context,
               MaterialPageRoute(
@@ -164,8 +191,7 @@ class AddExpenseScreen extends StatelessWidget {
             print("🔴 Returned from scanner with: $scannedReceipt");
 
             if (scannedReceipt != null) {
-              print("🔴 Navigating to manual entry with receipt");
-              Navigator.push(
+              final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => BlocProvider.value(
@@ -177,6 +203,10 @@ class AddExpenseScreen extends StatelessWidget {
                   ),
                 ),
               );
+
+              if (result == true) {
+                Navigator.pop(context);
+              }
             }
           },
         ),
@@ -184,22 +214,18 @@ class AddExpenseScreen extends StatelessWidget {
         _buildOptionCard(
           icon: Icons.photo_library,
           title: 'Upload Image',
-          subtitle: 'Select from gallery',
+          subtitle: 'Select single image from gallery',
           color: Colors.purple,
           onTap: () async {
             print("🟣 UPLOAD IMAGE TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
 
-            // Call the uploadImage method
             await addExpenseCubit.uploadImage();
 
-            // Check the state after upload
             final state = addExpenseCubit.state;
 
             if (state.scannedReceipt != null) {
-              print("🟣 Upload successful, navigating to manual entry");
-              // Navigate to manual entry with the scanned receipt
-              Navigator.push(
+              final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
                   builder: (context) => BlocProvider.value(
@@ -210,12 +236,38 @@ class AddExpenseScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-              ).then((_) {
-                // Clear the scanned receipt after returning
-                addExpenseCubit.clearScannedReceipt();
-              });
+              );
+
+              addExpenseCubit.clearScannedReceipt();
+
+              if (result == true) {
+                Navigator.pop(context);
+              }
             } else if (state.errorMessage != null) {
-              print("🟣 Upload error: ${state.errorMessage}");
+              _showErrorDialog(context, state.errorMessage!);
+            }
+          },
+        ),
+        const SizedBox(height: 12),
+        // NEW: Multiple Image Upload Option
+        _buildOptionCard(
+          icon: Icons.photo_library_outlined,
+          title: 'Upload Multiple',
+          subtitle: 'Select multiple receipts at once',
+          color: Colors.teal,
+          onTap: () async {
+            print("🟢 MULTIPLE UPLOAD TAPPED");
+            final addExpenseCubit = context.read<AddExpenseCubit>();
+
+            // Call the multiple upload method
+            await addExpenseCubit.uploadMultipleImages();
+
+            final state = addExpenseCubit.state;
+
+            if (state.multipleReceipts.isNotEmpty) {
+              // Show a dialog to indicate multiple receipts were processed
+              _showMultipleReceiptsDialog(context, state.multipleReceipts);
+            } else if (state.errorMessage != null) {
               _showErrorDialog(context, state.errorMessage!);
             }
           },
@@ -226,11 +278,11 @@ class AddExpenseScreen extends StatelessWidget {
           title: 'Manual Entry',
           subtitle: 'Enter details manually',
           color: Colors.orange,
-          onTap: () {
+          onTap: () async {
             final cubit = context.read<AddExpenseCubit>();
             final expenseToEdit = cubit.state.expenseToEdit;
 
-            Navigator.push(
+            final result = await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => BlocProvider.value(
@@ -252,11 +304,16 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               ),
             );
+
+            if (result == true) {
+              Navigator.pop(context);
+            }
           },
         ),
       ],
     );
   }
+
   // --- UI Helper Methods ---
 
   Widget _buildTopHeader(BuildContext context) {
@@ -292,7 +349,6 @@ class AddExpenseScreen extends StatelessWidget {
           ),
           Row(
             children: [
-              // Chart icon - Clickable - Now navigates to Analytics Screen
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -308,12 +364,10 @@ class AddExpenseScreen extends StatelessWidget {
                 child: const Icon(Icons.bar_chart, size: 28),
               ),
               const SizedBox(width: 15),
-              // Notifications icon - Clickable
-              GestureDetector(
-                onTap: () {
-                  _showNotificationsDialog(context);
-                },
-                child: const Icon(Icons.notifications, size: 28),
+              // Notification badge - Updated
+              BlocProvider(
+                create: (context) => NotificationCubit(),
+                child: const NotificationBadge(iconSize: 28),
               ),
             ],
           ),
@@ -462,9 +516,9 @@ class AddExpenseScreen extends StatelessWidget {
     return Column(
       children: state.recentUploads.map((receipt) {
         return GestureDetector(
-          onTap: () {
+          onTap: () async {
             final cubit = context.read<AddExpenseCubit>();
-            Navigator.push(
+            final result = await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => BlocProvider.value(
@@ -473,6 +527,11 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               ),
             );
+
+            // If expense was saved, auto navigate back
+            if (result == true) {
+              Navigator.pop(context);
+            }
           },
           child: Container(
             margin: const EdgeInsets.only(bottom: 12),
@@ -514,7 +573,6 @@ class AddExpenseScreen extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      // Show category summary with item count
                       Text(
                         receipt.categorySummary,
                         style: TextStyle(
@@ -637,7 +695,7 @@ class AddExpenseScreen extends StatelessWidget {
               Icons.pie_chart_outline,
               Icons.pie_chart,
               'Budget',
-              false, // Changed from true to false since we're on Add Expense screen
+              false,
               activeColor,
               () {
                 // Navigate to Budget Screen
@@ -689,7 +747,7 @@ class AddExpenseScreen extends StatelessWidget {
   ) {
     return GestureDetector(
       onTap: onTap,
-      behavior: HitTestBehavior.opaque, // Make entire area tappable
+      behavior: HitTestBehavior.opaque,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -705,39 +763,6 @@ class AddExpenseScreen extends StatelessWidget {
               fontWeight: active ? FontWeight.w600 : FontWeight.normal,
               color: active ? activeColor : Colors.black54,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showNotificationsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Notifications'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.notifications_none, size: 60, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text(
-              'No new notifications',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Check back later for updates',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
           ),
         ],
       ),
@@ -759,6 +784,127 @@ void _showErrorDialog(BuildContext context, String message) {
       ],
     ),
   );
+}
+
+void _showMultipleReceiptsDialog(
+  BuildContext context,
+  List<ReceiptModel> receipts,
+) {
+  final accentGreen = AddExpenseScreen.accentGreen; // Get the color from class
+
+  showDialog(
+    context: context,
+    builder: (dialogContext) => AlertDialog(
+      title: const Text('Multiple Receipts Detected'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Successfully processed ${receipts.length} receipts!',
+            style: const TextStyle(fontSize: 16),
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            'Would you like to:',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          ...receipts.map(
+            (receipt) => Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.receipt, size: 16, color: accentGreen),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      receipt.merchantName ?? 'Unknown Merchant',
+                      style: const TextStyle(fontSize: 14),
+                    ),
+                  ),
+                  Text(
+                    'RM${receipt.amount.toStringAsFixed(2)}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: accentGreen,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(dialogContext);
+            // Clear multiple receipts
+            final cubit = context.read<AddExpenseCubit>();
+            if (cubit.state.multipleReceipts.isNotEmpty) {
+              // You need to add this method or use an alternative
+              cubit.clearScannedReceipt(); // Alternative method
+            }
+          },
+          child: const Text('Cancel'),
+        ),
+        ElevatedButton(
+          onPressed: () async {
+            Navigator.pop(dialogContext);
+            // Process each receipt one by one
+            await _processMultipleReceipts(context, receipts);
+          },
+          style: ElevatedButton.styleFrom(
+            backgroundColor: accentGreen,
+            foregroundColor: Colors.white,
+          ),
+          child: const Text('Process Now'),
+        ),
+      ],
+    ),
+  );
+}
+
+Future<void> _processMultipleReceipts(
+  BuildContext context,
+  List<ReceiptModel> receipts,
+) async {
+  final addExpenseCubit = context.read<AddExpenseCubit>();
+  final accentGreen = AddExpenseScreen.accentGreen;
+
+  for (int i = 0; i < receipts.length; i++) {
+    final receipt = receipts[i];
+
+    // Show progress indicator for multiple receipts
+    if (receipts.length > 1) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Processing receipt ${i + 1} of ${receipts.length}...'),
+          duration: const Duration(seconds: 1),
+          backgroundColor: accentGreen,
+        ),
+      );
+    }
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => BlocProvider.value(
+          value: addExpenseCubit,
+          child: ManualEntryScreen(receipt: receipt, fromAddExpense: true),
+        ),
+      ),
+    );
+
+    if (result == true && i == receipts.length - 1) {
+      // Only pop back to previous screen after last receipt
+      if (context.mounted) {
+        Navigator.pop(context);
+      }
+    }
+  }
 }
 
 void _showManualEntryDialog(BuildContext context, ReceiptModel receipt) {

@@ -9,7 +9,7 @@ import 'cubit/expense_cubit.dart';
 import 'cubit/budget_cubit.dart';
 import 'cubit/profile_cubit.dart'; // Add this import
 import 'cubit/notification_cubit.dart'; // Add this import
-import 'cubit/add_expense_cubit.dart'; // Add this import
+// Add this import
 
 void main() {
   runApp(const MyApp());

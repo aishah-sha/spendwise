@@ -5,16 +5,19 @@ import 'dart:ui' show ImageFilter;
 // Cubits
 import '../cubit/budget_cubit.dart';
 import '../cubit/expense_cubit.dart';
+import '../cubit/notification_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import '../cubit/profile_state.dart';
 import '../cubit/add_expense_cubit.dart';
 
 // Screens
+import '../widgets/notification_badge.dart';
 import 'analytics_screen.dart';
 import 'budget_screen.dart';
 import 'dashboard_screen.dart';
 import 'expense_history_screen.dart';
 import 'add_expense_screen.dart';
+import 'notification_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -61,7 +64,6 @@ class ProfileScreen extends StatelessWidget {
     );
   }
 
-  // --- TOP HEADER: CHART & NOTIFICATIONS ---
   Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
@@ -101,7 +103,6 @@ class ProfileScreen extends StatelessWidget {
           ),
           Row(
             children: [
-              // Chart icon - Navigates to Analytics Screen
               GestureDetector(
                 onTap: () {
                   Navigator.push(
@@ -121,16 +122,10 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 15),
-              // Notifications icon
-              GestureDetector(
-                onTap: () {
-                  _showNotificationsDialog(context);
-                },
-                child: Icon(
-                  Icons.notifications,
-                  size: 28,
-                  color: isDarkMode ? Colors.white : darkText,
-                ),
+              // Notification badge - Updated
+              BlocProvider(
+                create: (context) => NotificationCubit(),
+                child: const NotificationBadge(iconSize: 28),
               ),
             ],
           ),
@@ -261,39 +256,6 @@ class ProfileScreen extends StatelessWidget {
               fontWeight: active ? FontWeight.w600 : FontWeight.normal,
               color: active ? accentGreen : Colors.black54,
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showNotificationsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Notifications'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.notifications_none, size: 60, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text(
-              'No new notifications',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Check back later for updates',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
           ),
         ],
       ),

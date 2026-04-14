@@ -6,6 +6,7 @@ import '../cubit/expense_state.dart';
 import '../cubit/profile_cubit.dart';
 import '../cubit/notification_cubit.dart';
 import '../models/expense_model.dart';
+import '../widgets/notification_badge.dart';
 import 'add_budget_screen.dart';
 import 'add_expense_screen.dart';
 import 'analytics_screen.dart';
@@ -913,115 +914,63 @@ class BudgetView extends StatelessWidget {
   }
 
   Widget _buildTopHeader(BuildContext context) {
-    return BlocBuilder<NotificationCubit, NotificationState>(
-      builder: (context, notificationState) {
-        return Container(
-          padding: const EdgeInsets.only(
-            top: 35,
-            left: 16,
-            right: 16,
-            bottom: 12,
+    return Container(
+      padding: const EdgeInsets.only(top: 35, left: 16, right: 16, bottom: 12),
+      decoration: const BoxDecoration(color: headerColor),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          GestureDetector(
+            onTap: () => Navigator.pop(context),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(5),
+                  decoration: BoxDecoration(
+                    color: accentGreen,
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Icon(
+                    Icons.account_balance_wallet,
+                    color: Colors.white,
+                    size: 14,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text(
+                  'SpendWise',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: darkText,
+                  ),
+                ),
+              ],
+            ),
           ),
-          decoration: const BoxDecoration(color: headerColor),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          Row(
             children: [
               GestureDetector(
-                onTap: () => Navigator.pop(context),
-                child: Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(5),
-                      decoration: BoxDecoration(
-                        color: accentGreen,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Icon(
-                        Icons.account_balance_wallet,
-                        color: Colors.white,
-                        size: 14,
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BlocProvider.value(
+                        value: context.read<ExpenseCubit>(),
+                        child: const AnalyticsScreen(),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'SpendWise',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: darkText,
-                      ),
-                    ),
-                  ],
-                ),
+                  );
+                },
+                child: const Icon(Icons.bar_chart, size: 24),
               ),
-              Row(
-                children: [
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => BlocProvider.value(
-                            value: context.read<ExpenseCubit>(),
-                            child: const AnalyticsScreen(),
-                          ),
-                        ),
-                      );
-                    },
-                    child: const Icon(Icons.bar_chart, size: 24),
-                  ),
-                  const SizedBox(width: 12),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => BlocProvider(
-                            create: (context) => NotificationCubit(),
-                            child: const NotificationScreen(),
-                          ),
-                        ),
-                      );
-                    },
-                    child: Stack(
-                      children: [
-                        const Icon(Icons.notifications, size: 24),
-                        if (notificationState.unreadCount > 0)
-                          Positioned(
-                            right: 0,
-                            top: 0,
-                            child: Container(
-                              padding: const EdgeInsets.all(2),
-                              decoration: const BoxDecoration(
-                                color: Colors.red,
-                                shape: BoxShape.circle,
-                              ),
-                              constraints: const BoxConstraints(
-                                minWidth: 16,
-                                minHeight: 16,
-                              ),
-                              child: Text(
-                                notificationState.unreadCount > 9
-                                    ? '9+'
-                                    : '${notificationState.unreadCount}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+              const SizedBox(width: 12),
+              // Use the reusable notification badge
+              const NotificationBadge(iconSize: 24),
             ],
           ),
-        );
-      },
+        ],
+      ),
     );
   }
 }

@@ -2,13 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
+import '../cubit/notification_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import '../cubit/budget_cubit.dart' as budget_cubit;
+import '../widgets/notification_badge.dart';
 import 'add_expense_screen.dart';
 import '../cubit/add_expense_cubit.dart';
 import 'analytics_screen.dart';
 import 'budget_screen.dart';
 import 'dashboard_screen.dart';
+import 'notification_screen.dart';
 import 'profile_screen.dart';
 
 class ExpenseHistoryScreen extends StatelessWidget {
@@ -314,11 +317,10 @@ class ExpenseHistoryScreen extends StatelessWidget {
                 child: const Icon(Icons.bar_chart, size: 28),
               ),
               const SizedBox(width: 15),
-              GestureDetector(
-                onTap: () {
-                  _showNotificationsDialog(context);
-                },
-                child: const Icon(Icons.notifications, size: 28),
+              // Notification badge - Updated
+              BlocProvider(
+                create: (context) => NotificationCubit(),
+                child: const NotificationBadge(iconSize: 28),
               ),
             ],
           ),
@@ -982,39 +984,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showNotificationsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Notifications'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Icon(Icons.notifications_none, size: 60, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text(
-              'No new notifications',
-              style: TextStyle(fontSize: 16, color: Colors.grey),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Check back later for updates',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 14, color: Colors.grey),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
           ),
         ],
       ),

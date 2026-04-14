@@ -40,9 +40,7 @@ class NotificationCubit extends Cubit<NotificationState> {
         final List<dynamic> decoded = json.decode(saved);
         final notifications =
             decoded.map((item) => NotificationModel.fromJson(item)).toList()
-              ..sort(
-                (a, b) => b.timestamp.compareTo(a.timestamp),
-              ); // Sort by date desc
+              ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
 
         final unreadCount = notifications.where((n) => !n.isRead).length;
 
@@ -108,6 +106,42 @@ class NotificationCubit extends Cubit<NotificationState> {
         .toList();
 
     emit(state.copyWith(notifications: updatedNotifications, unreadCount: 0));
+
+    _saveNotifications();
+  }
+
+  // NEW: Delete a single notification
+  void deleteNotification(String notificationId) {
+    final updatedNotifications = state.notifications
+        .where((n) => n.id != notificationId)
+        .toList();
+
+    final unreadCount = updatedNotifications.where((n) => !n.isRead).length;
+
+    emit(
+      state.copyWith(
+        notifications: updatedNotifications,
+        unreadCount: unreadCount,
+      ),
+    );
+
+    _saveNotifications();
+  }
+
+  // NEW: Delete multiple notifications
+  void deleteMultipleNotifications(List<String> notificationIds) {
+    final updatedNotifications = state.notifications
+        .where((n) => !notificationIds.contains(n.id))
+        .toList();
+
+    final unreadCount = updatedNotifications.where((n) => !n.isRead).length;
+
+    emit(
+      state.copyWith(
+        notifications: updatedNotifications,
+        unreadCount: unreadCount,
+      ),
+    );
 
     _saveNotifications();
   }
