@@ -84,6 +84,11 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     emit(_applyFilters(newState));
   }
 
+  void refreshAnalytics() {
+    // Re-emit current state to trigger rebuild
+    emit(state.copyWith());
+  }
+
   void searchExpenses(String query) {
     final newState = state.copyWith(searchQuery: query);
     emit(_applyFilters(newState));
