@@ -1,8 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/budget_cubit.dart';
-import '../models/budget_model.dart';
-import 'budget_screen.dart';
 
 // Import states with a prefix to avoid naming conflicts
 import '../cubit/budget_cubit.dart' as cubit;

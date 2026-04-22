@@ -9,6 +9,7 @@ import '../models/expense_model.dart';
 import '../services/ml_kit_service.dart';
 import 'expense_cubit.dart';
 import '../services/image_picker_service.dart';
+import '../services/firestore_service.dart'; // Add this import
 
 // State
 class AddExpenseState extends Equatable {
@@ -20,8 +21,8 @@ class AddExpenseState extends Equatable {
   final ExpenseModel? expenseToEdit;
   final bool expenseSavedSuccessfully;
   final bool expenseEditedSuccessfully;
-  final List<ReceiptModel> multipleReceipts; // For multiple uploads
-  final int currentReceiptIndex; // Track which receipt is being processed
+  final List<ReceiptModel> multipleReceipts;
+  final int currentReceiptIndex;
 
   const AddExpenseState({
     required this.recentUploads,
@@ -101,6 +102,7 @@ class AddExpenseState extends Equatable {
 class AddExpenseCubit extends Cubit<AddExpenseState> {
   final MLKitService _mlKitService = MLKitService();
   final ImagePickerService _imagePickerService = ImagePickerService();
+  final FirestoreService _firestoreService = FirestoreService(); // Add this
 
   static const String _receiptsStorageKey = 'recent_receipts';
 
@@ -122,7 +124,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     _loadSavedReceipts();
   }
 
-  // Load receipts from SharedPreferences
+  // Load receipts from SharedPreferences (kept for local backup)
   Future<void> _loadSavedReceipts() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -141,7 +143,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     }
   }
 
-  // Save receipts to SharedPreferences
+  // Save receipts to SharedPreferences (kept for local backup)
   Future<void> _saveReceiptsToStorage(List<ReceiptModel> receipts) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -255,12 +257,11 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     emit(state.copyWith(multipleReceipts: [], currentReceiptIndex: 0));
   }
 
-  // NEW: Upload multiple images at once
+  // Upload multiple images at once
   Future<void> uploadMultipleImages() async {
     emit(state.copyWith(isLoading: true, errorMessage: null));
 
     try {
-      // Pick multiple images from gallery
       final List<XFile>? images = await ImagePicker().pickMultiImage();
 
       if (images == null || images.isEmpty) {
@@ -275,7 +276,6 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
       for (XFile image in images) {
         final File imageFile = File(image.path);
 
-        // Process each image with ML Kit
         final receiptData = await _mlKitService.processReceiptImage(imageFile);
 
         List<ReceiptItem> items = [];
@@ -310,7 +310,6 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         processedReceipts.add(scannedReceipt);
       }
 
-      // Save all processed receipts to recent uploads
       for (var receipt in processedReceipts) {
         await addReceipt(receipt);
       }
@@ -334,7 +333,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     }
   }
 
-  // NEW: Upload single image (original method but improved)
+  // Upload single image
   Future<void> uploadImage() async {
     emit(state.copyWith(isLoading: true, errorMessage: null));
 
@@ -518,7 +517,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     emit(state.copyWith(errorMessage: null));
   }
 
-  // Save expense (add or update) - UPDATED with success flags
+  // Save expense to Firebase
   Future<void> saveExpense(ExpenseCubit expenseCubit) async {
     emit(state.copyWith(isLoading: true, errorMessage: null));
 
@@ -544,28 +543,36 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         return;
       }
 
-      // Create expense model
-      final expense = ExpenseModel(
-        id:
-            state.expenseToEdit?.id ??
-            DateTime.now().millisecondsSinceEpoch.toString(),
-        title: title,
-        category: category,
-        amount: amount,
-        date: date,
-        isIncome: isIncome,
-        note:
-            note ??
-            (state.scannedReceipt?.items != null &&
-                    state.scannedReceipt!.items!.isNotEmpty
-                ? '${state.scannedReceipt!.items!.length} items'
-                : null),
-      );
+      final expenseType = isIncome ? 'income' : 'expense';
 
-      // Save to ExpenseCubit
       if (state.expenseToEdit != null) {
-        expenseCubit.updateExpense(expense);
-        // Set success flag for edit
+        // UPDATE existing expense in Firebase
+        await _firestoreService.updateTransaction(state.expenseToEdit!.id, {
+          'amount': amount,
+          'category': category,
+          'description': title,
+          'type': expenseType,
+          'date': date,
+          'note': note ?? '',
+        });
+
+        // Also update local ExpenseCubit for backward compatibility
+        final updatedExpense = ExpenseModel(
+          id: state.expenseToEdit!.id,
+          title: title,
+          category: category,
+          amount: amount,
+          date: date,
+          isIncome: isIncome,
+          note:
+              note ??
+              (state.scannedReceipt?.items != null &&
+                      state.scannedReceipt!.items!.isNotEmpty
+                  ? '${state.scannedReceipt!.items!.length} items'
+                  : null),
+        );
+        expenseCubit.updateExpense(updatedExpense);
+
         emit(
           state.copyWith(
             isLoading: false,
@@ -574,8 +581,32 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
           ),
         );
       } else {
-        expenseCubit.addExpense(expense);
-        // Set success flag for save
+        // ADD new expense to Firebase
+        await _firestoreService.addTransaction(
+          amount: amount,
+          category: category,
+          type: expenseType,
+          description: title,
+          date: date,
+        );
+
+        // Also update local ExpenseCubit for backward compatibility
+        final newExpense = ExpenseModel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          title: title,
+          category: category,
+          amount: amount,
+          date: date,
+          isIncome: isIncome,
+          note:
+              note ??
+              (state.scannedReceipt?.items != null &&
+                      state.scannedReceipt!.items!.isNotEmpty
+                  ? '${state.scannedReceipt!.items!.length} items'
+                  : null),
+        );
+        expenseCubit.addExpense(newExpense);
+
         emit(
           state.copyWith(
             isLoading: false,
@@ -585,13 +616,15 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         );
       }
 
-      // Create receipt for recent uploads
+      // Create receipt for recent uploads (local storage)
       final receipt = ReceiptModel(
-        id: expense.id,
-        date: expense.date,
-        amount: expense.amount,
+        id:
+            state.expenseToEdit?.id ??
+            DateTime.now().millisecondsSinceEpoch.toString(),
+        date: date,
+        amount: amount,
         receiptType: state.scannedReceipt?.receiptType ?? 'manual',
-        merchantName: expense.title,
+        merchantName: title,
         items: state.scannedReceipt?.items ?? [],
         imagePath: state.capturedImage?.path ?? state.scannedReceipt?.imagePath,
         tax: state.scannedReceipt?.tax,

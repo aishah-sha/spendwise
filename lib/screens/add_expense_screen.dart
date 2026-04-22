@@ -1,7 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:intl/intl.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/notification_cubit.dart';
@@ -15,7 +14,6 @@ import 'budget_screen.dart';
 import 'manual_entry_screen.dart';
 import 'expense_history_screen.dart';
 import 'dashboard_screen.dart';
-import 'notification_screen.dart';
 import 'profile_screen.dart';
 import 'receipt_scanner_screen.dart';
 

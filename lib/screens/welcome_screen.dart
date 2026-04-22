@@ -22,18 +22,24 @@ class WelcomeView extends StatelessWidget {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
         if (state is AuthSuccess) {
-          // Show success message or navigate
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(state.message),
               backgroundColor: Colors.green,
             ),
           );
+          // Navigate to dashboard or login screen based on your flow
+          // Navigator.pushReplacementNamed(context, '/dashboard');
         } else if (state is AuthFailure) {
-          // Show error message
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(state.error), backgroundColor: Colors.red),
           );
+        } else if (state is Authenticated) {
+          // User is already logged in, go to dashboard
+          Navigator.pushReplacementNamed(context, '/dashboard');
+        } else if (state is Unauthenticated) {
+          // User needs to login/signup, navigate to login screen
+          // Navigator.pushReplacementNamed(context, '/login');
         }
       },
       child: BlocBuilder<AuthCubit, AuthState>(
@@ -184,12 +190,14 @@ class WelcomeView extends StatelessWidget {
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
+                              // Gmail button - Show dialog to enter credentials
                               _buildSocialIcon(context, 'assets/gmail.png', () {
                                 if (state is! AuthLoading) {
                                   context.read<AuthCubit>().signInWithGmail();
                                 }
                               }),
                               const SizedBox(width: 40),
+                              // Google button
                               _buildSocialIcon(
                                 context,
                                 'assets/google.png',
@@ -202,6 +210,7 @@ class WelcomeView extends StatelessWidget {
                                 },
                               ),
                               const SizedBox(width: 40),
+                              // Facebook button
                               _buildSocialIcon(
                                 context,
                                 'assets/facebook.png',
@@ -262,6 +271,95 @@ class WelcomeView extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Image.asset(assetPath, height: 35),
+    );
+  }
+
+  // Show dialog for email login
+  void _showEmailLoginDialog(BuildContext context) {
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    bool isLogin = true; // Toggle between login and signup
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: Text(isLogin ? 'Sign In with Email' : 'Create Account'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: emailController,
+                  decoration: const InputDecoration(
+                    labelText: 'Email',
+                    prefixIcon: Icon(Icons.email),
+                    border: OutlineInputBorder(),
+                  ),
+                  keyboardType: TextInputType.emailAddress,
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: passwordController,
+                  decoration: const InputDecoration(
+                    labelText: 'Password',
+                    prefixIcon: Icon(Icons.lock),
+                    border: OutlineInputBorder(),
+                  ),
+                  obscureText: true,
+                ),
+                // ignore: dead_code
+                if (!isLogin) ...[
+                  const SizedBox(height: 12),
+                  TextField(
+                    decoration: const InputDecoration(
+                      labelText: 'Name',
+                      prefixIcon: Icon(Icons.person),
+                      border: OutlineInputBorder(),
+                    ),
+                    onChanged: (value) {
+                      // Store name for signup
+                    },
+                  ),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                },
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final email = emailController.text.trim();
+                  final password = passwordController.text.trim();
+
+                  if (email.isEmpty || password.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter email and password'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
+                  Navigator.pop(dialogContext);
+
+                  await context.read<AuthCubit>().signInWithEmail(
+                    email,
+                    password,
+                  );
+                },
+                child: Text(isLogin ? 'Sign In' : 'Sign Up'),
+              ),
+            ],
+            actionsPadding: const EdgeInsets.all(16),
+          );
+        },
+      ),
     );
   }
 }
