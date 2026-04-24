@@ -22,8 +22,8 @@ class OnboardingView extends StatelessWidget {
     return BlocListener<OnboardingCubit, OnboardingState>(
       listener: (context, state) {
         if (state is OnboardingNavigation) {
-          // Navigate to next screen when navigation state is emitted
-          Navigator.pushReplacementNamed(context, state.nextRoute);
+          // Navigate to welcome screen when onboarding completes
+          Navigator.pushReplacementNamed(context, '/welcome');
         }
       },
       child: BlocBuilder<OnboardingCubit, OnboardingState>(

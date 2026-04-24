@@ -86,6 +86,9 @@ class ReceiptModel {
     this.items,
   });
 
+  // Helper method to check if receipt has an image
+  bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
+
   // Helper method to get formatted date
   String get formattedDate {
     final now = DateTime.now();
@@ -122,7 +125,7 @@ class ReceiptModel {
     return calculatedSubtotal * 0.075; // 7.5% tax rate
   }
 
-  // NEW: Get all unique categories in this receipt
+  // Get all unique categories in this receipt
   Set<String> get categories {
     if (items == null || items!.isEmpty) {
       return {category ?? 'Uncategorized'};
@@ -130,7 +133,7 @@ class ReceiptModel {
     return items!.map((item) => item.category ?? 'Uncategorized').toSet();
   }
 
-  // NEW: Get category summary string (e.g., "2 items • Food, Beverage")
+  // Get category summary string (e.g., "2 items • Food, Beverage")
   String get categorySummary {
     if (items == null || items!.isEmpty) {
       return category ?? 'Uncategorized';
@@ -156,7 +159,7 @@ class ReceiptModel {
     }
   }
 
-  // NEW: Get breakdown of amounts by category
+  // Get breakdown of amounts by category
   Map<String, double> get categoryBreakdown {
     if (items == null || items!.isEmpty) {
       return {category ?? 'Uncategorized': amount};
@@ -170,7 +173,7 @@ class ReceiptModel {
     return breakdown;
   }
 
-  // NEW: Get primary category (the one with highest total amount)
+  // Get primary category (the one with highest total amount)
   String get primaryCategory {
     if (items == null || items!.isEmpty) {
       return category ?? 'Uncategorized';
@@ -182,7 +185,7 @@ class ReceiptModel {
     return breakdown.entries.reduce((a, b) => a.value > b.value ? a : b).key;
   }
 
-  // NEW: Get total item count
+  // Get total item count
   int get totalItemCount {
     if (items == null) return 0;
     return items!.fold(0, (sum, item) => sum + item.quantity);
@@ -227,6 +230,7 @@ class ReceiptModel {
       'currency': currency,
       'ocrStatus': ocrStatus,
       'items': items?.map((item) => item.toJson()).toList(),
+      'hasImage': hasImage, // Add hasImage to JSON
     };
   }
 
@@ -287,7 +291,7 @@ class ReceiptItem {
       price: price,
       category: category ?? 'Others',
       quantity: quantity,
-      unitPrice: price, // Add unitPrice here
+      unitPrice: price,
     );
   }
 

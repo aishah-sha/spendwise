@@ -12,6 +12,7 @@ import 'add_expense_screen.dart';
 import 'budget_screen.dart';
 import 'expense_history_screen.dart';
 import 'analytics_screen.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Import budget cubit
 import '../cubit/budget_cubit.dart';
@@ -40,121 +41,112 @@ class DashboardScreen extends StatelessWidget {
               ? profileState.user.isDarkMode
               : false;
 
-          return Theme(
-            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-            child: Scaffold(
-              backgroundColor: isDarkMode ? Colors.black : bgColor,
-              floatingActionButtonLocation:
-                  FloatingActionButtonLocation.centerDocked,
-              floatingActionButton: _buildFab(context, isDarkMode),
-              bottomNavigationBar: _buildBottomNavigation(
-                context,
-                isDarkMode,
-                accentGreen,
-              ),
-              body: Column(
-                children: [
-                  _buildTopHeader(context, isDarkMode),
-                  Expanded(
-                    child: Stack(
-                      children: [
-                        // Background Image Layer - Always visible with different opacity
-                        Positioned(
-                          top: -80,
-                          right: -40,
-                          child: Opacity(
-                            opacity: isDarkMode
-                                ? 0.15
-                                : 0.5, // Lower opacity in dark mode for subtle effect
-                            child: Image.asset('assets/FYP2.png', width: 400),
-                          ),
+          // REMOVED the Theme widget wrapper
+          return Scaffold(
+            backgroundColor: isDarkMode ? Colors.black : bgColor,
+            floatingActionButtonLocation:
+                FloatingActionButtonLocation.centerDocked,
+            floatingActionButton: _buildFab(context, isDarkMode),
+            bottomNavigationBar: _buildBottomNavigation(
+              context,
+              isDarkMode,
+              accentGreen,
+            ),
+            body: Column(
+              children: [
+                _buildTopHeader(context, isDarkMode),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      // Background Image Layer
+                      Positioned(
+                        top: -80,
+                        right: -40,
+                        child: Opacity(
+                          opacity: isDarkMode ? 0.15 : 0.5,
+                          child: Image.asset('assets/FYP2.png', width: 400),
                         ),
-                        // Foreground Content Layer - Listen to both cubits
-                        MultiBlocListener(
-                          listeners: [
-                            BlocListener<BudgetCubit, budget_cubit.BudgetState>(
-                              listener: (context, budgetState) {
-                                // When budget changes, refresh expense cubit if needed
-                                if (budgetState is budget_cubit.BudgetLoaded) {
-                                  context.read<ExpenseCubit>().updateBudget(
-                                    budgetState.budget.monthlyLimit,
-                                  );
-                                }
-                              },
-                            ),
-                          ],
-                          child: BlocBuilder<ExpenseCubit, ExpenseState>(
-                            builder: (context, expenseState) {
-                              return BlocBuilder<
-                                BudgetCubit,
-                                budget_cubit.BudgetState
-                              >(
-                                builder: (context, budgetState) {
-                                  // Get budget data
-                                  double monthlyBudget = expenseState.budget;
-                                  double totalSpent =
-                                      expenseState.totalSpending;
-
-                                  // If budget is loaded, use that data
-                                  if (budgetState
-                                      is budget_cubit.BudgetLoaded) {
-                                    monthlyBudget =
-                                        budgetState.budget.monthlyLimit;
-                                  }
-
-                                  return SingleChildScrollView(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 20.0,
-                                      vertical: 10,
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        _buildWelcomeSection(
-                                          expenseState,
-                                          isDarkMode,
-                                        ),
-                                        const SizedBox(height: 20),
-                                        _buildTotalBalanceCard(
-                                          expenseState,
-                                          context,
-                                          isDarkMode,
-                                        ),
-                                        const SizedBox(height: 20),
-                                        _buildStatsRow(
-                                          expenseState,
-                                          context,
-                                          monthlyBudget,
-                                          totalSpent,
-                                          isDarkMode,
-                                        ),
-                                        const SizedBox(height: 20),
-                                        _buildBudgetProgress(
-                                          expenseState,
-                                          monthlyBudget,
-                                          totalSpent,
-                                          isDarkMode,
-                                        ),
-                                        const SizedBox(height: 25),
-                                        _buildRecentExpensesSection(
-                                          expenseState,
-                                          context,
-                                          isDarkMode,
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              );
+                      ),
+                      // Foreground Content
+                      MultiBlocListener(
+                        listeners: [
+                          BlocListener<BudgetCubit, budget_cubit.BudgetState>(
+                            listener: (context, budgetState) {
+                              if (budgetState is budget_cubit.BudgetLoaded) {
+                                context.read<ExpenseCubit>().updateBudget(
+                                  budgetState.budget.monthlyLimit,
+                                );
+                              }
                             },
                           ),
+                        ],
+                        child: BlocBuilder<ExpenseCubit, ExpenseState>(
+                          builder: (context, expenseState) {
+                            return BlocBuilder<
+                              BudgetCubit,
+                              budget_cubit.BudgetState
+                            >(
+                              builder: (context, budgetState) {
+                                double monthlyBudget = expenseState.budget;
+                                double totalSpent = expenseState.totalSpending;
+
+                                if (budgetState is budget_cubit.BudgetLoaded) {
+                                  monthlyBudget =
+                                      budgetState.budget.monthlyLimit;
+                                }
+
+                                return SingleChildScrollView(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20.0,
+                                    vertical: 10,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildWelcomeSection(
+                                        expenseState,
+                                        isDarkMode,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      _buildTotalBalanceCard(
+                                        expenseState,
+                                        context,
+                                        isDarkMode,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      _buildStatsRow(
+                                        expenseState,
+                                        context,
+                                        monthlyBudget,
+                                        totalSpent,
+                                        isDarkMode,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      _buildBudgetProgress(
+                                        expenseState,
+                                        monthlyBudget,
+                                        totalSpent,
+                                        isDarkMode,
+                                      ),
+                                      const SizedBox(height: 25),
+                                      _buildRecentExpensesSection(
+                                        expenseState,
+                                        context,
+                                        isDarkMode,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          },
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         },
@@ -261,11 +253,17 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildWelcomeSection(ExpenseState state, bool isDarkMode) {
+    String userName = 'User';
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      userName = user.displayName ?? user.email?.split('@').first ?? 'User';
+    }
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Welcome, ${state.userName}!',
+          'Welcome, $userName!',
           style: TextStyle(
             fontSize: 25,
             fontWeight: FontWeight.bold,
