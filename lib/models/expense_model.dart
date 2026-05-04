@@ -18,6 +18,33 @@ class ExpenseModel {
     this.note,
   });
 
+  // Convert to Supabase transaction format
+  Map<String, dynamic> toTransactionJson() {
+    return {
+      'id': id,
+      'amount': amount,
+      'category': category,
+      'type': isIncome ? 'income' : 'expense',
+      'description': title,
+      'title': title,
+      'note': note,
+      'date': date.toIso8601String(),
+    };
+  }
+
+  // Create from Supabase transaction response
+  factory ExpenseModel.fromTransactionJson(Map<String, dynamic> json) {
+    return ExpenseModel(
+      id: json['id'] as String,
+      title: json['title'] as String? ?? json['description'] as String? ?? '',
+      category: json['category'] as String,
+      amount: (json['amount'] as num).toDouble(),
+      date: DateTime.parse(json['date'] as String),
+      isIncome: (json['type'] as String) == 'income',
+      note: json['note'] as String?,
+    );
+  }
+
   factory ExpenseModel.fromJson(Map<String, dynamic> json) {
     return ExpenseModel(
       id: json['id'],

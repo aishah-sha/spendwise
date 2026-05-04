@@ -8,6 +8,7 @@ import '../cubit/notification_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import '../cubit/profile_state.dart';
 import '../cubit/add_expense_cubit.dart';
+import '../cubit/auth_cubit.dart';
 
 // Screens
 import '../widgets/notification_badge.dart';
@@ -17,6 +18,7 @@ import 'dashboard_screen.dart';
 import 'expense_history_screen.dart';
 import 'add_expense_screen.dart';
 import 'notification_screen.dart';
+import 'welcome_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
   const ProfileScreen({Key? key}) : super(key: key);
@@ -29,31 +31,48 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => ProfileCubit()..loadProfile(),
-      child: BlocBuilder<ProfileCubit, ProfileState>(
-        builder: (context, state) {
-          bool isDarkMode = (state is ProfileLoaded)
-              ? state.user.isDarkMode
-              : false;
-
-          return Theme(
-            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-            child: Scaffold(
-              backgroundColor: isDarkMode ? Colors.black : bgColor,
-              floatingActionButtonLocation:
-                  FloatingActionButtonLocation.centerDocked,
-              floatingActionButton: _buildFab(context, isDarkMode),
-              bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
-              body: Column(
-                children: [
-                  _buildTopHeader(context, isDarkMode),
-                  Expanded(child: _ProfileContent(isDarkMode: isDarkMode)),
-                ],
-              ),
-            ),
-          );
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
+        BlocProvider.value(value: context.read<AuthCubit>()),
+      ],
+      child: BlocListener<AuthCubit, AuthState>(
+        listener: (context, state) {
+          if (state is Unauthenticated) {
+            // Navigate to welcome screen when logged out
+            Navigator.of(context).pushAndRemoveUntil(
+              MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+              (route) => false,
+            );
+          }
         },
+        child: BlocBuilder<ProfileCubit, ProfileState>(
+          builder: (context, state) {
+            bool isDarkMode = (state is ProfileLoaded)
+                ? state.user.isDarkMode
+                : false;
+
+            return Theme(
+              data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+              child: Scaffold(
+                backgroundColor: isDarkMode ? Colors.black : bgColor,
+                floatingActionButtonLocation:
+                    FloatingActionButtonLocation.centerDocked,
+                floatingActionButton: _buildFab(context, isDarkMode),
+                bottomNavigationBar: _buildBottomNavigation(
+                  context,
+                  isDarkMode,
+                ),
+                body: Column(
+                  children: [
+                    _buildTopHeader(context, isDarkMode),
+                    Expanded(child: _ProfileContent(isDarkMode: isDarkMode)),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
@@ -116,7 +135,6 @@ class ProfileScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 15),
-              // Wrap NotificationBadge with IconTheme to control color
               IconTheme(
                 data: IconThemeData(
                   color: isDarkMode ? Colors.white : darkText,
@@ -207,7 +225,7 @@ class ProfileScreen extends StatelessWidget {
                 );
               },
             ),
-            const SizedBox(width: 40), // Gap for FAB
+            const SizedBox(width: 40),
             _navItem(
               Icons.pie_chart_outline,
               Icons.pie_chart,
@@ -287,7 +305,23 @@ class _ProfileContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<ProfileCubit, ProfileState>(
+    return BlocConsumer<ProfileCubit, ProfileState>(
+      listener: (context, state) {
+        if (state is ProfileError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.message), backgroundColor: Colors.red),
+          );
+        }
+
+        if (state is ProfileUpdateSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: ProfileScreen.accentGreen,
+            ),
+          );
+        }
+      },
       builder: (context, state) {
         if (state is ProfileLoaded) {
           return SingleChildScrollView(
@@ -926,7 +960,7 @@ class _ProfileContent extends StatelessWidget {
       height: 50,
       child: ElevatedButton.icon(
         onPressed: () {
-          context.read<ProfileCubit>().logout();
+          _showLogoutConfirmationDialog(context);
         },
         icon: const Icon(Icons.logout, size: 20),
         label: const Text("Log Out"),
@@ -938,6 +972,56 @@ class _ProfileContent extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  void _showLogoutConfirmationDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: const Text('Log Out'),
+          content: const Text('Are you sure you want to log out?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Navigator.of(context).pop(); // Close dialog
+
+                // Show loading indicator
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Logging out...'),
+                    duration: Duration(milliseconds: 500),
+                  ),
+                );
+
+                // Call sign out and wait for it to complete
+                await context.read<AuthCubit>().signOut();
+
+                // Clear local profile data
+                context.read<ProfileCubit>().clearLocalProfileData();
+
+                // Force navigation to welcome screen
+                if (context.mounted) {
+                  // Navigate to welcome screen and remove all previous routes
+                  Navigator.of(context).pushAndRemoveUntil(
+                    MaterialPageRoute(
+                      builder: (context) => const WelcomeScreen(),
+                    ),
+                    (route) => false,
+                  );
+                }
+              },
+              style: TextButton.styleFrom(foregroundColor: Colors.redAccent),
+              child: const Text('Log Out'),
+            ),
+          ],
+        );
+      },
     );
   }
 }

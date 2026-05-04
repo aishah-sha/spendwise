@@ -5,7 +5,7 @@ class BudgetCategory {
   final double amount;
   final double spent;
   final String iconPath;
-  final Color? color; // Optional color for UI
+  final Color? color;
 
   const BudgetCategory({
     required this.name,
@@ -15,7 +15,6 @@ class BudgetCategory {
     this.color,
   });
 
-  // Computed properties
   double get remaining => amount - spent;
   double get spentPercentage => amount > 0 ? (spent / amount) * 100 : 0;
   double get remainingPercentage => amount > 0 ? (remaining / amount) * 100 : 0;
@@ -23,11 +22,10 @@ class BudgetCategory {
   bool get isNearLimit => spentPercentage >= 80 && spentPercentage < 100;
   bool get isExactBudget => spent == amount;
 
-  String get formattedAmount => '\$${amount.toStringAsFixed(2)}';
-  String get formattedSpent => '\$${spent.toStringAsFixed(2)}';
-  String get formattedRemaining => '\$${remaining.toStringAsFixed(2)}';
+  String get formattedAmount => 'RM${amount.toStringAsFixed(2)}';
+  String get formattedSpent => 'RM${spent.toStringAsFixed(2)}';
+  String get formattedRemaining => 'RM${remaining.toStringAsFixed(2)}';
 
-  // Validation
   bool get isValid => amount >= 0 && spent >= 0 && name.isNotEmpty;
 
   BudgetCategory copyWith({
@@ -46,26 +44,26 @@ class BudgetCategory {
     );
   }
 
-  // Factory method to create from JSON
-  factory BudgetCategory.fromJson(Map<String, dynamic> json) {
-    return BudgetCategory(
-      name: json['name'] as String,
-      amount: (json['amount'] as num).toDouble(),
-      spent: (json['spent'] as num?)?.toDouble() ?? 0.0,
-      iconPath: json['iconPath'] as String? ?? '',
-      color: json['color'] != null ? Color(json['color'] as int) : null,
-    );
-  }
-
-  // Convert to JSON
+  // Convert to JSON for Supabase storage
   Map<String, dynamic> toJson() {
     return {
       'name': name,
       'amount': amount,
       'spent': spent,
-      'iconPath': iconPath,
+      'icon_path': iconPath,
       if (color != null) 'color': color!.value,
     };
+  }
+
+  // Create from Supabase JSON
+  factory BudgetCategory.fromJson(Map<String, dynamic> json) {
+    return BudgetCategory(
+      name: json['name'] as String,
+      amount: (json['amount'] as num).toDouble(),
+      spent: (json['spent'] as num?)?.toDouble() ?? 0.0,
+      iconPath: json['icon_path'] as String? ?? '',
+      color: json['color'] != null ? Color(json['color'] as int) : null,
+    );
   }
 
   @override
@@ -101,10 +99,9 @@ class Budget {
     required this.categories,
     this.createdAt,
     this.updatedAt,
-    this.currency = 'USD',
+    this.currency = 'RM',
   });
 
-  // Computed properties
   double get remainingBudget => monthlyLimit - totalSpent;
   double get spentPercentage =>
       monthlyLimit > 0 ? (totalSpent / monthlyLimit) * 100 : 0;
@@ -126,7 +123,6 @@ class Budget {
   String get formattedRemaining =>
       '$currency${remainingBudget.toStringAsFixed(2)}';
 
-  // Summary statistics
   Map<String, double> get categorySpendingBreakdown {
     final breakdown = <String, double>{};
     for (final category in categories) {
@@ -147,20 +143,15 @@ class Budget {
     return breakdown;
   }
 
-  // Validation
   bool get isValid {
     if (monthlyLimit <= 0) return false;
     if (totalSpent < 0) return false;
-
-    // Check if any category is invalid
     for (final category in categories) {
       if (!category.isValid) return false;
     }
-
     return true;
   }
 
-  // Get category by name
   BudgetCategory? getCategory(String name) {
     try {
       return categories.firstWhere((c) => c.name == name);
@@ -169,12 +160,10 @@ class Budget {
     }
   }
 
-  // Check if category exists
   bool hasCategory(String name) {
     return categories.any((c) => c.name == name);
   }
 
-  // Update category spent amount
   Budget updateCategorySpent(String categoryName, double newSpent) {
     final updatedCategories = categories.map((category) {
       if (category.name == categoryName) {
@@ -195,7 +184,6 @@ class Budget {
     );
   }
 
-  // Update category budget amount
   Budget updateCategoryAmount(String categoryName, double newAmount) {
     final updatedCategories = categories.map((category) {
       if (category.name == categoryName) {
@@ -207,13 +195,11 @@ class Budget {
     return copyWith(categories: updatedCategories, updatedAt: DateTime.now());
   }
 
-  // Add new category
   Budget addCategory(BudgetCategory category) {
     final newCategories = List<BudgetCategory>.from(categories)..add(category);
     return copyWith(categories: newCategories, updatedAt: DateTime.now());
   }
 
-  // Remove category
   Budget removeCategory(String categoryName) {
     final newCategories = categories
         .where((c) => c.name != categoryName)
@@ -230,34 +216,34 @@ class Budget {
     );
   }
 
-  // Factory method to create from JSON
+  // Convert to JSON for Supabase storage
+  Map<String, dynamic> toJson() {
+    return {
+      'monthly_limit': monthlyLimit,
+      'total_spent': totalSpent,
+      'categories': categories.map((c) => c.toJson()).toList(),
+      if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
+      if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
+      'currency': currency,
+    };
+  }
+
+  // Create from Supabase JSON
   factory Budget.fromJson(Map<String, dynamic> json) {
     return Budget(
-      monthlyLimit: (json['monthlyLimit'] as num).toDouble(),
-      totalSpent: (json['totalSpent'] as num).toDouble(),
+      monthlyLimit: (json['monthly_limit'] as num).toDouble(),
+      totalSpent: (json['total_spent'] as num).toDouble(),
       categories: (json['categories'] as List)
           .map((c) => BudgetCategory.fromJson(c as Map<String, dynamic>))
           .toList(),
-      createdAt: json['createdAt'] != null
-          ? DateTime.parse(json['createdAt'] as String)
+      createdAt: json['created_at'] != null
+          ? DateTime.parse(json['created_at'] as String)
           : null,
-      updatedAt: json['updatedAt'] != null
-          ? DateTime.parse(json['updatedAt'] as String)
+      updatedAt: json['updated_at'] != null
+          ? DateTime.parse(json['updated_at'] as String)
           : null,
-      currency: json['currency'] as String? ?? 'USD',
+      currency: json['currency'] as String? ?? 'RM',
     );
-  }
-
-  // Convert to JSON
-  Map<String, dynamic> toJson() {
-    return {
-      'monthlyLimit': monthlyLimit,
-      'totalSpent': totalSpent,
-      'categories': categories.map((c) => c.toJson()).toList(),
-      if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
-      if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
-      'currency': currency,
-    };
   }
 
   Budget copyWith({
@@ -307,7 +293,6 @@ class Budget {
   }
 }
 
-// Helper function for list equality
 bool listEquals<T>(List<T>? a, List<T>? b) {
   if (a == null) return b == null;
   if (b == null || a.length != b.length) return false;

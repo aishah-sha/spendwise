@@ -1,6 +1,5 @@
 import 'package:flutter/foundation.dart';
 
-// Keep the original ReceiptItem class for backward compatibility with your parser
 class ReceiptItemOld {
   final String name;
   final double price;
@@ -16,7 +15,6 @@ class ReceiptItemOld {
     this.unitPrice,
   });
 
-  // Convert to new ReceiptItem
   ReceiptItem toNewReceiptItem() {
     return ReceiptItem(
       name: name,
@@ -40,7 +38,6 @@ class ReceiptData {
     required this.items,
   });
 
-  // Convert to new ReceiptModel
   ReceiptModel toReceiptModel({String? id}) {
     return ReceiptModel(
       id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
@@ -63,7 +60,7 @@ class ReceiptModel {
   final double? subtotal;
   final double? serviceCharge;
   final String? imagePath;
-  final String? receiptType; // 'scan', 'upload', or 'manual'
+  final String? receiptType;
   final String? merchantName;
   final String? category;
   final String? currency;
@@ -86,10 +83,8 @@ class ReceiptModel {
     this.items,
   });
 
-  // Helper method to check if receipt has an image
   bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
 
-  // Helper method to get formatted date
   String get formattedDate {
     final now = DateTime.now();
     final difference = now.difference(date);
@@ -111,21 +106,17 @@ class ReceiptModel {
     return '$hour:$minute';
   }
 
-  // Calculate subtotal from items if not provided
   double get calculatedSubtotal {
     if (subtotal != null) return subtotal!;
     if (items == null) return amount;
-
     return items!.fold(0.0, (sum, item) => sum + (item.price * item.quantity));
   }
 
-  // Calculate tax if not provided (assuming 7.5% as in the image)
   double get calculatedTax {
     if (tax != null) return tax!;
-    return calculatedSubtotal * 0.075; // 7.5% tax rate
+    return calculatedSubtotal * 0.075;
   }
 
-  // Get all unique categories in this receipt
   Set<String> get categories {
     if (items == null || items!.isEmpty) {
       return {category ?? 'Uncategorized'};
@@ -133,7 +124,6 @@ class ReceiptModel {
     return items!.map((item) => item.category ?? 'Uncategorized').toSet();
   }
 
-  // Get category summary string (e.g., "2 items • Food, Beverage")
   String get categorySummary {
     if (items == null || items!.isEmpty) {
       return category ?? 'Uncategorized';
@@ -145,11 +135,9 @@ class ReceiptModel {
       categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
     }
 
-    // Sort categories by item count (descending)
     final sortedCategories = categoryCounts.entries.toList()
       ..sort((a, b) => b.value.compareTo(a.value));
 
-    // Build summary
     if (sortedCategories.length == 1) {
       return '${sortedCategories.first.value} ${sortedCategories.first.key}';
     } else {
@@ -159,7 +147,6 @@ class ReceiptModel {
     }
   }
 
-  // Get breakdown of amounts by category
   Map<String, double> get categoryBreakdown {
     if (items == null || items!.isEmpty) {
       return {category ?? 'Uncategorized': amount};
@@ -173,7 +160,6 @@ class ReceiptModel {
     return breakdown;
   }
 
-  // Get primary category (the one with highest total amount)
   String get primaryCategory {
     if (items == null || items!.isEmpty) {
       return category ?? 'Uncategorized';
@@ -185,13 +171,11 @@ class ReceiptModel {
     return breakdown.entries.reduce((a, b) => a.value > b.value ? a : b).key;
   }
 
-  // Get total item count
   int get totalItemCount {
     if (items == null) return 0;
     return items!.fold(0, (sum, item) => sum + item.quantity);
   }
 
-  // Convert to ReceiptData (for backward compatibility with your parser)
   ReceiptData toReceiptData() {
     return ReceiptData(
       merchant: merchantName ?? 'Unknown Store',
@@ -200,7 +184,6 @@ class ReceiptModel {
     );
   }
 
-  // Factory method to create from ReceiptData (from parser)
   factory ReceiptModel.fromReceiptData(ReceiptData data, {String? id}) {
     return ReceiptModel(
       id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
@@ -214,7 +197,48 @@ class ReceiptModel {
     );
   }
 
-  // Convert to JSON for storage
+  // Convert to Supabase receipt format
+  Map<String, dynamic> toDatabaseJson() {
+    return {
+      'id': id,
+      'receipt_type': receiptType,
+      'merchant_name': merchantName,
+      'amount': amount,
+      'date': date.toIso8601String(),
+      'image_path': imagePath,
+      'items': items?.map((item) => item.toJson()).toList() ?? [],
+      'tax': tax,
+      'subtotal': subtotal,
+      'service_charge': serviceCharge,
+      'category': category,
+      'currency': currency ?? 'RM',
+      'ocr_status': ocrStatus,
+    };
+  }
+
+  // Create from Supabase receipt response
+  factory ReceiptModel.fromDatabaseJson(Map<String, dynamic> json) {
+    return ReceiptModel(
+      id: json['id'] as String,
+      date: DateTime.parse(json['date'] as String),
+      amount: (json['amount'] as num).toDouble(),
+      tax: (json['tax'] as num?)?.toDouble(),
+      subtotal: (json['subtotal'] as num?)?.toDouble(),
+      serviceCharge: (json['service_charge'] as num?)?.toDouble(),
+      imagePath: json['image_path'] as String?,
+      receiptType: json['receipt_type'] as String?,
+      merchantName: json['merchant_name'] as String?,
+      category: json['category'] as String?,
+      currency: json['currency'] as String?,
+      ocrStatus: json['ocr_status'] as String?,
+      items: json['items'] != null
+          ? (json['items'] as List)
+                .map((item) => ReceiptItem.fromJson(item))
+                .toList()
+          : null,
+    );
+  }
+
   Map<String, dynamic> toJson() {
     return {
       'id': id,
@@ -226,15 +250,14 @@ class ReceiptModel {
       'imagePath': imagePath,
       'receiptType': receiptType,
       'merchantName': merchantName,
-      'category': category, // Keep for backward compatibility
+      'category': category,
       'currency': currency,
       'ocrStatus': ocrStatus,
       'items': items?.map((item) => item.toJson()).toList(),
-      'hasImage': hasImage, // Add hasImage to JSON
+      'hasImage': hasImage,
     };
   }
 
-  // Factory method to create from JSON
   factory ReceiptModel.fromJson(Map<String, dynamic> json) {
     return ReceiptModel(
       id: json['id'],
@@ -275,7 +298,6 @@ class ReceiptItem {
     this.notes,
   });
 
-  // Calculate total price for this item
   double get totalPrice {
     double itemTotal = price * quantity;
     if (discount != null) {
@@ -284,7 +306,6 @@ class ReceiptItem {
     return itemTotal;
   }
 
-  // Convert to old ReceiptItemOld format
   ReceiptItemOld toReceiptItemOld() {
     return ReceiptItemOld(
       name: name,
@@ -295,7 +316,6 @@ class ReceiptItem {
     );
   }
 
-  // Factory method to create from OCR data
   factory ReceiptItem.fromOcr(Map<String, dynamic> data) {
     return ReceiptItem(
       name: data['name'] ?? 'Unknown Item',
@@ -307,7 +327,6 @@ class ReceiptItem {
     );
   }
 
-  // Convert to JSON for storage
   Map<String, dynamic> toJson() {
     return {
       'name': name,
@@ -319,12 +338,11 @@ class ReceiptItem {
     };
   }
 
-  // Factory method to create from JSON
   factory ReceiptItem.fromJson(Map<String, dynamic> json) {
     return ReceiptItem(
       name: json['name'],
       price: json['price'].toDouble(),
-      quantity: json['quantity'],
+      quantity: json['quantity'] as int? ?? 1,
       category: json['category'],
       discount: json['discount']?.toDouble(),
       notes: json['notes'],
@@ -332,7 +350,6 @@ class ReceiptItem {
   }
 }
 
-// Extension for creating sample data (useful for testing)
 extension ReceiptModelSample on ReceiptModel {
   static ReceiptModel createSample() {
     return ReceiptModel(

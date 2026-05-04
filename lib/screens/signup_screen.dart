@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/auth_cubit.dart';
+import 'login_screen.dart';
 
 class SignUpScreen extends StatelessWidget {
   const SignUpScreen({super.key});
@@ -29,6 +30,7 @@ class _SignUpViewState extends State<SignUpView> {
   final _confirmPasswordController = TextEditingController();
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
+  bool _isNavigating = false; // Add this flag
 
   @override
   void dispose() {
@@ -80,22 +82,31 @@ class _SignUpViewState extends State<SignUpView> {
   Widget build(BuildContext context) {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
-        if (state is AuthSuccess) {
+        if (state is AuthSuccess && !_isNavigating) {
+          _isNavigating = true;
+
+          // Show success message
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(state.message),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
             ),
           );
+
+          // Navigate to Login Screen
           Future.delayed(const Duration(milliseconds: 100), () {
-            Navigator.pushReplacementNamed(context, '/dashboard');
+            if (mounted) {
+              Navigator.of(context).pushAndRemoveUntil(
+                MaterialPageRoute(builder: (context) => const LoginScreen()),
+                (route) => false,
+              );
+            }
           });
         } else if (state is AuthFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(state.error), backgroundColor: Colors.red),
           );
-        } else if (state is Authenticated) {
-          Navigator.pushReplacementNamed(context, '/dashboard');
         }
       },
       child: BlocBuilder<AuthCubit, AuthState>(
@@ -113,7 +124,18 @@ class _SignUpViewState extends State<SignUpView> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.center,
                           children: [
-                            const SizedBox(height: 80),
+                            const SizedBox(height: 40),
+
+                            // Illustration
+                            Center(
+                              child: Image.asset(
+                                'assets/financial_illustration.png',
+                                height: 200,
+                                width: 250,
+                                fit: BoxFit.contain,
+                              ),
+                            ),
+                            const SizedBox(height: 10),
 
                             // Brand Logo and Name
                             Row(
@@ -127,7 +149,7 @@ class _SignUpViewState extends State<SignUpView> {
                                 const Text(
                                   'SpendWise',
                                   style: TextStyle(
-                                    fontSize: 35,
+                                    fontSize: 28,
                                     fontWeight: FontWeight.w700,
                                     color: Colors.black,
                                   ),
@@ -141,7 +163,7 @@ class _SignUpViewState extends State<SignUpView> {
                               "Create your account",
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                fontSize: 20,
+                                fontSize: 16,
                                 fontStyle: FontStyle.italic,
                                 color: Colors.grey,
                               ),
@@ -358,7 +380,7 @@ class _SignUpViewState extends State<SignUpView> {
                             ),
                             const SizedBox(height: 15),
 
-                            // Login Link - FIXED
+                            // Login Link
                             Row(
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
@@ -371,9 +393,8 @@ class _SignUpViewState extends State<SignUpView> {
                                 ),
                                 GestureDetector(
                                   onTap: () {
-                                    Navigator.pop(
-                                      context,
-                                    ); // Go back to login screen
+                                    // Navigate back to login screen
+                                    Navigator.pop(context);
                                   },
                                   child: const Text(
                                     'Log In',
@@ -386,7 +407,36 @@ class _SignUpViewState extends State<SignUpView> {
                                 ),
                               ],
                             ),
-                            const SizedBox(height: 40),
+                            const SizedBox(height: 20),
+
+                            // Info message
+                            Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.shade50,
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: const Row(
+                                children: [
+                                  Icon(
+                                    Icons.info_outline,
+                                    size: 16,
+                                    color: Colors.blue,
+                                  ),
+                                  SizedBox(width: 8),
+                                  Expanded(
+                                    child: Text(
+                                      "Account created successfully! Please login with your credentials.",
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.blue,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(height: 30),
                           ],
                         ),
                       ),
@@ -399,7 +449,9 @@ class _SignUpViewState extends State<SignUpView> {
                     color: Colors.black.withOpacity(0.3),
                     child: const Center(
                       child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF178E4B),
+                        ),
                       ),
                     ),
                   ),

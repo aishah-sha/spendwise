@@ -9,7 +9,7 @@ import '../models/expense_model.dart';
 import '../services/ml_kit_service.dart';
 import 'expense_cubit.dart';
 import '../services/image_picker_service.dart';
-import '../services/firestore_service.dart'; // Add this import
+import '../services/supabase_service.dart'; // ← Change this import
 
 // State
 class AddExpenseState extends Equatable {
@@ -102,7 +102,7 @@ class AddExpenseState extends Equatable {
 class AddExpenseCubit extends Cubit<AddExpenseState> {
   final MLKitService _mlKitService = MLKitService();
   final ImagePickerService _imagePickerService = ImagePickerService();
-  final FirestoreService _firestoreService = FirestoreService(); // Add this
+  final SupabaseService _supabaseService = SupabaseService(); // ← Changed here
 
   static const String _receiptsStorageKey = 'recent_receipts';
 
@@ -124,7 +124,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     _loadSavedReceipts();
   }
 
-  // Load receipts from SharedPreferences (kept for local backup)
+  // Load receipts from SharedPreferences
   Future<void> _loadSavedReceipts() async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -143,7 +143,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     }
   }
 
-  // Save receipts to SharedPreferences (kept for local backup)
+  // Save receipts to SharedPreferences
   Future<void> _saveReceiptsToStorage(List<ReceiptModel> receipts) async {
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -517,7 +517,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     emit(state.copyWith(errorMessage: null));
   }
 
-  // Save expense to Firebase
+  // Save expense to Supabase (updated)
   Future<void> saveExpense(ExpenseCubit expenseCubit) async {
     emit(state.copyWith(isLoading: true, errorMessage: null));
 
@@ -546,32 +546,14 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
       final expenseType = isIncome ? 'income' : 'expense';
 
       if (state.expenseToEdit != null) {
-        // UPDATE existing expense in Firebase
-        await _firestoreService.updateTransaction(state.expenseToEdit!.id, {
+        // UPDATE existing expense in Supabase
+        await _supabaseService.updateTransaction(state.expenseToEdit!.id, {
           'amount': amount,
           'category': category,
           'description': title,
           'type': expenseType,
-          'date': date,
-          'note': note ?? '',
+          'date': date.toIso8601String(),
         });
-
-        // Also update local ExpenseCubit for backward compatibility
-        final updatedExpense = ExpenseModel(
-          id: state.expenseToEdit!.id,
-          title: title,
-          category: category,
-          amount: amount,
-          date: date,
-          isIncome: isIncome,
-          note:
-              note ??
-              (state.scannedReceipt?.items != null &&
-                      state.scannedReceipt!.items!.isNotEmpty
-                  ? '${state.scannedReceipt!.items!.length} items'
-                  : null),
-        );
-        expenseCubit.updateExpense(updatedExpense);
 
         emit(
           state.copyWith(
@@ -581,31 +563,14 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
           ),
         );
       } else {
-        // ADD new expense to Firebase
-        await _firestoreService.addTransaction(
+        // ADD new expense to Supabase
+        await _supabaseService.addTransaction(
           amount: amount,
           category: category,
           type: expenseType,
           description: title,
           date: date,
         );
-
-        // Also update local ExpenseCubit for backward compatibility
-        final newExpense = ExpenseModel(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          title: title,
-          category: category,
-          amount: amount,
-          date: date,
-          isIncome: isIncome,
-          note:
-              note ??
-              (state.scannedReceipt?.items != null &&
-                      state.scannedReceipt!.items!.isNotEmpty
-                  ? '${state.scannedReceipt!.items!.length} items'
-                  : null),
-        );
-        expenseCubit.addExpense(newExpense);
 
         emit(
           state.copyWith(
@@ -637,6 +602,9 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
 
       await addReceipt(receipt);
       resetForm();
+
+      // Refresh the expense cubit to show updated data
+      expenseCubit.loadExpenses();
     } catch (e) {
       emit(
         state.copyWith(

@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:firebase_core/firebase_core.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:spendwise/screens/signup_screen.dart';
 import 'package:spendwise/screens/welcome_screen.dart';
-import 'firebase_options.dart';
 import 'screens/onboarding_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/add_budget_screen.dart';
@@ -14,14 +14,21 @@ import 'cubit/budget_cubit.dart';
 import 'cubit/profile_cubit.dart';
 import 'cubit/profile_state.dart';
 import 'cubit/notification_cubit.dart';
-import 'cubit/auth_cubit.dart';
 import 'screens/login_screen.dart';
+
+// Import auth_cubit with a prefix to avoid naming conflicts
+import 'cubit/auth_cubit.dart' as auth;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize Firebase
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  // Load environment variables
+  await dotenv.load();
+
+  await Supabase.initialize(
+    url: dotenv.env['SUPABASE_URL']!,
+    anonKey: dotenv.env['SUPABASE_ANON_KEY']!,
+  );
 
   runApp(const MyApp());
 }
@@ -33,8 +40,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider<AuthCubit>(
-          create: (context) => AuthCubit()..checkAuthStatus(),
+        BlocProvider<auth.AuthCubit>(
+          create: (context) => auth.AuthCubit()..checkAuthStatus(),
         ),
         BlocProvider<ExpenseCubit>(create: (context) => ExpenseCubit()),
         BlocProvider<BudgetCubit>(create: (context) => BudgetCubit()),
@@ -42,7 +49,7 @@ class MyApp extends StatelessWidget {
           create: (context) => NotificationCubit(),
         ),
         BlocProvider<ProfileCubit>(
-          create: (context) => ProfileCubit()..loadProfile(),
+          create: (context) => ProfileCubit(), // Don't load immediately
         ),
       ],
       child: const AppRoot(),
@@ -159,24 +166,6 @@ class AppRoot extends StatelessWidget {
             '/notifications': (context) => const NotificationScreen(),
             '/onboarding': (context) => const OnboardingScreen(),
           },
-          onGenerateRoute: (settings) {
-            if (settings.name == '/add_budget') {
-              return MaterialPageRoute(
-                builder: (context) => const AddBudgetScreen(),
-              );
-            }
-            if (settings.name == '/profile') {
-              return MaterialPageRoute(
-                builder: (context) => const ProfileScreen(),
-              );
-            }
-            if (settings.name == '/notifications') {
-              return MaterialPageRoute(
-                builder: (context) => const NotificationScreen(),
-              );
-            }
-            return null;
-          },
         );
       },
     );
@@ -232,29 +221,30 @@ class CustomColors extends ThemeExtension<CustomColors> {
   }
 }
 
-// Auth Wrapper
+// Auth Wrapper - Use the prefixed AuthState
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<AuthCubit, AuthState>(
+    return BlocBuilder<auth.AuthCubit, auth.AuthState>(
       builder: (context, state) {
-        if (state is AuthLoading) {
+        if (state is auth.AuthLoading) {
           return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
+            body: Center(
+              child: CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF32BA32)),
+              ),
+            ),
           );
         }
 
-        if (state is Authenticated) {
+        if (state is auth.Authenticated) {
           return const DashboardScreen();
         }
 
-        if (state is Unauthenticated) {
-          return const OnboardingScreen();
-        }
-
-        return const OnboardingScreen();
+        // For Unauthenticated, show WelcomeScreen
+        return const WelcomeScreen();
       },
     );
   }

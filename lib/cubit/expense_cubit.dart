@@ -1,99 +1,162 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:bloc/bloc.dart';
 import '../models/expense_model.dart';
 import 'expense_state.dart';
+import '../services/supabase_service.dart';
 
 class ExpenseCubit extends Cubit<ExpenseState> {
-  ExpenseCubit() : super(ExpenseState.initial());
+  final SupabaseService _supabaseService = SupabaseService();
+  StreamSubscription? _expensesSubscription;
 
-  // Existing methods (addExpense, addIncome, updateExpense, deleteExpense, etc.)
-  void addExpense(ExpenseModel expense) {
-    final updatedExpenses = List<ExpenseModel>.from(state.allExpenses)
-      ..add(expense);
-
-    final totalSpending = _calculateTotalSpending(updatedExpenses);
-    final totalBalance = _calculateTotalBalance(updatedExpenses, state.budget);
-
-    final newState = state.copyWith(
-      allExpenses: updatedExpenses,
-      totalSpending: totalSpending,
-      totalBalance: totalBalance,
-    );
-
-    emit(_applyFilters(newState));
+  ExpenseCubit() : super(ExpenseState.initial()) {
+    _listenToExpenses(); // Start listening to real-time updates
   }
 
-  void addIncome(double amount) {
+  // Listen to real-time expense updates from Supabase
+  void _listenToExpenses() {
+    _expensesSubscription = _supabaseService.getTransactions().listen(
+      (transactions) {
+        // Convert Supabase transactions to ExpenseModel
+        final expenses = transactions.map((tx) {
+          return ExpenseModel(
+            id: tx['id'] as String,
+            title: tx['description'] as String? ?? '',
+            amount: (tx['amount'] as num).toDouble(),
+            category: tx['category'] as String,
+            date: DateTime.parse(tx['date'] as String),
+            isIncome: (tx['type'] as String) == 'income',
+            note: tx['description'] as String?,
+          );
+        }).toList();
+
+        // Update state with new data
+        final totalSpending = _calculateTotalSpending(expenses);
+        final totalBalance = _calculateTotalBalance(expenses, state.budget);
+
+        emit(
+          _applyFilters(
+            state.copyWith(
+              allExpenses: expenses,
+              totalSpending: totalSpending,
+              totalBalance: totalBalance,
+            ),
+          ),
+        );
+      },
+      onError: (error) {
+        print('Error listening to expenses: $error');
+      },
+    );
+  }
+
+  // Load expenses from Supabase (initial load)
+  Future<void> loadExpenses() async {
+    try {
+      final transactions = await _supabaseService.getTransactions().first;
+      final expenses = transactions.map((tx) {
+        return ExpenseModel(
+          id: tx['id'] as String,
+          title: tx['description'] as String? ?? '',
+          amount: (tx['amount'] as num).toDouble(),
+          category: tx['category'] as String,
+          date: DateTime.parse(tx['date'] as String),
+          isIncome: (tx['type'] as String) == 'income',
+          note: tx['description'] as String?,
+        );
+      }).toList();
+
+      final totalSpending = _calculateTotalSpending(expenses);
+      final totalBalance = _calculateTotalBalance(expenses, state.budget);
+
+      emit(
+        _applyFilters(
+          state.copyWith(
+            allExpenses: expenses,
+            totalSpending: totalSpending,
+            totalBalance: totalBalance,
+          ),
+        ),
+      );
+    } catch (e) {
+      print('Error loading expenses: $e');
+    }
+  }
+
+  // Add expense to Supabase
+  Future<void> addExpense(ExpenseModel expense) async {
+    try {
+      await _supabaseService.addTransaction(
+        amount: expense.amount,
+        category: expense.category,
+        type: expense.isIncome ? 'income' : 'expense',
+        description: expense.title,
+        date: expense.date,
+      );
+      // No need to manually update state - real-time stream will handle it
+    } catch (e) {
+      print('Error adding expense: $e');
+    }
+  }
+
+  // Add income to Supabase
+  Future<void> addIncome(double amount, {String? description}) async {
     if (amount <= 0) return;
 
-    final income = ExpenseModel(
-      id: DateTime.now().toString(),
-      title: 'Income',
-      amount: amount,
-      category: 'Income',
-      date: DateTime.now(),
-      isIncome: true,
-    );
-
-    final updatedExpenses = List<ExpenseModel>.from(state.allExpenses)
-      ..add(income);
-
-    final totalSpending = _calculateTotalSpending(updatedExpenses);
-    final totalBalance = _calculateTotalBalance(updatedExpenses, state.budget);
-
-    final newState = state.copyWith(
-      allExpenses: updatedExpenses,
-      totalSpending: totalSpending,
-      totalBalance: totalBalance,
-    );
-
-    emit(_applyFilters(newState));
+    try {
+      await _supabaseService.addTransaction(
+        amount: amount,
+        category: 'Income',
+        type: 'income',
+        description: description ?? 'Income',
+        date: DateTime.now(),
+      );
+      // No need to manually update state - real-time stream will handle it
+    } catch (e) {
+      print('Error adding income: $e');
+    }
   }
 
-  void updateExpense(ExpenseModel updatedExpense) {
-    final updatedExpenses = state.allExpenses.map((expense) {
-      return expense.id == updatedExpense.id ? updatedExpense : expense;
-    }).toList();
-
-    final totalSpending = _calculateTotalSpending(updatedExpenses);
-    final totalBalance = _calculateTotalBalance(updatedExpenses, state.budget);
-
-    final newState = state.copyWith(
-      allExpenses: updatedExpenses,
-      totalSpending: totalSpending,
-      totalBalance: totalBalance,
-    );
-
-    emit(_applyFilters(newState));
+  // Update expense in Supabase
+  Future<void> updateExpense(ExpenseModel updatedExpense) async {
+    try {
+      await _supabaseService.updateTransaction(updatedExpense.id, {
+        'amount': updatedExpense.amount,
+        'category': updatedExpense.category,
+        'description': updatedExpense.title,
+        'type': updatedExpense.isIncome ? 'income' : 'expense',
+        'date': updatedExpense.date.toIso8601String(),
+      });
+      // No need to manually update state - real-time stream will handle it
+    } catch (e) {
+      print('Error updating expense: $e');
+    }
   }
 
-  void deleteExpense(String id) {
-    final updatedExpenses = state.allExpenses
-        .where((expense) => expense.id != id)
-        .toList();
-
-    final totalSpending = _calculateTotalSpending(updatedExpenses);
-    final totalBalance = _calculateTotalBalance(updatedExpenses, state.budget);
-
-    final newState = state.copyWith(
-      allExpenses: updatedExpenses,
-      totalSpending: totalSpending,
-      totalBalance: totalBalance,
-    );
-
-    emit(_applyFilters(newState));
+  // Delete expense from Supabase
+  Future<void> deleteExpense(String id) async {
+    try {
+      await _supabaseService.deleteTransaction(id);
+      // No need to manually update state - real-time stream will handle it
+    } catch (e) {
+      print('Error deleting expense: $e');
+    }
   }
 
+  // Refresh analytics (trigger rebuild)
   void refreshAnalytics() {
     // Re-emit current state to trigger rebuild
     emit(state.copyWith());
   }
 
+  // Search expenses (local filtering)
   void searchExpenses(String query) {
     final newState = state.copyWith(searchQuery: query);
     emit(_applyFilters(newState));
   }
 
+  // Filter by category (local filtering)
   void filterByCategory(ExpenseFilter filter, {String? specificCategory}) {
     final newState = state.copyWith(
       categoryFilter: filter,
@@ -102,6 +165,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     emit(_applyFilters(newState));
   }
 
+  // Filter by date range (local filtering)
   void filterByDateRange(
     DateRangeFilter range, {
     DateTime? startDate,
@@ -115,6 +179,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     emit(_applyFilters(newState));
   }
 
+  // Reset all filters
   void resetFilters() {
     final newState = state.copyWith(
       searchQuery: '',
@@ -128,20 +193,23 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     emit(newState);
   }
 
+  // Update budget locally (will be synced via ProfileCubit)
   void updateBudget(double newBudget) {
     final totalBalance = _calculateTotalBalance(state.allExpenses, newBudget);
     emit(state.copyWith(budget: newBudget, totalBalance: totalBalance));
   }
 
+  // Set user name (local only - use ProfileCubit for persistence)
   void setUserName(String name) {
     emit(state.copyWith(userName: name));
   }
 
+  // Update total balance
   void updateTotalBalance(double newBalance) {
     emit(state.copyWith(totalBalance: newBalance));
   }
 
-  // NEW ANALYTICS METHODS
+  // Analytics period methods
   void changeAnalyticsPeriod(AnalyticsPeriod period) {
     emit(state.copyWith(selectedAnalyticsPeriod: period));
   }
@@ -253,6 +321,31 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     }
   }
 
+  // Get filtered expenses for the selected analytics period
+  List<ExpenseModel> getFilteredExpensesForPeriod() {
+    final now = DateTime.now();
+    final selectedDate = state.analyticsSelectedDate;
+
+    return state.allExpenses.where((expense) {
+      switch (state.selectedAnalyticsPeriod) {
+        case AnalyticsPeriod.week:
+          final startOfWeek = selectedDate.subtract(
+            Duration(days: selectedDate.weekday - 1),
+          );
+          final endOfWeek = startOfWeek.add(const Duration(days: 6));
+          return expense.date.isAfter(
+                startOfWeek.subtract(const Duration(days: 1)),
+              ) &&
+              expense.date.isBefore(endOfWeek.add(const Duration(days: 1)));
+        case AnalyticsPeriod.month:
+          return expense.date.year == selectedDate.year &&
+              expense.date.month == selectedDate.month;
+        case AnalyticsPeriod.year:
+          return expense.date.year == selectedDate.year;
+      }
+    }).toList();
+  }
+
   // Private helper methods
   double _calculateTotalSpending(List<ExpenseModel> expenses) {
     return expenses
@@ -275,6 +368,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   ExpenseState _applyFilters(ExpenseState state) {
     var filtered = List<ExpenseModel>.from(state.allExpenses);
 
+    // Apply search filter
     if (state.searchQuery.isNotEmpty) {
       final query = state.searchQuery.toLowerCase();
       filtered = filtered.where((expense) {
@@ -284,6 +378,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       }).toList();
     }
 
+    // Apply category filter
     if (state.categoryFilter == ExpenseFilter.income) {
       filtered = filtered.where((e) => e.isIncome).toList();
     } else if (state.categoryFilter == ExpenseFilter.expense) {
@@ -294,6 +389,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
           .toList();
     }
 
+    // Apply date range filter
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -342,5 +438,11 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     filtered.sort((a, b) => b.date.compareTo(a.date));
 
     return state.copyWith(filteredExpenses: filtered);
+  }
+
+  @override
+  Future<void> close() {
+    _expensesSubscription?.cancel();
+    return super.close();
   }
 }

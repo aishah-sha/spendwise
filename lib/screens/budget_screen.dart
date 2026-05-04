@@ -294,6 +294,7 @@ class BudgetView extends StatelessWidget {
               final Map<String, double> categorySpending = {};
               double totalSpending = 0;
 
+              // Calculate spending from expenses
               for (var expense in expenseState.allExpenses) {
                 if (!expense.isIncome) {
                   String categoryName = expense.category;
@@ -304,6 +305,7 @@ class BudgetView extends StatelessWidget {
                 }
               }
 
+              // Check notifications
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 final notificationCubit = context.read<NotificationCubit>();
                 final Map<String, double> categoryBudgets = {};
@@ -833,7 +835,7 @@ class BudgetView extends StatelessWidget {
               spent: spent,
             ),
             spentAmount: spent,
-            isDarkMode: isDarkMode, // Add this line
+            isDarkMode: isDarkMode,
           ),
         );
       },

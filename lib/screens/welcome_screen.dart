@@ -7,8 +7,9 @@ class WelcomeScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (context) => AuthCubit(),
+    // Use existing AuthCubit from parent, don't create a new one
+    return BlocProvider.value(
+      value: context.read<AuthCubit>(),
       child: const WelcomeView(),
     );
   }
@@ -100,7 +101,7 @@ class WelcomeView extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 50),
-                          // Get Started Button
+                          // Get Started Button - Goes to Sign Up
                           SizedBox(
                             width: double.infinity,
                             height: 55,
@@ -108,7 +109,6 @@ class WelcomeView extends StatelessWidget {
                               onPressed: state is AuthLoading
                                   ? null
                                   : () {
-                                      context.read<AuthCubit>().getStarted();
                                       Navigator.pushNamed(context, '/signup');
                                     },
                               style: ElevatedButton.styleFrom(
@@ -136,7 +136,7 @@ class WelcomeView extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(height: 15),
-                          // I have an account button
+                          // I have an account button - Goes to Login
                           SizedBox(
                             width: double.infinity,
                             height: 55,
@@ -144,7 +144,6 @@ class WelcomeView extends StatelessWidget {
                               onPressed: state is AuthLoading
                                   ? null
                                   : () {
-                                      context.read<AuthCubit>().haveAccount();
                                       Navigator.pushNamed(context, '/login');
                                     },
                               style: ElevatedButton.styleFrom(
@@ -183,16 +182,11 @@ class WelcomeView extends StatelessWidget {
                             ],
                           ),
                           const SizedBox(height: 20),
-                          // Social Icons
+                          // Social Icons - Updated for Supabase
                           Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _buildSocialIcon(context, 'assets/gmail.png', () {
-                                if (state is! AuthLoading) {
-                                  context.read<AuthCubit>().signInWithGmail();
-                                }
-                              }),
-                              const SizedBox(width: 40),
+                              // Google Sign In
                               _buildSocialIcon(
                                 context,
                                 'assets/google.png',
@@ -204,19 +198,38 @@ class WelcomeView extends StatelessWidget {
                                   }
                                 },
                               ),
-                              const SizedBox(width: 40),
-                              _buildSocialIcon(
-                                context,
-                                'assets/facebook.png',
-                                () {
-                                  if (state is! AuthLoading) {
-                                    context
-                                        .read<AuthCubit>()
-                                        .signInWithFacebook();
-                                  }
-                                },
-                              ),
+                              // Note: Facebook and Gmail sign-in are not available in Supabase
+                              // You would need to set up additional OAuth providers in Supabase dashboard
+                              // and enable them in the AuthCubit if needed
                             ],
+                          ),
+                          const SizedBox(height: 20),
+                          // Info about social login (optional)
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                            child: const Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  size: 16,
+                                  color: Colors.blue,
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    "Google sign-in available. For Facebook/Gmail, please use email sign up.",
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.blue,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                           const SizedBox(height: 40),
                           // Footer text

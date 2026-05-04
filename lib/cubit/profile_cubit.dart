@@ -24,14 +24,11 @@ class ProfileCubit extends Cubit<ProfileState> {
         user = UserModel.fromJson(decoded);
       } else {
         user = UserModel.defaultUser();
-        // Save default user to storage
         await _saveUser(user);
       }
 
       emit(ProfileLoaded(user: user, isEditing: false));
     } catch (e) {
-      print('Error loading profile: $e');
-      // Fallback to default user if loading fails
       final user = UserModel.defaultUser();
       emit(ProfileLoaded(user: user, isEditing: false));
     }
@@ -42,9 +39,8 @@ class ProfileCubit extends Cubit<ProfileState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userStorageKey, json.encode(user.toJson()));
-      print('User saved successfully');
     } catch (e) {
-      print('Error saving user: $e');
+      // Silent fail
     }
   }
 
@@ -145,7 +141,6 @@ class ProfileCubit extends Cubit<ProfileState> {
   void updateEmail(String email) {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;
-      // Basic email validation
       if (!email.contains('@') || !email.contains('.')) {
         emit(ProfileError(message: 'Please enter a valid email address'));
         return;
@@ -161,19 +156,16 @@ class ProfileCubit extends Cubit<ProfileState> {
     emit(ProfilePasswordChanged());
   }
 
-  void logout() async {
-    emit(ProfileLoading());
-
-    try {
-      // Clear saved user data
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_userStorageKey);
-
-      await Future.delayed(const Duration(milliseconds: 500));
-      emit(ProfileLogoutSuccess());
-    } catch (e) {
-      emit(ProfileError(message: 'Failed to logout: $e'));
-    }
+  // Fast clear local profile data - no unnecessary delays
+  void clearLocalProfileData() {
+    // Fire and forget - don't await
+    SharedPreferences.getInstance()
+        .then((prefs) {
+          prefs.remove(_userStorageKey);
+        })
+        .catchError((e) {
+          // Silent fail - not critical
+        });
   }
 
   // Reset to default profile (for testing)
@@ -184,7 +176,6 @@ class ProfileCubit extends Cubit<ProfileState> {
     emit(ProfileUpdateSuccess(message: 'Profile reset to default'));
   }
 
-  // Clear any error message after a delay
   void clearError() {
     if (state is ProfileError) {
       if (state is ProfileLoaded) {
@@ -201,7 +192,6 @@ class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
-  // Clear success message after a delay
   void clearSuccess() {
     if (state is ProfileUpdateSuccess) {
       if (state is ProfileLoaded) {

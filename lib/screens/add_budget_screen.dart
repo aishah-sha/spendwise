@@ -115,7 +115,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     _isUpdatingFromMonthly = false;
   }
 
-  void _loadExistingBudget() {
+  Future<void> _loadExistingBudget() async {
     final state = context.read<BudgetCubit>().state;
     if (state is cubit.BudgetLoaded) {
       final budget = state.budget;
@@ -393,7 +393,6 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
           ),
         ),
         centerTitle: true,
-        // Removed the actions button since we have Add Category button below
       ),
       body: BlocConsumer<BudgetCubit, cubit.BudgetState>(
         listener: (context, state) {

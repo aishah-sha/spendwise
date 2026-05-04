@@ -12,7 +12,7 @@ import 'add_expense_screen.dart';
 import 'budget_screen.dart';
 import 'expense_history_screen.dart';
 import 'analytics_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import '../cubit/auth_cubit.dart'; // Add this import
 
 // Import budget cubit
 import '../cubit/budget_cubit.dart';
@@ -41,7 +41,6 @@ class DashboardScreen extends StatelessWidget {
               ? profileState.user.isDarkMode
               : false;
 
-          // REMOVED the Theme widget wrapper
           return Scaffold(
             backgroundColor: isDarkMode ? Colors.black : bgColor,
             floatingActionButtonLocation:
@@ -105,7 +104,7 @@ class DashboardScreen extends StatelessWidget {
                                         CrossAxisAlignment.start,
                                     children: [
                                       _buildWelcomeSection(
-                                        expenseState,
+                                        context, // Pass context
                                         isDarkMode,
                                       ),
                                       const SizedBox(height: 20),
@@ -252,11 +251,22 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildWelcomeSection(ExpenseState state, bool isDarkMode) {
+  // Updated to use AuthCubit instead of FirebaseAuth
+  Widget _buildWelcomeSection(BuildContext context, bool isDarkMode) {
+    // Get user from Supabase via AuthCubit or directly from Supabase
     String userName = 'User';
-    final user = FirebaseAuth.instance.currentUser;
-    if (user != null) {
-      userName = user.displayName ?? user.email?.split('@').first ?? 'User';
+
+    // Option 1: If you have access to AuthCubit state
+    // final authState = context.watch<AuthCubit>().state;
+    // if (authState is Authenticated && authState.user != null) {
+    //   userName = authState.user!.userMetadata?['name'] ??
+    //              authState.user!.email?.split('@').first ?? 'User';
+    // }
+
+    // Option 2: Get from ProfileCubit (recommended)
+    final profileState = context.watch<ProfileCubit>().state;
+    if (profileState is ProfileLoaded) {
+      userName = profileState.user.fullName.split(' ').first;
     }
 
     return Column(
@@ -272,7 +282,7 @@ class DashboardScreen extends StatelessWidget {
           ),
         ),
         Text(
-          DateFormat('dd MMMM yyyy').format(state.currentDate),
+          DateFormat('dd MMMM yyyy').format(DateTime.now()),
           style: TextStyle(
             fontSize: 16,
             color: isDarkMode ? Colors.white60 : darkText.withOpacity(0.6),
