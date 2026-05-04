@@ -55,6 +55,8 @@ dependencies:
   supabase_flutter: ^2.12.4
   supabase: ^2.10.6
   file_picker: ^11.0.2
+  awesome_notifications: ^0.11.0
+  workmanager: ^0.9.0+3
 
 dev_dependencies:
   flutter_test:
@@ -87,7 +89,6 @@ flutter:
   - assets/FYP2.png
   - assets/financial_illustration.png
   - .env
-
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
 

@@ -69,18 +69,18 @@ class ReceiptCubit extends Cubit<ReceiptState> {
     }
   }
 
+  bool _isProcessing = false; // Add this flag
+
   Future<void> _processCameraImage(CameraImage image) async {
-    if (state.isDialogOpen) return;
+    if (state.isDialogOpen || _isProcessing) return; // Check flag
 
     final now = DateTime.now();
     if (now.difference(_lastProcessed).inMilliseconds < _processIntervalMs) {
       return;
     }
 
-    if (state.status == ReceiptStatus.loading) return;
-
+    _isProcessing = true; // Set flag
     emit(state.copyWith(status: ReceiptStatus.loading));
-    _lastProcessed = now;
 
     try {
       final inputImage = _convertYUV420ToInputImage(image);
@@ -99,6 +99,7 @@ class ReceiptCubit extends Cubit<ReceiptState> {
         ),
       );
     } finally {
+      _isProcessing = false; // Reset flag
       if (!state.isDialogOpen) {
         emit(state.copyWith(status: ReceiptStatus.scanning));
       }

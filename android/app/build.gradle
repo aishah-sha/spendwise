@@ -1,6 +1,6 @@
 plugins {
     id "com.android.application"
-    id "com.google.gms.google-services"
+    // REMOVED: id "com.google.gms.google-services" <--- This was causing the error
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
@@ -25,7 +25,7 @@ android {
         targetSdk = 36
         versionCode = 1
         versionName = "1.0"
-        multiDexEnabled true // Enable multidex
+        multiDexEnabled true 
     }
 
     buildTypes {
@@ -33,11 +33,15 @@ android {
             signingConfig = signingConfigs.debug
         }
     }
+
     dependencies {
-        // Add this for Google Sign-In
+        // If you are using Supabase Auth with Google, you can keep this.
+        // If you aren't using Google Sign-In at all, you can remove this too.
         implementation 'com.google.android.gms:play-services-auth:20.7.0'
         implementation 'androidx.multidex:multidex:2.0.1'
+        implementation 'androidx.core:core:1.9.0'
     }
+
     tasks.withType(JavaCompile) {
         options.compilerArgs += ['-Xlint:-options']
     }
@@ -46,4 +50,5 @@ android {
 flutter {
     source = "../.."
 }
-apply plugin: 'com.google.gms.google-services'
+
+// REMOVED: apply plugin: 'com.google.gms.google-services' <--- This was also causing the error

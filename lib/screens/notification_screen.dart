@@ -71,11 +71,32 @@ class NotificationScreen extends StatelessWidget {
         onPressed: () => Navigator.pop(context),
       ),
       actions: [
-        TextButton(
-          onPressed: () {
-            context.read<NotificationCubit>().markAllAsRead();
+        BlocBuilder<NotificationCubit, NotificationState>(
+          builder: (context, state) {
+            final hasUnread = state.notifications.any((n) => !n.isRead);
+            return TextButton(
+              onPressed: hasUnread
+                  ? () async {
+                      final cubit = context.read<NotificationCubit>();
+                      await cubit.markAllAsRead();
+
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('All notifications marked as read'),
+                            backgroundColor: accentGreen,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  : null, // Disable button when no unread notifications
+              child: Text(
+                'Mark all as read',
+                style: TextStyle(color: hasUnread ? accentGreen : Colors.grey),
+              ),
+            );
           },
-          child: Text('Mark all as read', style: TextStyle(color: accentGreen)),
         ),
         IconButton(
           icon: Icon(
@@ -146,18 +167,44 @@ class NotificationScreen extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: () {
-              context.read<NotificationCubit>().clearNotifications();
-              Navigator.pop(context);
+            onPressed: () async {
+              final cubit = context.read<NotificationCubit>();
+              final notifications = cubit.state.notifications
+                  .toList(); // Save for undo
+              await cubit.clearNotifications();
 
-              // Show snackbar confirmation
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('All notifications cleared'),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 2),
-                ),
-              );
+              if (context.mounted) {
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('All notifications cleared'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 3),
+                    action: SnackBarAction(
+                      label: 'Undo',
+                      textColor: Colors.white,
+                      onPressed: () async {
+                        // Restore all notifications
+                        for (var notification in notifications) {
+                          await context
+                              .read<NotificationCubit>()
+                              .addNotification(notification);
+                        }
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Restored all notifications'),
+                              backgroundColor: accentGreen,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                );
+              }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Clear All'),
@@ -171,6 +218,7 @@ class NotificationScreen extends StatelessWidget {
     BuildContext context,
     String notificationId,
     bool isDarkMode,
+    NotificationModel notification,
   ) {
     showDialog(
       context: context,
@@ -195,19 +243,40 @@ class NotificationScreen extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: () {
-              context.read<NotificationCubit>().deleteNotification(
-                notificationId,
-              );
-              Navigator.pop(context);
+            onPressed: () async {
+              final cubit = context.read<NotificationCubit>();
+              await cubit.deleteNotification(notificationId);
 
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Notification deleted'),
-                  backgroundColor: Colors.red,
-                  duration: Duration(seconds: 1),
-                ),
-              );
+              if (context.mounted) {
+                Navigator.pop(context);
+
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: const Text('Notification deleted'),
+                    backgroundColor: Colors.red,
+                    duration: const Duration(seconds: 3),
+                    action: SnackBarAction(
+                      label: 'Undo',
+                      textColor: Colors.white,
+                      onPressed: () async {
+                        // Restore the notification
+                        await context.read<NotificationCubit>().addNotification(
+                          notification,
+                        );
+                        if (context.mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Notification restored'),
+                              backgroundColor: accentGreen,
+                              duration: Duration(seconds: 2),
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                );
+              }
             },
             style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
@@ -235,32 +304,53 @@ class NotificationScreen extends StatelessWidget {
         ),
         child: const Icon(Icons.delete, color: Colors.white),
       ),
-      onDismissed: (direction) {
-        // Delete the notification when swiped
-        context.read<NotificationCubit>().deleteNotification(notification.id);
+      onDismissed: (direction) async {
+        // Save notification for potential undo
+        final deletedNotification = notification;
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: const Text('Notification deleted'),
-            backgroundColor: Colors.red,
-            duration: const Duration(seconds: 1),
-            action: SnackBarAction(
-              label: 'Undo',
-              textColor: Colors.white,
-              onPressed: () {
-                // Optional: Add undo functionality
-                // context.read<NotificationCubit>().undoDelete();
-              },
-            ),
-          ),
+        // Delete the notification
+        await context.read<NotificationCubit>().deleteNotification(
+          notification.id,
         );
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text('Notification deleted'),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+              action: SnackBarAction(
+                label: 'Undo',
+                textColor: Colors.white,
+                onPressed: () async {
+                  // Restore the notification
+                  await context.read<NotificationCubit>().addNotification(
+                    deletedNotification,
+                  );
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Notification restored'),
+                        backgroundColor: accentGreen,
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
+          );
+        }
       },
       child: GestureDetector(
-        onTap: () {
+        onTap: () async {
           // Mark as read when tapped (if not already read)
           if (!notification.isRead) {
-            context.read<NotificationCubit>().markAsRead(notification.id);
+            await context.read<NotificationCubit>().markAsRead(notification.id);
           }
+
+          // Optional: Navigate to detail screen based on notification type
+          _handleNotificationTap(context, notification);
         },
         child: Container(
           margin: const EdgeInsets.only(bottom: 12),
@@ -326,6 +416,8 @@ class NotificationScreen extends StatelessWidget {
                             ? Colors.white60
                             : Colors.grey.shade600,
                       ),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
                     Text(
@@ -356,7 +448,12 @@ class NotificationScreen extends StatelessWidget {
               const SizedBox(width: 8),
               GestureDetector(
                 onTap: () {
-                  _showDeleteSingleDialog(context, notification.id, isDarkMode);
+                  _showDeleteSingleDialog(
+                    context,
+                    notification.id,
+                    isDarkMode,
+                    notification,
+                  );
                 },
                 child: Container(
                   padding: const EdgeInsets.all(8),
@@ -372,6 +469,177 @@ class NotificationScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  void _handleNotificationTap(
+    BuildContext context,
+    NotificationModel notification,
+  ) {
+    // Navigate based on notification type
+    switch (notification.type) {
+      case NotificationType.monthlyBudgetExceeded:
+      case NotificationType.monthlyBudgetNearLimit:
+        // Navigate to monthly budget screen
+        _showNotificationDetails(context, notification);
+        break;
+      case NotificationType.categoryBudgetExceeded:
+      case NotificationType.categoryBudgetNearLimit:
+        // Navigate to category budget screen
+        _showNotificationDetails(context, notification);
+        break;
+      default:
+        _showNotificationDetails(context, notification);
+    }
+  }
+
+  void _showNotificationDetails(
+    BuildContext context,
+    NotificationModel notification,
+  ) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: _getNotificationColor(
+                      notification.type,
+                    ).withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _getNotificationIcon(notification.type),
+                    color: _getNotificationColor(notification.type),
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Text(
+                    notification.title,
+                    style: const TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 20),
+            Text(notification.message, style: const TextStyle(fontSize: 16)),
+            const SizedBox(height: 16),
+            Text(
+              'Received: ${_formatDetailedTime(notification.timestamp)}',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            ),
+            if (notification.data != null && notification.data!.isNotEmpty) ...[
+              const SizedBox(height: 16),
+              const Divider(),
+              const SizedBox(height: 8),
+              Text(
+                'Additional Details:',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.grey.shade700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              ...notification.data!.entries.map(
+                (entry) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text(
+                    '${entry.key}: ${entry.value}',
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                  ),
+                ),
+              ),
+            ],
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: accentGreen),
+                    ),
+                    child: const Text('Close'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      // Add action based on notification type
+                      _handleNotificationAction(context, notification);
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: accentGreen,
+                      foregroundColor: Colors.white,
+                    ),
+                    child: const Text('Take Action'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _handleNotificationAction(
+    BuildContext context,
+    NotificationModel notification,
+  ) {
+    // Implement action based on notification type
+    switch (notification.type) {
+      case NotificationType.monthlyBudgetExceeded:
+      case NotificationType.monthlyBudgetNearLimit:
+        // Navigate to budget adjustment screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Navigate to budget settings'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        break;
+      case NotificationType.categoryBudgetExceeded:
+      case NotificationType.categoryBudgetNearLimit:
+        // Navigate to category budget screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Navigate to category budget'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+        break;
+      default:
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Action triggered'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+    }
+  }
+
+  String _formatDetailedTime(DateTime time) {
+    return '${time.day}/${time.month}/${time.year} at ${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}';
   }
 
   IconData _getNotificationIcon(NotificationType type) {
@@ -421,5 +689,18 @@ class NotificationScreen extends StatelessWidget {
     } else {
       return '${time.day}/${time.month}/${time.year}';
     }
+  }
+}
+
+// Add this method to your NotificationCubit if not already present
+extension NotificationCubitExtension on NotificationCubit {
+  Future<void> addNotification(NotificationModel notification) async {
+    // Implement this method to add a notification back to the list
+    // This should emit a new state with the notification added
+    final currentState = state;
+    final updatedNotifications = List<NotificationModel>.from(
+      currentState.notifications,
+    )..insert(0, notification);
+    emit(currentState.copyWith(notifications: updatedNotifications));
   }
 }

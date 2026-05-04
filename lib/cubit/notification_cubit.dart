@@ -26,6 +26,7 @@ class NotificationState {
 
 class NotificationCubit extends Cubit<NotificationState> {
   static const String _storageKey = 'notifications';
+  bool _isProcessing = false; // Prevent duplicate notifications
 
   NotificationCubit() : super(NotificationState.initial()) {
     _loadNotifications();
@@ -66,7 +67,11 @@ class NotificationCubit extends Cubit<NotificationState> {
     }
   }
 
-  void addNotification(NotificationModel notification) {
+  Future<void> addNotification(NotificationModel notification) async {
+    // Check if notification already exists to prevent duplicates
+    final exists = state.notifications.any((n) => n.id == notification.id);
+    if (exists) return;
+
     final updatedNotifications = [notification, ...state.notifications];
     final unreadCount = updatedNotifications.where((n) => !n.isRead).length;
 
@@ -77,10 +82,10 @@ class NotificationCubit extends Cubit<NotificationState> {
       ),
     );
 
-    _saveNotifications();
+    await _saveNotifications();
   }
 
-  void markAsRead(String notificationId) {
+  Future<void> markAsRead(String notificationId) async {
     final updatedNotifications = state.notifications.map((n) {
       if (n.id == notificationId) {
         return n.copyWith(isRead: true);
@@ -97,21 +102,20 @@ class NotificationCubit extends Cubit<NotificationState> {
       ),
     );
 
-    _saveNotifications();
+    await _saveNotifications();
   }
 
-  void markAllAsRead() {
+  Future<void> markAllAsRead() async {
     final updatedNotifications = state.notifications
         .map((n) => n.copyWith(isRead: true))
         .toList();
 
     emit(state.copyWith(notifications: updatedNotifications, unreadCount: 0));
 
-    _saveNotifications();
+    await _saveNotifications();
   }
 
-  // NEW: Delete a single notification
-  void deleteNotification(String notificationId) {
+  Future<void> deleteNotification(String notificationId) async {
     final updatedNotifications = state.notifications
         .where((n) => n.id != notificationId)
         .toList();
@@ -125,11 +129,10 @@ class NotificationCubit extends Cubit<NotificationState> {
       ),
     );
 
-    _saveNotifications();
+    await _saveNotifications();
   }
 
-  // NEW: Delete multiple notifications
-  void deleteMultipleNotifications(List<String> notificationIds) {
+  Future<void> deleteMultipleNotifications(List<String> notificationIds) async {
     final updatedNotifications = state.notifications
         .where((n) => !notificationIds.contains(n.id))
         .toList();
@@ -143,156 +146,162 @@ class NotificationCubit extends Cubit<NotificationState> {
       ),
     );
 
-    _saveNotifications();
+    await _saveNotifications();
   }
 
-  void clearNotifications() {
+  Future<void> clearNotifications() async {
     emit(NotificationState.initial());
-    _saveNotifications();
+    await _saveNotifications();
   }
 
-  // Check budget and create notifications
-  void checkBudgetAndNotify({
+  // FIXED: Made this an async function and properly await addNotification
+  Future<void> checkBudgetAndNotify({
     required double monthlyBudget,
     required double totalSpent,
     required Map<String, double> categoryBudgets,
     required Map<String, double> categorySpent,
-  }) {
+  }) async {
     final now = DateTime.now();
 
-    // Check monthly budget
-    if (monthlyBudget > 0) {
-      final spentPercentage = (totalSpent / monthlyBudget) * 100;
+    // Prevent duplicate processing
+    if (_isProcessing) return;
+    _isProcessing = true;
 
-      // Near limit (80%)
-      if (spentPercentage >= 80 && spentPercentage < 100) {
-        final existingNear = state.notifications.any(
-          (n) =>
-              n.type == NotificationType.monthlyBudgetNearLimit &&
-              n.timestamp.day == now.day &&
-              n.timestamp.month == now.month &&
-              n.timestamp.year == now.year,
-        );
+    try {
+      // Check monthly budget
+      if (monthlyBudget > 0) {
+        final spentPercentage = (totalSpent / monthlyBudget) * 100;
 
-        if (!existingNear) {
-          addNotification(
-            NotificationModel(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              title: '⚠️ Monthly Budget Near Limit',
-              message:
-                  'You have spent ${spentPercentage.toStringAsFixed(1)}% of your monthly budget. Only RM ${(monthlyBudget - totalSpent).toStringAsFixed(2)} remaining.',
-              timestamp: now,
-              type: NotificationType.monthlyBudgetNearLimit,
-              data: {
-                'percentage': spentPercentage,
-                'remaining': monthlyBudget - totalSpent,
-                'totalSpent': totalSpent,
-                'budget': monthlyBudget,
-              },
-            ),
-          );
-        }
-      }
-      // Exceeded limit
-      else if (spentPercentage >= 100) {
-        final existingExceeded = state.notifications.any(
-          (n) =>
-              n.type == NotificationType.monthlyBudgetExceeded &&
-              n.timestamp.day == now.day &&
-              n.timestamp.month == now.month &&
-              n.timestamp.year == now.year,
-        );
-
-        if (!existingExceeded) {
-          final overAmount = totalSpent - monthlyBudget;
-          addNotification(
-            NotificationModel(
-              id: DateTime.now().millisecondsSinceEpoch.toString(),
-              title: '🚨 Monthly Budget Exceeded!',
-              message:
-                  'You have exceeded your monthly budget by RM ${overAmount.toStringAsFixed(2)}. Consider adjusting your spending.',
-              timestamp: now,
-              type: NotificationType.monthlyBudgetExceeded,
-              data: {
-                'overAmount': overAmount,
-                'totalSpent': totalSpent,
-                'budget': monthlyBudget,
-              },
-            ),
-          );
-        }
-      }
-    }
-
-    // Check category budgets
-    categoryBudgets.forEach((category, budget) {
-      if (budget > 0) {
-        final spent = categorySpent[category] ?? 0;
-        final spentPercentage = (spent / budget) * 100;
-
-        // Category near limit (80%)
         if (spentPercentage >= 80 && spentPercentage < 100) {
           final existingNear = state.notifications.any(
             (n) =>
-                n.type == NotificationType.categoryBudgetNearLimit &&
-                n.data?['category'] == category &&
+                n.type == NotificationType.monthlyBudgetNearLimit &&
                 n.timestamp.day == now.day &&
                 n.timestamp.month == now.month &&
                 n.timestamp.year == now.year,
           );
 
           if (!existingNear) {
-            addNotification(
+            // AWAIT is now correct since addNotification returns Future
+            await addNotification(
               NotificationModel(
                 id: DateTime.now().millisecondsSinceEpoch.toString(),
-                title: '⚠️ $category Budget Near Limit',
+                title: '⚠️ Monthly Budget Near Limit',
                 message:
-                    'You have spent ${spentPercentage.toStringAsFixed(1)}% of your $category budget. Only RM ${(budget - spent).toStringAsFixed(2)} remaining.',
+                    'You have spent ${spentPercentage.toStringAsFixed(1)}% of your monthly budget. Only RM ${(monthlyBudget - totalSpent).toStringAsFixed(2)} remaining.',
                 timestamp: now,
-                type: NotificationType.categoryBudgetNearLimit,
+                type: NotificationType.monthlyBudgetNearLimit,
                 data: {
-                  'category': category,
                   'percentage': spentPercentage,
-                  'remaining': budget - spent,
-                  'spent': spent,
-                  'budget': budget,
+                  'remaining': monthlyBudget - totalSpent,
+                  'totalSpent': totalSpent,
+                  'budget': monthlyBudget,
                 },
               ),
             );
           }
-        }
-        // Category exceeded
-        else if (spentPercentage >= 100) {
+        } else if (spentPercentage >= 100) {
           final existingExceeded = state.notifications.any(
             (n) =>
-                n.type == NotificationType.categoryBudgetExceeded &&
-                n.data?['category'] == category &&
+                n.type == NotificationType.monthlyBudgetExceeded &&
                 n.timestamp.day == now.day &&
                 n.timestamp.month == now.month &&
                 n.timestamp.year == now.year,
           );
 
           if (!existingExceeded) {
-            final overAmount = spent - budget;
-            addNotification(
+            final overAmount = totalSpent - monthlyBudget;
+            await addNotification(
               NotificationModel(
                 id: DateTime.now().millisecondsSinceEpoch.toString(),
-                title: '🚨 $category Budget Exceeded!',
+                title: '🚨 Monthly Budget Exceeded!',
                 message:
-                    'You have exceeded your $category budget by RM ${overAmount.toStringAsFixed(2)}.',
+                    'You have exceeded your monthly budget by RM ${overAmount.toStringAsFixed(2)}. Consider adjusting your spending.',
                 timestamp: now,
-                type: NotificationType.categoryBudgetExceeded,
+                type: NotificationType.monthlyBudgetExceeded,
                 data: {
-                  'category': category,
                   'overAmount': overAmount,
-                  'spent': spent,
-                  'budget': budget,
+                  'totalSpent': totalSpent,
+                  'budget': monthlyBudget,
                 },
               ),
             );
           }
         }
       }
-    });
+
+      // Check category budgets
+      for (final entry in categoryBudgets.entries) {
+        final category = entry.key;
+        final budget = entry.value;
+
+        if (budget > 0) {
+          final spent = categorySpent[category] ?? 0;
+          final spentPercentage = (spent / budget) * 100;
+
+          if (spentPercentage >= 80 && spentPercentage < 100) {
+            final existingNear = state.notifications.any(
+              (n) =>
+                  n.type == NotificationType.categoryBudgetNearLimit &&
+                  n.data?['category'] == category &&
+                  n.timestamp.day == now.day &&
+                  n.timestamp.month == now.month &&
+                  n.timestamp.year == now.year,
+            );
+
+            if (!existingNear) {
+              await addNotification(
+                NotificationModel(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  title: '⚠️ $category Budget Near Limit',
+                  message:
+                      'You have spent ${spentPercentage.toStringAsFixed(1)}% of your $category budget. Only RM ${(budget - spent).toStringAsFixed(2)} remaining.',
+                  timestamp: now,
+                  type: NotificationType.categoryBudgetNearLimit,
+                  data: {
+                    'category': category,
+                    'percentage': spentPercentage,
+                    'remaining': budget - spent,
+                    'spent': spent,
+                    'budget': budget,
+                  },
+                ),
+              );
+            }
+          } else if (spentPercentage >= 100) {
+            final existingExceeded = state.notifications.any(
+              (n) =>
+                  n.type == NotificationType.categoryBudgetExceeded &&
+                  n.data?['category'] == category &&
+                  n.timestamp.day == now.day &&
+                  n.timestamp.month == now.month &&
+                  n.timestamp.year == now.year,
+            );
+
+            if (!existingExceeded) {
+              final overAmount = spent - budget;
+              await addNotification(
+                NotificationModel(
+                  id: DateTime.now().millisecondsSinceEpoch.toString(),
+                  title: '🚨 $category Budget Exceeded!',
+                  message:
+                      'You have exceeded your $category budget by RM ${overAmount.toStringAsFixed(2)}.',
+                  timestamp: now,
+                  type: NotificationType.categoryBudgetExceeded,
+                  data: {
+                    'category': category,
+                    'overAmount': overAmount,
+                    'spent': spent,
+                    'budget': budget,
+                  },
+                ),
+              );
+            }
+          }
+        }
+      }
+    } finally {
+      _isProcessing = false;
+    }
   }
 }
