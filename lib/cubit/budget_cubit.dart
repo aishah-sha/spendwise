@@ -55,26 +55,16 @@ class BudgetCubit extends Cubit<BudgetState> {
     emit(BudgetLoading());
     try {
       final savedBudget = await _storageService.loadBudget();
-      if (savedBudget != null) {
+      if (savedBudget != null && savedBudget.monthlyLimit > 0) {
         emit(BudgetLoaded(budget: savedBudget));
       } else {
-        // Create default empty budget if none exists
-        final defaultBudget = Budget(
+        // Create COMPLETELY EMPTY budget
+        final emptyBudget = Budget(
           monthlyLimit: 0,
           totalSpent: 0,
-          categories: [
-            BudgetCategory(name: 'Groceries', amount: 0, spent: 0),
-            BudgetCategory(name: 'Food', amount: 0, spent: 0),
-            BudgetCategory(name: 'Beverages', amount: 0, spent: 0),
-            BudgetCategory(name: 'Clothes', amount: 0, spent: 0),
-            BudgetCategory(name: 'Stationery', amount: 0, spent: 0),
-            BudgetCategory(name: 'Entertainment', amount: 0, spent: 0),
-            BudgetCategory(name: 'Transport', amount: 0, spent: 0),
-            BudgetCategory(name: 'Shopping', amount: 0, spent: 0),
-            BudgetCategory(name: 'Other', amount: 0, spent: 0),
-          ],
+          categories: [],
         );
-        emit(BudgetLoaded(budget: defaultBudget));
+        emit(BudgetLoaded(budget: emptyBudget));
       }
     } catch (e) {
       emit(BudgetError(message: 'Failed to load budget: ${e.toString()}'));
@@ -90,42 +80,29 @@ class BudgetCubit extends Cubit<BudgetState> {
 
     try {
       final savedBudget = await _storageService.loadBudget();
-      if (savedBudget != null) {
+      if (savedBudget != null && savedBudget.monthlyLimit > 0) {
         emit(BudgetLoaded(budget: savedBudget));
       } else {
-        // Create default empty budget if none exists
-        final defaultBudget = Budget(
+        final emptyBudget = Budget(
           monthlyLimit: 0,
           totalSpent: 0,
-          categories: [
-            BudgetCategory(name: 'Groceries', amount: 0, spent: 0),
-            BudgetCategory(name: 'Food', amount: 0, spent: 0),
-            BudgetCategory(name: 'Beverages', amount: 0, spent: 0),
-            BudgetCategory(name: 'Clothes', amount: 0, spent: 0),
-            BudgetCategory(name: 'Stationery', amount: 0, spent: 0),
-            BudgetCategory(name: 'Entertainment', amount: 0, spent: 0),
-            BudgetCategory(name: 'Transport', amount: 0, spent: 0),
-            BudgetCategory(name: 'Shopping', amount: 0, spent: 0),
-            BudgetCategory(name: 'Other', amount: 0, spent: 0),
-          ],
+          categories: [],
         );
-        emit(BudgetLoaded(budget: defaultBudget));
+        emit(BudgetLoaded(budget: emptyBudget));
       }
     } catch (e) {
       emit(BudgetError(message: 'Failed to load budget: ${e.toString()}'));
     }
   }
 
-  // Updated saveBudget method with isAdditional parameter
   Future<void> saveBudget({
     required double monthlyLimit,
     required Map<String, double> categoryBudgets,
-    bool isAdditional = false, // Add this parameter
+    bool isAdditional = false,
   }) async {
     emit(BudgetLoading());
 
     try {
-      // Get current budget if it exists
       Budget? currentBudget;
       if (state is BudgetLoaded) {
         currentBudget = (state as BudgetLoaded).budget;
@@ -133,37 +110,34 @@ class BudgetCubit extends Cubit<BudgetState> {
         currentBudget = await _storageService.loadBudget();
       }
 
-      // If this is additional budget and we have existing budget, add to it
-      if (isAdditional && currentBudget != null) {
-        // Add to monthly limit
+      if (isAdditional &&
+          currentBudget != null &&
+          currentBudget.monthlyLimit > 0) {
         final newMonthlyLimit = currentBudget.monthlyLimit + monthlyLimit;
-
-        // Update categories
         final List<BudgetCategory> updatedCategories = [];
 
-        // First, add all existing categories with their spent amounts preserved
         for (var existingCategory in currentBudget.categories) {
           final additionalAmount = categoryBudgets[existingCategory.name] ?? 0;
           updatedCategories.add(
             BudgetCategory(
               name: existingCategory.name,
               amount: existingCategory.amount + additionalAmount,
-              spent: existingCategory.spent, // Preserve spent amount
+              spent: existingCategory.spent,
             ),
           );
         }
 
-        // Add any new categories that might not exist in current budget
         for (var entry in categoryBudgets.entries) {
-          final exists = updatedCategories.any((c) => c.name == entry.key);
-          if (!exists) {
-            updatedCategories.add(
-              BudgetCategory(name: entry.key, amount: entry.value, spent: 0),
-            );
+          if (entry.value > 0) {
+            final exists = updatedCategories.any((c) => c.name == entry.key);
+            if (!exists) {
+              updatedCategories.add(
+                BudgetCategory(name: entry.key, amount: entry.value, spent: 0),
+              );
+            }
           }
         }
 
-        // Calculate total spent
         final totalSpent = updatedCategories.fold(
           0.0,
           (sum, category) => sum + category.spent,
@@ -175,43 +149,32 @@ class BudgetCubit extends Cubit<BudgetState> {
           categories: updatedCategories,
         );
 
-        // Save to storage
         await _storageService.saveBudget(newBudget);
-
         emit(BudgetSaved(message: 'Budget updated successfully!'));
         await Future.delayed(const Duration(milliseconds: 100));
         emit(BudgetLoaded(budget: newBudget));
       } else {
-        // This is a new budget (replace existing)
         final List<BudgetCategory> categories = [];
 
-        // Add all categories
-        final allCategoryNames = [
-          'Groceries',
-          'Food',
-          'Beverages',
-          'Clothes',
-          'Stationery',
-          'Entertainment',
-          'Transport',
-          'Shopping',
-          'Other',
-        ];
-
-        for (var name in allCategoryNames) {
-          final amount = categoryBudgets[name] ?? 0;
-          // If we have existing budget with spent amounts, preserve them
-          double spent = 0;
-          if (currentBudget != null) {
-            final existingCat = currentBudget.categories.firstWhere(
-              (c) => c.name == name,
-              orElse: () => BudgetCategory(name: name, amount: 0, spent: 0),
+        for (var entry in categoryBudgets.entries) {
+          if (entry.value > 0) {
+            double spent = 0;
+            if (currentBudget != null && currentBudget.monthlyLimit > 0) {
+              final existingCat = currentBudget.categories.firstWhere(
+                (c) => c.name == entry.key,
+                orElse: () =>
+                    BudgetCategory(name: entry.key, amount: 0, spent: 0),
+              );
+              spent = existingCat.spent;
+            }
+            categories.add(
+              BudgetCategory(
+                name: entry.key,
+                amount: entry.value,
+                spent: spent,
+              ),
             );
-            spent = existingCat.spent;
           }
-          categories.add(
-            BudgetCategory(name: name, amount: amount, spent: spent),
-          );
         }
 
         final totalSpent = categories.fold(
@@ -262,22 +225,16 @@ class BudgetCubit extends Cubit<BudgetState> {
         categories: updatedCategories,
       );
 
-      // Save to storage
       _storageService.saveBudget(updatedBudget);
-
       emit(BudgetLoaded(budget: updatedBudget, isSynced: false));
     }
   }
 
-  // New method to add additional budget
   Future<void> addToBudget({
     required double additionalAmount,
     Map<String, double>? additionalCategoryBudgets,
   }) async {
     if (state is BudgetLoaded) {
-      final currentState = state as BudgetLoaded;
-      final currentBudget = currentState.budget;
-
       await saveBudget(
         monthlyLimit: additionalAmount,
         categoryBudgets: additionalCategoryBudgets ?? {},
@@ -286,9 +243,42 @@ class BudgetCubit extends Cubit<BudgetState> {
     }
   }
 
-  // Reset budget method
   Future<void> resetBudget() async {
     await _storageService.clearBudget();
-    await loadBudget(forceRefresh: true);
+    final emptyBudget = Budget(monthlyLimit: 0, totalSpent: 0, categories: []);
+    emit(BudgetLoaded(budget: emptyBudget));
+  }
+
+  Future<void> forceClearAllBudgetData() async {
+    try {
+      await _storageService.clearBudget();
+      final emptyBudget = Budget(
+        monthlyLimit: 0,
+        totalSpent: 0,
+        categories: [],
+      );
+      emit(BudgetLoaded(budget: emptyBudget));
+      print('All budget data has been cleared successfully');
+    } catch (e) {
+      print('Error clearing budget data: $e');
+    }
+  }
+
+  Future<void> refreshBudget() async {
+    try {
+      final savedBudget = await _storageService.loadBudget();
+      if (savedBudget != null && savedBudget.monthlyLimit > 0) {
+        emit(BudgetLoaded(budget: savedBudget));
+      } else {
+        final emptyBudget = Budget(
+          monthlyLimit: 0,
+          totalSpent: 0,
+          categories: [],
+        );
+        emit(BudgetLoaded(budget: emptyBudget));
+      }
+    } catch (e) {
+      emit(BudgetError(message: 'Failed to refresh budget: ${e.toString()}'));
+    }
   }
 }

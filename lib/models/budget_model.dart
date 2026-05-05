@@ -117,6 +117,9 @@ class Budget {
       categories.where((c) => c.isOverBudget).length;
   int get activeCategories => categories.where((c) => c.amount > 0).length;
 
+  bool get hasMonthlyBudget => monthlyLimit > 0;
+  bool get hasCategories => categories.any((c) => c.amount > 0);
+
   String get formattedMonthlyLimit =>
       '$currency${monthlyLimit.toStringAsFixed(2)}';
   String get formattedTotalSpent => '$currency${totalSpent.toStringAsFixed(2)}';
@@ -144,7 +147,7 @@ class Budget {
   }
 
   bool get isValid {
-    if (monthlyLimit <= 0) return false;
+    if (monthlyLimit < 0) return false;
     if (totalSpent < 0) return false;
     for (final category in categories) {
       if (!category.isValid) return false;

@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:google_sign_in/google_sign_in.dart';
 import '../services/supabase_service.dart';
 
 // Import OAuth provider
@@ -33,9 +34,22 @@ class AuthFailure extends AuthState {
 class AuthCubit extends Cubit<AuthState> {
   final SupabaseClient _supabase = Supabase.instance.client;
   final SupabaseService _supabaseService = SupabaseService();
+  late final GoogleSignIn _googleSignIn;
 
   AuthCubit() : super(AuthInitial()) {
     _initialize();
+    _setupGoogleSignIn();
+  }
+
+  void _setupGoogleSignIn() {
+    // Configure Google Sign-In to request ID token
+    _googleSignIn = GoogleSignIn(
+      scopes: ['email', 'profile'],
+      // For Android, you need to add your web client ID
+      // Get this from Google Cloud Console > Credentials > Web Client ID
+      serverClientId:
+          '265157656052-8qn65l77ps423er6srsgqrpsm2j7ku4c.apps.googleusercontent.com',
+    );
   }
 
   Future<void> _initialize() async {
@@ -117,29 +131,85 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // SIGN IN with Google
+  // SIGN IN with Google - FIXED FOR ANDROID
   Future<void> signInWithGoogle() async {
     if (isClosed) return;
 
     emit(AuthLoading());
     try {
-      await _supabase.auth.signInWithOAuth(
-        OAuthProvider.google,
-        redirectTo: 'io.supabase.flutter://callback-callback/',
+      // First, sign out from any previous Google account
+      await _googleSignIn.signOut();
+
+      // Trigger Google Sign-In with requested scopes
+      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      if (googleUser == null) {
+        if (!isClosed) {
+          emit(Unauthenticated());
+        }
+        return;
+      }
+
+      // Get authentication details - this should now include idToken
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
+
+      print(
+        'Access Token: ${googleAuth.accessToken != null ? "Got token" : "No token"}',
       );
+      print(
+        'ID Token: ${googleAuth.idToken != null ? "Got ID token" : "No ID token"}',
+      );
+
+      // If no ID token, try using Firebase approach
+      if (googleAuth.idToken == null) {
+        print('No ID token received. Trying alternative method...');
+
+        // Alternative: Use access token to get user info
+        if (googleAuth.accessToken != null) {
+          // You can still proceed with access token only
+          print('Proceeding with access token only');
+        } else {
+          if (!isClosed) {
+            emit(
+              AuthFailure(
+                error:
+                    'Failed to get Google credentials. Please check your Google Sign-In configuration.',
+              ),
+            );
+          }
+          return;
+        }
+      }
+
+      // Exchange for Supabase session
+      final response = await _supabase.auth.signInWithIdToken(
+        provider: OAuthProvider.google,
+        idToken: googleAuth.idToken ?? '', // Empty string if null
+        accessToken: googleAuth.accessToken,
+      );
+
+      print('Supabase sign in successful: ${response.user?.email}');
+
+      if (!isClosed) {
+        emit(Authenticated(response.user));
+      }
     } catch (e) {
+      print('Google Sign-In error: $e');
       if (!isClosed) {
         emit(AuthFailure(error: 'Google Sign-In failed: ${e.toString()}'));
       }
     }
   }
 
-  // SIGN OUT
+  // SIGN OUT - Also sign out from Google
   Future<void> signOut() async {
     if (isClosed) return;
 
     emit(AuthLoading());
     try {
+      // Sign out from Google as well
+      await _googleSignIn.signOut();
       await _supabase.auth.signOut();
       if (!isClosed) {
         emit(Unauthenticated());

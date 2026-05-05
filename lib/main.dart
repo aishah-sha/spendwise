@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Screens
 import 'package:spendwise/screens/signup_screen.dart';
@@ -94,7 +95,10 @@ class MyApp extends StatelessWidget {
         BlocProvider<NotificationCubit>(
           create: (context) => NotificationCubit(),
         ),
-        BlocProvider<ProfileCubit>(create: (context) => ProfileCubit()),
+        // ProfileCubit loads profile immediately
+        BlocProvider<ProfileCubit>(
+          create: (context) => ProfileCubit()..loadProfile(),
+        ),
       ],
       child: const AppRoot(),
     );
@@ -186,6 +190,45 @@ class AuthWrapper extends StatelessWidget {
       builder: (context, state) {
         // 1. User is Logged In
         if (state is auth.Authenticated) {
+          // Load profile data when user is authenticated
+          // This ensures user data is loaded from Supabase after login
+          final profileCubit = context.read<ProfileCubit>();
+
+          // Get the Supabase user
+          final supabaseUser = state.user;
+
+          // If user is authenticated but profile hasn't been loaded with user data,
+          // we might need to update the profile with Supabase user data
+          final currentState = profileCubit.state;
+          if (currentState is ProfileLoaded) {
+            // FIXED: Using ?. operator for null safety on lines 205 and 206
+            final userEmail = supabaseUser?.email;
+            final userMetadata = supabaseUser?.userMetadata;
+
+            // Only update if we have an email and it's different
+            if (userEmail != null && currentState.user.email != userEmail) {
+              // Safely get name from metadata or email
+              String userName = currentState.user.fullName;
+
+              // Check if metadata exists and has name
+              if (userMetadata != null) {
+                final nameFromMetadata = userMetadata['name'];
+                if (nameFromMetadata != null && nameFromMetadata is String) {
+                  userName = nameFromMetadata;
+                }
+              } else if (userEmail != null) {
+                userName = userEmail.split('@').first;
+              }
+
+              // Update profile with Supabase user data
+              final updatedUser = currentState.user.copyWith(
+                email: userEmail,
+                fullName: userName,
+              );
+              profileCubit.saveUser(updatedUser);
+            }
+          }
+
           return const DashboardScreen();
         }
 

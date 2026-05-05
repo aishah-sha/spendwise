@@ -112,13 +112,20 @@ class SupabaseService {
     }
   }
 
-  Future<void> updateTotalSpent(double amount) async {
+  Future<void> updateTotalSpent(double amount, {bool isAdding = true}) async {
     if (!isUserLoggedIn) return;
 
     try {
       final profile = await getUserProfile();
       final currentTotal = (profile?['total_spent'] ?? 0.0) as double;
-      final newTotal = currentTotal + amount;
+      double newTotal;
+
+      if (isAdding) {
+        newTotal = currentTotal + amount;
+      } else {
+        newTotal = currentTotal - amount;
+        if (newTotal < 0) newTotal = 0.0;
+      }
 
       await _supabase
           .from(profilesTable)
@@ -132,7 +139,7 @@ class SupabaseService {
 
   // ============ TRANSACTION METHODS ============
 
-  Future<void> addTransaction({
+  Future<Map<String, dynamic>> addTransaction({
     required double amount,
     required String category,
     required String type,
@@ -142,25 +149,32 @@ class SupabaseService {
     String? imageUrl,
     DateTime? date,
   }) async {
-    if (!isUserLoggedIn) return;
+    if (!isUserLoggedIn) throw Exception('User not logged in');
 
     try {
-      await _supabase.from(transactionsTable).insert({
-        'user_id': _currentUserId,
-        'amount': amount,
-        'category': category,
-        'type': type,
-        'description': description,
-        'title': title ?? description,
-        'note': note,
-        'image_url': imageUrl ?? '',
-        'date': (date ?? DateTime.now()).toIso8601String(),
-        'created_at': DateTime.now().toIso8601String(),
-      });
+      final result = await _supabase
+          .from(transactionsTable)
+          .insert({
+            'user_id': _currentUserId,
+            'amount': amount,
+            'category': category,
+            'type': type,
+            'description': description,
+            'title': title ?? description,
+            'note': note,
+            'image_url': imageUrl ?? '',
+            'date': (date ?? DateTime.now()).toIso8601String(),
+            'created_at': DateTime.now().toIso8601String(),
+          })
+          .select()
+          .single();
 
+      // Update total spent only for expenses
       if (type == 'expense') {
-        await updateTotalSpent(amount);
+        await updateTotalSpent(amount, isAdding: true);
       }
+
+      return result as Map<String, dynamic>;
     } catch (e) {
       print('Error adding transaction: $e');
       rethrow;
@@ -203,11 +217,36 @@ class SupabaseService {
     if (!isUserLoggedIn) return;
 
     try {
+      // Get original transaction to adjust total_spent if needed
+      final original = await getTransaction(transactionId);
+      final originalAmount = (original?['amount'] ?? 0.0) as double;
+      final originalType = original?['type'] as String? ?? '';
+
+      final newAmount = (data['amount'] ?? originalAmount) as double;
+      final newType = data['type'] ?? originalType;
+
       await _supabase
           .from(transactionsTable)
           .update(data)
           .eq('id', transactionId)
           .eq('user_id', _currentUserId);
+
+      // Update total_spent if expense amounts or types changed
+      if (originalType == 'expense' && newType == 'expense') {
+        final amountDifference = newAmount - originalAmount;
+        if (amountDifference != 0) {
+          await updateTotalSpent(
+            amountDifference.abs(),
+            isAdding: amountDifference > 0,
+          );
+        }
+      } else if (originalType == 'expense' && newType != 'expense') {
+        // Was expense, now not expense - remove from total
+        await updateTotalSpent(originalAmount, isAdding: false);
+      } else if (originalType != 'expense' && newType == 'expense') {
+        // Was not expense, now expense - add to total
+        await updateTotalSpent(newAmount, isAdding: true);
+      }
     } catch (e) {
       print('Error updating transaction: $e');
       rethrow;
@@ -229,13 +268,7 @@ class SupabaseService {
           .eq('user_id', _currentUserId);
 
       if (type == 'expense') {
-        final profile = await getUserProfile();
-        final currentTotal = (profile?['total_spent'] ?? 0.0) as double;
-        final newTotal = currentTotal - amount;
-        await _supabase
-            .from(profilesTable)
-            .update({'total_spent': newTotal > 0 ? newTotal : 0.0})
-            .eq('id', _currentUserId);
+        await updateTotalSpent(amount, isAdding: false);
       }
     } catch (e) {
       print('Error deleting transaction: $e');
@@ -326,6 +359,14 @@ class SupabaseService {
           'created_at': DateTime.now().toIso8601String(),
         });
       }
+
+      // Update total_budget in profile
+      final currentProfile = await getUserProfile();
+      final currentBudget = currentProfile?['total_budget'] ?? 0.0;
+      await _supabase
+          .from(profilesTable)
+          .update({'total_budget': amount})
+          .eq('id', _currentUserId);
     } catch (e) {
       print('Error setting monthly budget: $e');
       rethrow;

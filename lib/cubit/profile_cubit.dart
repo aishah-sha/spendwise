@@ -44,6 +44,12 @@ class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
+  // Public method to save user (for login)
+  Future<void> saveUser(UserModel user) async {
+    await _saveUser(user);
+    emit(ProfileLoaded(user: user, isEditing: false));
+  }
+
   void togglePushNotifications() {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;

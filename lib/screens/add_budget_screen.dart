@@ -407,6 +407,8 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                 ),
               ),
             );
+            // CRITICAL: Return true to indicate budget was saved
+            // This will trigger refresh in budget_screen.dart
             Navigator.pop(context, true);
           } else if (state is cubit.BudgetError) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -643,7 +645,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
               const Row(
                 children: [
                   Icon(Icons.category, color: accentGreen, size: 20),
-                  SizedBox(width: 8),
+                  const SizedBox(width: 8),
                   Text(
                     'Category Budgets',
                     style: TextStyle(

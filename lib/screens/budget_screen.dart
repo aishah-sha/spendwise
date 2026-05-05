@@ -15,7 +15,6 @@ import 'dashboard_screen.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../widgets/category_budget_card.dart';
 import '../models/budget_model.dart';
-
 import '../cubit/budget_cubit.dart' as cubit;
 import 'profile_screen.dart';
 
@@ -236,15 +235,10 @@ class BudgetView extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
     final screenHeight = MediaQuery.of(context).size.height;
 
-    // Get dark mode state
     final profileState = context.watch<ProfileCubit>().state;
     final bool isDarkMode = (profileState is ProfileLoaded)
         ? profileState.user.isDarkMode
         : false;
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<BudgetCubit>().loadBudget(forceRefresh: true);
-    });
 
     return BlocBuilder<BudgetCubit, cubit.BudgetState>(
       builder: (context, budgetState) {
@@ -294,7 +288,6 @@ class BudgetView extends StatelessWidget {
               final Map<String, double> categorySpending = {};
               double totalSpending = 0;
 
-              // Calculate spending from expenses
               for (var expense in expenseState.allExpenses) {
                 if (!expense.isIncome) {
                   String categoryName = expense.category;
@@ -304,23 +297,6 @@ class BudgetView extends StatelessWidget {
                   totalSpending += expense.amount;
                 }
               }
-
-              // Check notifications
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                final notificationCubit = context.read<NotificationCubit>();
-                final Map<String, double> categoryBudgets = {};
-                for (var category in budget.categories) {
-                  if (category.amount > 0) {
-                    categoryBudgets[category.name] = category.amount;
-                  }
-                }
-                notificationCubit.checkBudgetAndNotify(
-                  monthlyBudget: budget.monthlyLimit,
-                  totalSpent: totalSpending,
-                  categoryBudgets: categoryBudgets,
-                  categorySpent: categorySpending,
-                );
-              });
 
               return Column(
                 children: [
@@ -432,6 +408,29 @@ class BudgetView extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
+        // Add refresh button
+        GestureDetector(
+          onTap: () {
+            context.read<BudgetCubit>().refreshBudget();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Refreshing budget...'),
+                duration: Duration(seconds: 1),
+                backgroundColor: accentGreen,
+              ),
+            );
+          },
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: Colors.grey.shade300,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: const Icon(Icons.refresh, color: Colors.black54, size: 26),
+          ),
+        ),
+        const SizedBox(width: 8),
         GestureDetector(
           onTap: () async {
             final budgetState = context.read<BudgetCubit>().state;

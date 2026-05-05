@@ -31,48 +31,40 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
-        BlocProvider.value(value: context.read<AuthCubit>()),
-      ],
-      child: BlocListener<AuthCubit, AuthState>(
-        listener: (context, state) {
-          if (state is Unauthenticated) {
-            // Navigate to welcome screen when logged out
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute(builder: (context) => const WelcomeScreen()),
-              (route) => false,
-            );
-          }
-        },
-        child: BlocBuilder<ProfileCubit, ProfileState>(
-          builder: (context, state) {
-            bool isDarkMode = (state is ProfileLoaded)
-                ? state.user.isDarkMode
-                : false;
+    // Don't create new ProfileCubit - use existing one from parent
+    return BlocListener<AuthCubit, AuthState>(
+      listener: (context, state) {
+        if (state is Unauthenticated) {
+          // Navigate to welcome screen when logged out
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (context) => const WelcomeScreen()),
+            (route) => false,
+          );
+        }
+      },
+      child: BlocBuilder<ProfileCubit, ProfileState>(
+        builder: (context, state) {
+          bool isDarkMode = (state is ProfileLoaded)
+              ? state.user.isDarkMode
+              : false;
 
-            return Theme(
-              data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-              child: Scaffold(
-                backgroundColor: isDarkMode ? Colors.black : bgColor,
-                floatingActionButtonLocation:
-                    FloatingActionButtonLocation.centerDocked,
-                floatingActionButton: _buildFab(context, isDarkMode),
-                bottomNavigationBar: _buildBottomNavigation(
-                  context,
-                  isDarkMode,
-                ),
-                body: Column(
-                  children: [
-                    _buildTopHeader(context, isDarkMode),
-                    Expanded(child: _ProfileContent(isDarkMode: isDarkMode)),
-                  ],
-                ),
+          return Theme(
+            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+            child: Scaffold(
+              backgroundColor: isDarkMode ? Colors.black : bgColor,
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.centerDocked,
+              floatingActionButton: _buildFab(context, isDarkMode),
+              bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
+              body: Column(
+                children: [
+                  _buildTopHeader(context, isDarkMode),
+                  Expanded(child: _ProfileContent(isDarkMode: isDarkMode)),
+                ],
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -859,9 +851,16 @@ class _ProfileContent extends StatelessWidget {
               const SizedBox(height: 30),
               ElevatedButton(
                 onPressed: () {
-                  context.read<ProfileCubit>().updateFullName(
-                    nameController.text,
-                  );
+                  if (nameController.text != state.user.fullName) {
+                    context.read<ProfileCubit>().updateFullName(
+                      nameController.text,
+                    );
+                  }
+                  if (emailController.text != state.user.email) {
+                    context.read<ProfileCubit>().updateEmail(
+                      emailController.text,
+                    );
+                  }
                   Navigator.pop(context);
                 },
                 style: ElevatedButton.styleFrom(
