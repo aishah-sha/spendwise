@@ -1,5 +1,7 @@
+import 'dart:async'; // Add this import for StreamSubscription
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/budget_model.dart';
 import '../services/budget_storage_service.dart';
 
@@ -46,29 +48,35 @@ class BudgetError extends BudgetState {
 // Cubit
 class BudgetCubit extends Cubit<BudgetState> {
   final BudgetStorageService _storageService = BudgetStorageService();
+  StreamSubscription? _authSubscription;
 
   BudgetCubit() : super(BudgetInitial()) {
-    _loadSavedBudget();
+    _listenToAuthChanges();
   }
 
-  Future<void> _loadSavedBudget() async {
-    emit(BudgetLoading());
-    try {
-      final savedBudget = await _storageService.loadBudget();
-      if (savedBudget != null && savedBudget.monthlyLimit > 0) {
-        emit(BudgetLoaded(budget: savedBudget));
-      } else {
-        // Create COMPLETELY EMPTY budget
-        final emptyBudget = Budget(
-          monthlyLimit: 0,
-          totalSpent: 0,
-          categories: [],
-        );
-        emit(BudgetLoaded(budget: emptyBudget));
+  // Listen to auth changes to clear/load user-specific data
+  void _listenToAuthChanges() {
+    _authSubscription = Supabase.instance.client.auth.onAuthStateChange.listen((
+      data,
+    ) {
+      if (!isClosed) {
+        final session = data.session;
+        if (session != null) {
+          // User logged in - load their budget
+          print('User logged in, loading their budget...');
+          loadBudget(forceRefresh: true);
+        } else {
+          // User logged out - clear state
+          print('User logged out, clearing budget...');
+          final emptyBudget = Budget(
+            monthlyLimit: 0,
+            totalSpent: 0,
+            categories: [],
+          );
+          emit(BudgetLoaded(budget: emptyBudget));
+        }
       }
-    } catch (e) {
-      emit(BudgetError(message: 'Failed to load budget: ${e.toString()}'));
-    }
+    });
   }
 
   Future<void> loadBudget({bool forceRefresh = false}) async {
@@ -91,7 +99,13 @@ class BudgetCubit extends Cubit<BudgetState> {
         emit(BudgetLoaded(budget: emptyBudget));
       }
     } catch (e) {
-      emit(BudgetError(message: 'Failed to load budget: ${e.toString()}'));
+      // If user not logged in, just show empty budget
+      final emptyBudget = Budget(
+        monthlyLimit: 0,
+        totalSpent: 0,
+        categories: [],
+      );
+      emit(BudgetLoaded(budget: emptyBudget));
     }
   }
 
@@ -258,27 +272,19 @@ class BudgetCubit extends Cubit<BudgetState> {
         categories: [],
       );
       emit(BudgetLoaded(budget: emptyBudget));
-      print('All budget data has been cleared successfully');
+      print('All budget data has been cleared for current user');
     } catch (e) {
       print('Error clearing budget data: $e');
     }
   }
 
   Future<void> refreshBudget() async {
-    try {
-      final savedBudget = await _storageService.loadBudget();
-      if (savedBudget != null && savedBudget.monthlyLimit > 0) {
-        emit(BudgetLoaded(budget: savedBudget));
-      } else {
-        final emptyBudget = Budget(
-          monthlyLimit: 0,
-          totalSpent: 0,
-          categories: [],
-        );
-        emit(BudgetLoaded(budget: emptyBudget));
-      }
-    } catch (e) {
-      emit(BudgetError(message: 'Failed to refresh budget: ${e.toString()}'));
-    }
+    await loadBudget(forceRefresh: true);
+  }
+
+  @override
+  Future<void> close() {
+    _authSubscription?.cancel();
+    return super.close();
   }
 }

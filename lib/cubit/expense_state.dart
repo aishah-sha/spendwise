@@ -46,16 +46,14 @@ class ExpenseState extends Equatable {
 
   factory ExpenseState.initial() {
     final now = DateTime.now();
-
     return ExpenseState(
-      userName: 'John',
+      userName: 'User',
       currentDate: now,
-      totalBalance: 0.0, // Start with 0, will be updated when user adds money
-      totalSpending: 0.0, // Start with 0, will be calculated from expenses
-      budget: 0.0, // Start with 0, will be updated when user sets budget
-      allExpenses: [], // Start empty, will be filled when user adds expenses
-      filteredExpenses:
-          [], // Start empty, will be filled when user adds expenses
+      totalBalance: 0.0,
+      totalSpending: 0.0,
+      budget: 0.0,
+      allExpenses: const [],
+      filteredExpenses: const [],
       analyticsSelectedDate: now,
     );
   }

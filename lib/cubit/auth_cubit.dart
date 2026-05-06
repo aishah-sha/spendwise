@@ -1,4 +1,5 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import '../services/supabase_service.dart';
@@ -202,12 +203,21 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // SIGN OUT - Also sign out from Google
+  // SIGN OUT - Also sign out from Google and clear local data
   Future<void> signOut() async {
     if (isClosed) return;
 
     emit(AuthLoading());
     try {
+      // Clear local SharedPreferences data for this user
+      final currentUserId = _supabase.auth.currentUser?.id;
+      if (currentUserId != null) {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('saved_budget_$currentUserId');
+        await prefs.remove('user_data'); // Clear profile cache
+        print('Cleared user data for: $currentUserId');
+      }
+
       // Sign out from Google as well
       await _googleSignIn.signOut();
       await _supabase.auth.signOut();
@@ -215,6 +225,7 @@ class AuthCubit extends Cubit<AuthState> {
         emit(Unauthenticated());
       }
     } catch (e) {
+      print('Sign out error: $e');
       if (!isClosed) {
         emit(Unauthenticated());
       }

@@ -34,7 +34,8 @@ class BudgetScreen extends StatelessWidget {
         BlocProvider.value(value: context.read<BudgetCubit>()),
         BlocProvider.value(value: context.read<ExpenseCubit>()),
         BlocProvider(create: (context) => NotificationCubit()),
-        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
+        // FIXED: Use existing ProfileCubit, don't create a new one
+        BlocProvider.value(value: context.read<ProfileCubit>()),
       ],
       child: BlocBuilder<ProfileCubit, ProfileState>(
         builder: (context, profileState) {
@@ -159,14 +160,12 @@ class BudgetScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
+                // FIXED: Use existing ProfileCubit, don't create a new one
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => MultiBlocProvider(
-                      providers: [
-                        BlocProvider.value(value: context.read<ExpenseCubit>()),
-                        BlocProvider(create: (context) => ProfileCubit()),
-                      ],
+                    builder: (context) => BlocProvider.value(
+                      value: context.read<ProfileCubit>(),
                       child: const ProfileScreen(),
                     ),
                   ),
@@ -408,7 +407,6 @@ class BudgetView extends StatelessWidget {
           ),
         ),
         const SizedBox(width: 12),
-        // Add refresh button
         GestureDetector(
           onTap: () {
             context.read<BudgetCubit>().refreshBudget();

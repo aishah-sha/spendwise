@@ -26,209 +26,197 @@ class ExpenseHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
-      ],
-      child: BlocBuilder<ProfileCubit, ProfileState>(
-        builder: (context, profileState) {
-          bool isDarkMode = (profileState is ProfileLoaded)
-              ? profileState.user.isDarkMode
-              : false;
+    // FIXED: Use existing ProfileCubit, don't create a new one
+    return BlocBuilder<ProfileCubit, ProfileState>(
+      builder: (context, profileState) {
+        bool isDarkMode = (profileState is ProfileLoaded)
+            ? profileState.user.isDarkMode
+            : false;
 
-          return Theme(
-            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-            child: Scaffold(
-              backgroundColor: isDarkMode ? Colors.black : bgColor,
-              floatingActionButtonLocation:
-                  FloatingActionButtonLocation.centerDocked,
-              floatingActionButton: _buildFab(context, isDarkMode),
-              bottomNavigationBar: _buildBottomNavigation(
-                context,
-                isDarkMode,
-                accentGreen,
-              ),
-              body: Column(
-                children: [
-                  _buildTopHeader(context, isDarkMode),
-                  // Title Section (below header)
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(20, 15, 20, 10),
-                    color: Colors.transparent,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Expense History',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: isDarkMode ? Colors.white : darkText,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Manage and Review all your expenses',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: isDarkMode
-                                ? Colors.white70
-                                : darkText.withOpacity(0.7),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  // Search Bar
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: isDarkMode ? Colors.grey[850] : Colors.white,
-                        borderRadius: BorderRadius.circular(25),
-                        boxShadow: [
-                          BoxShadow(
-                            color: isDarkMode
-                                ? Colors.black.withOpacity(0.3)
-                                : Colors.grey.withOpacity(0.1),
-                            spreadRadius: 1,
-                            blurRadius: 5,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: TextField(
+        return Theme(
+          data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+          child: Scaffold(
+            backgroundColor: isDarkMode ? Colors.black : bgColor,
+            floatingActionButtonLocation:
+                FloatingActionButtonLocation.centerDocked,
+            floatingActionButton: _buildFab(context, isDarkMode),
+            bottomNavigationBar: _buildBottomNavigation(
+              context,
+              isDarkMode,
+              accentGreen,
+            ),
+            body: Column(
+              children: [
+                _buildTopHeader(context, isDarkMode),
+                // Title Section (below header)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.fromLTRB(20, 15, 20, 10),
+                  color: Colors.transparent,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Expense History',
                         style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
                           color: isDarkMode ? Colors.white : darkText,
                         ),
-                        decoration: InputDecoration(
-                          hintText: 'Search merchant, date, amount...',
-                          hintStyle: TextStyle(
-                            color: isDarkMode
-                                ? Colors.white60
-                                : Colors.grey[500],
-                          ),
-                          prefixIcon: Icon(Icons.search, color: accentGreen),
-                          border: InputBorder.none,
-                          contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 15,
-                          ),
-                        ),
-                        onChanged: (query) {
-                          context.read<ExpenseCubit>().searchExpenses(query);
-                        },
                       ),
-                    ),
-                  ),
-
-                  // Filter Row
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                    child: Row(
-                      children: [
-                        _buildFilterChip(
-                          'All',
-                          isSelected: true,
-                          isDarkMode: isDarkMode,
+                      const SizedBox(height: 4),
+                      Text(
+                        'Manage and Review all your expenses',
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: isDarkMode
+                              ? Colors.white70
+                              : darkText.withOpacity(0.7),
                         ),
-                        const SizedBox(width: 10),
-                        _buildFilterDropdown(context, 'Category', isDarkMode),
-                        const SizedBox(width: 10),
-                        _buildFilterDropdown(context, 'Date Range', isDarkMode),
-                        const Spacer(),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // Search Bar
+                Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey[850] : Colors.white,
+                      borderRadius: BorderRadius.circular(25),
+                      boxShadow: [
+                        BoxShadow(
+                          color: isDarkMode
+                              ? Colors.black.withOpacity(0.3)
+                              : Colors.grey.withOpacity(0.1),
+                          spreadRadius: 1,
+                          blurRadius: 5,
+                          offset: const Offset(0, 2),
+                        ),
                       ],
                     ),
-                  ),
-                  const SizedBox(height: 16),
-
-                  // Summary Cards
-                  _buildSummaryCards(isDarkMode),
-
-                  const SizedBox(height: 16),
-
-                  // Expense List
-                  Expanded(
-                    child: BlocBuilder<ExpenseCubit, ExpenseState>(
-                      builder: (context, state) {
-                        if (state.allExpenses.isEmpty) {
-                          return Center(
-                            child: Text(
-                              'No expenses found',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: isDarkMode
-                                    ? Colors.white60
-                                    : Colors.grey,
-                              ),
-                            ),
-                          );
-                        }
-
-                        if (state.filteredExpenses.isEmpty) {
-                          return Center(
-                            child: Text(
-                              'No expenses match your filters',
-                              style: TextStyle(
-                                fontSize: 16,
-                                color: isDarkMode
-                                    ? Colors.white60
-                                    : Colors.grey,
-                              ),
-                            ),
-                          );
-                        }
-
-                        return ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: state.groupedByDate.length,
-                          itemBuilder: (context, index) {
-                            final dateKey = state.groupedByDate.keys.elementAt(
-                              index,
-                            );
-                            final expenses = state.groupedByDate[dateKey]!;
-
-                            return Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                // Date Header
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    vertical: 8.0,
-                                  ),
-                                  child: Text(
-                                    dateKey,
-                                    style: TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: isDarkMode
-                                          ? Colors.white
-                                          : darkText,
-                                    ),
-                                  ),
-                                ),
-                                ...expenses.map(
-                                  (expense) => _buildDismissibleExpenseItem(
-                                    context,
-                                    expense,
-                                    isDarkMode,
-                                  ),
-                                ),
-                              ],
-                            );
-                          },
-                        );
+                    child: TextField(
+                      style: TextStyle(
+                        color: isDarkMode ? Colors.white : darkText,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Search merchant, date, amount...',
+                        hintStyle: TextStyle(
+                          color: isDarkMode ? Colors.white60 : Colors.grey[500],
+                        ),
+                        prefixIcon: Icon(Icons.search, color: accentGreen),
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 15,
+                        ),
+                      ),
+                      onChanged: (query) {
+                        context.read<ExpenseCubit>().searchExpenses(query);
                       },
                     ),
                   ),
-                ],
-              ),
+                ),
+
+                // Filter Row
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                  child: Row(
+                    children: [
+                      _buildFilterChip(
+                        'All',
+                        isSelected: true,
+                        isDarkMode: isDarkMode,
+                      ),
+                      const SizedBox(width: 10),
+                      _buildFilterDropdown(context, 'Category', isDarkMode),
+                      const SizedBox(width: 10),
+                      _buildFilterDropdown(context, 'Date Range', isDarkMode),
+                      const Spacer(),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                // Summary Cards
+                _buildSummaryCards(isDarkMode),
+
+                const SizedBox(height: 16),
+
+                // Expense List
+                Expanded(
+                  child: BlocBuilder<ExpenseCubit, ExpenseState>(
+                    builder: (context, state) {
+                      if (state.allExpenses.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No expenses found',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isDarkMode ? Colors.white60 : Colors.grey,
+                            ),
+                          ),
+                        );
+                      }
+
+                      if (state.filteredExpenses.isEmpty) {
+                        return Center(
+                          child: Text(
+                            'No expenses match your filters',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: isDarkMode ? Colors.white60 : Colors.grey,
+                            ),
+                          ),
+                        );
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: state.groupedByDate.length,
+                        itemBuilder: (context, index) {
+                          final dateKey = state.groupedByDate.keys.elementAt(
+                            index,
+                          );
+                          final expenses = state.groupedByDate[dateKey]!;
+
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              // Date Header
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 8.0,
+                                ),
+                                child: Text(
+                                  dateKey,
+                                  style: TextStyle(
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.bold,
+                                    color: isDarkMode ? Colors.white : darkText,
+                                  ),
+                                ),
+                              ),
+                              ...expenses.map(
+                                (expense) => _buildDismissibleExpenseItem(
+                                  context,
+                                  expense,
+                                  isDarkMode,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
+                      );
+                    },
+                  ),
+                ),
+              ],
             ),
-          );
-        },
-      ),
+          ),
+        );
+      },
     );
   }
 
@@ -244,13 +232,14 @@ class ExpenseHistoryScreen extends StatelessWidget {
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
         ),
         onPressed: () {
-          // Navigate to add expense screen WITH the provider
+          // Navigate to add expense screen
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => MultiBlocProvider(
                 providers: [
                   BlocProvider(create: (context) => AddExpenseCubit()),
+                  // FIXED: Use existing BudgetCubit, don't create new one
                   BlocProvider.value(
                     value: context.read<budget_cubit.BudgetCubit>(),
                   ),
@@ -259,7 +248,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
               ),
             ),
           ).then((_) {
-            // When returning from add expense, refresh budget if needed
             _refreshBudget(context);
           });
         },
@@ -268,19 +256,16 @@ class ExpenseHistoryScreen extends StatelessWidget {
     );
   }
 
-  // Helper method to refresh budget
   void _refreshBudget(BuildContext context) {
     context.read<budget_cubit.BudgetCubit>().loadBudget(forceRefresh: true);
   }
 
-  // Helper method to update budget when expense is added
   void _updateBudgetFromExpense(BuildContext context, dynamic expense) {
     if (expense.isIncome != true) {
       final budgetCubit = context.read<budget_cubit.BudgetCubit>();
       final budgetState = budgetCubit.state;
 
       if (budgetState is budget_cubit.BudgetLoaded) {
-        // Get current spent amount for this category
         final currentBudget = budgetState.budget;
         double currentSpent = 0;
 
@@ -291,7 +276,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
           }
         }
 
-        // Update with new total spent amount
         budgetCubit.updateCategorySpent(
           expense.category,
           currentSpent + expense.amount,
@@ -300,14 +284,12 @@ class ExpenseHistoryScreen extends StatelessWidget {
     }
   }
 
-  // Helper method to update budget when expense is deleted
   void _updateBudgetOnDelete(BuildContext context, dynamic expense) {
     if (expense.isIncome != true) {
       final budgetCubit = context.read<budget_cubit.BudgetCubit>();
       final budgetState = budgetCubit.state;
 
       if (budgetState is budget_cubit.BudgetLoaded) {
-        // Get current spent amount for this category
         final currentBudget = budgetState.budget;
         double currentSpent = 0;
 
@@ -318,7 +300,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
           }
         }
 
-        // Update with new total spent amount (subtract the deleted expense)
         budgetCubit.updateCategorySpent(
           expense.category,
           currentSpent - expense.amount,
@@ -382,7 +363,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 15),
-              // Notification badge
               IconTheme(
                 data: IconThemeData(
                   color: isDarkMode ? Colors.white : darkText,
@@ -405,9 +385,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
     required bool isDarkMode,
   }) {
     return GestureDetector(
-      onTap: () {
-        // Handle filter tap
-      },
+      onTap: () {},
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         decoration: BoxDecoration(
@@ -500,7 +478,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
   }
 
   void _showCategoryFilterMenu(BuildContext context, bool isDarkMode) {
-    // Get unique categories from expenses
     final expenseState = context.read<ExpenseCubit>().state;
     final Set<String> categories = {};
 
@@ -510,7 +487,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
       }
     }
 
-    // Sort categories alphabetically
     final sortedCategories = categories.toList()..sort();
 
     showModalBottomSheet(
@@ -563,7 +539,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 8),
-              // Dynamically show available categories
               ...sortedCategories.map(
                 (category) =>
                     _buildFilterOption(context, category, isDarkMode, () {
@@ -679,7 +654,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
           builder: (context, budgetState) {
             final totalExpenses = expenseState.filteredExpenses.length;
 
-            // Calculate total from expenses (income - expenses)
             final expensesTotal = expenseState.filteredExpenses.fold(0.0, (
               sum,
               expense,
@@ -688,18 +662,15 @@ class ExpenseHistoryScreen extends StatelessWidget {
               return isIncome ? sum + expense.amount : sum - expense.amount;
             });
 
-            // Get monthly budget if available
             double monthlyBudget = 0;
             if (budgetState is budget_cubit.BudgetLoaded) {
               monthlyBudget = budgetState.budget.monthlyLimit;
             }
 
-            // Calculate the amount to display
             final displayAmount = monthlyBudget > 0
                 ? monthlyBudget + expensesTotal
                 : expensesTotal;
 
-            // Determine color based on the amount
             Color amountColor = accentGreen;
             if (monthlyBudget > 0) {
               if (displayAmount < 0) {
@@ -741,11 +712,9 @@ class ExpenseHistoryScreen extends StatelessWidget {
               ),
               child: Column(
                 children: [
-                  // TOP ROW - Total Expenses and Total Amount on the same line
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      // TOTAL EXPENSES
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -767,15 +736,11 @@ class ExpenseHistoryScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-
-                      // Vertical Divider
                       Container(
                         height: 40,
                         width: 2,
                         color: Colors.white.withOpacity(0.5),
                       ),
-
-                      // TOTAL AMOUNT
                       Column(
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
@@ -799,7 +764,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                       ),
                     ],
                   ),
-
                   if (monthlyBudget > 0) ...[
                     const SizedBox(height: 2),
                     Row(
@@ -862,18 +826,13 @@ class ExpenseHistoryScreen extends StatelessWidget {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.startToEnd) {
-          // Swipe right to edit
           _navigateToEditExpense(context, expense);
           return false;
         } else if (direction == DismissDirection.endToStart) {
-          // Swipe left to delete
           final confirm = await _showDeleteConfirmation(context);
           if (confirm) {
-            // Update budget before deleting
             _updateBudgetOnDelete(context, expense);
             context.read<ExpenseCubit>().deleteExpense(expense.id);
-
-            // Show success message
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Expense deleted'),
@@ -890,7 +849,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
     );
   }
 
-  // Helper method to get category icon based on category name
   IconData _getCategoryIcon(String category) {
     switch (category.toLowerCase()) {
       case 'food':
@@ -927,7 +885,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
     }
   }
 
-  // Helper method to get category color based on category name
   Color _getCategoryColor(String category) {
     switch (category.toLowerCase()) {
       case 'food':
@@ -995,7 +952,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Category Icon based on category
           Container(
             width: 40,
             height: 40,
@@ -1010,8 +966,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-
-          // Left side - Merchant and Category
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -1025,7 +979,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 4),
-                // Category with count
                 Container(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 8,
@@ -1079,8 +1032,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
               ],
             ),
           ),
-
-          // Right side - Amount
           Column(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -1136,9 +1087,12 @@ class ExpenseHistoryScreen extends StatelessWidget {
                     builder: (context) => MultiBlocProvider(
                       providers: [
                         BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        // FIXED: Use existing BudgetCubit
                         BlocProvider.value(
                           value: context.read<budget_cubit.BudgetCubit>(),
                         ),
+                        // FIXED: Use existing ProfileCubit
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
                       ],
                       child: const DashboardScreen(),
                     ),
@@ -1153,9 +1107,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
               true,
               isDarkMode,
               activeColor,
-              () {
-                // Already on history screen
-              },
+              () {},
             ),
             const SizedBox(width: 40),
             _navItem(
@@ -1166,15 +1118,17 @@ class ExpenseHistoryScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
+                // FIXED: Use existing BudgetCubit and ProfileCubit
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => MultiBlocProvider(
                       providers: [
                         BlocProvider.value(value: context.read<ExpenseCubit>()),
-                        BlocProvider(
-                          create: (context) => budget_cubit.BudgetCubit(),
+                        BlocProvider.value(
+                          value: context.read<budget_cubit.BudgetCubit>(),
                         ),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
                       ],
                       child: const BudgetScreen(),
                     ),
@@ -1190,13 +1144,14 @@ class ExpenseHistoryScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
+                // FIXED: Use existing ProfileCubit
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => MultiBlocProvider(
                       providers: [
                         BlocProvider.value(value: context.read<ExpenseCubit>()),
-                        BlocProvider(create: (context) => ProfileCubit()),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
                       ],
                       child: const ProfileScreen(),
                     ),
@@ -1257,13 +1212,13 @@ void _navigateToEditExpense(BuildContext context, dynamic expense) {
           BlocProvider(
             create: (context) => AddExpenseCubit(expenseToEdit: expense),
           ),
+          // FIXED: Use existing BudgetCubit
           BlocProvider.value(value: context.read<budget_cubit.BudgetCubit>()),
         ],
         child: const AddExpenseScreen(),
       ),
     ),
   ).then((_) {
-    // Refresh budget when returning from edit
     context.read<budget_cubit.BudgetCubit>().loadBudget(forceRefresh: true);
   });
 }

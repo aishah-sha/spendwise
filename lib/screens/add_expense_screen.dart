@@ -16,6 +16,7 @@ import 'expense_history_screen.dart';
 import 'dashboard_screen.dart';
 import 'profile_screen.dart';
 import 'receipt_scanner_screen.dart';
+import '../cubit/budget_cubit.dart' as budget_cubit;
 
 class AddExpenseScreen extends StatelessWidget {
   const AddExpenseScreen({super.key});
@@ -28,150 +29,139 @@ class AddExpenseScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
-      ],
-      child: BlocBuilder<ProfileCubit, ProfileState>(
-        builder: (context, profileState) {
-          bool isDarkMode = (profileState is ProfileLoaded)
-              ? profileState.user.isDarkMode
-              : false;
+    // FIXED: Use existing ProfileCubit, don't create a new one
+    return BlocBuilder<ProfileCubit, ProfileState>(
+      builder: (context, profileState) {
+        bool isDarkMode = (profileState is ProfileLoaded)
+            ? profileState.user.isDarkMode
+            : false;
 
-          return Theme(
-            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-            child: Scaffold(
-              backgroundColor: isDarkMode ? Colors.black : bgColor,
-              floatingActionButtonLocation:
-                  FloatingActionButtonLocation.centerDocked,
-              floatingActionButton: _buildFab(context, isDarkMode),
-              bottomNavigationBar: _buildBottomNavigation(
-                context,
-                isDarkMode,
-                accentGreen,
-              ),
-              body: Column(
-                children: [
-                  _buildTopHeader(context, isDarkMode),
-                  Expanded(
-                    child: BlocConsumer<AddExpenseCubit, AddExpenseState>(
-                      listener: (context, state) {
-                        if (state.errorMessage != null &&
-                            state.errorMessage!.isNotEmpty) {
-                          _showErrorDialog(context, state.errorMessage!);
-                        }
-
-                        if (state.scannedReceipt != null &&
-                            state.scannedReceipt!.amount == 0.0) {
-                          _showManualEntryDialog(
-                            context,
-                            state.scannedReceipt!,
-                          );
-                        }
-
-                        // Handle successful expense save - auto navigate back
-                        if (state.expenseSavedSuccessfully) {
-                          // Clear the saved flag
-                          context.read<AddExpenseCubit>().resetSavedFlag();
-
-                          // Show success message
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Expense added successfully!'),
-                              backgroundColor: accentGreen,
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-
-                          // Auto navigate back to previous screen
-                          Navigator.pop(context);
-                        }
-
-                        // Handle successful expense edit
-                        if (state.expenseEditedSuccessfully) {
-                          context.read<AddExpenseCubit>().resetEditedFlag();
-
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Expense updated successfully!'),
-                              backgroundColor: accentGreen,
-                              duration: Duration(seconds: 2),
-                            ),
-                          );
-
-                          Navigator.pop(context);
-                        }
-
-                        // FIX: Pass Cubit to the Edit Screen via BlocProvider.value
-                        if (state.expenseToEdit != null) {
-                          final cubit = context.read<AddExpenseCubit>();
-                          WidgetsBinding.instance.addPostFrameCallback((_) {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => BlocProvider.value(
-                                  value: cubit,
-                                  child: ManualEntryScreen(
-                                    receipt: ReceiptModel(
-                                      id: state.expenseToEdit!.id,
-                                      date: state.expenseToEdit!.date,
-                                      amount: state.expenseToEdit!.amount,
-                                      receiptType: 'manual',
-                                      merchantName: state.expenseToEdit!.title,
-                                    ),
-                                    isEditing: true,
-                                    expenseToEdit: state.expenseToEdit,
-                                  ),
-                                ),
-                              ),
-                            ).then((_) => cubit.clearScannedReceipt());
-                          });
-                        }
-                      },
-                      builder: (context, state) {
-                        return Stack(
-                          children: [
-                            SingleChildScrollView(
-                              padding: const EdgeInsets.all(20.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  _buildHeader(context, state, isDarkMode),
-                                  const SizedBox(height: 20),
-                                  _buildOptionsGrid(context, isDarkMode),
-                                  const SizedBox(height: 30),
-                                  _buildRecentUploadsHeader(isDarkMode),
-                                  const SizedBox(height: 15),
-                                  _buildRecentUploadsList(
-                                    state,
-                                    context,
-                                    isDarkMode,
-                                  ),
-                                  const SizedBox(height: 20),
-                                  _buildViewAllButton(context, isDarkMode),
-                                ],
-                              ),
-                            ),
-                            if (state.isLoading)
-                              Container(
-                                color: Colors.black.withOpacity(0.3),
-                                child: const Center(
-                                  child: CircularProgressIndicator(
-                                    color: accentGreen,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                ],
-              ),
+        return Theme(
+          data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+          child: Scaffold(
+            backgroundColor: isDarkMode ? Colors.black : bgColor,
+            floatingActionButtonLocation:
+                FloatingActionButtonLocation.centerDocked,
+            floatingActionButton: _buildFab(context, isDarkMode),
+            bottomNavigationBar: _buildBottomNavigation(
+              context,
+              isDarkMode,
+              accentGreen,
             ),
-          );
-        },
-      ),
+            body: Column(
+              children: [
+                _buildTopHeader(context, isDarkMode),
+                Expanded(
+                  child: BlocConsumer<AddExpenseCubit, AddExpenseState>(
+                    listener: (context, state) {
+                      if (state.errorMessage != null &&
+                          state.errorMessage!.isNotEmpty) {
+                        _showErrorDialog(context, state.errorMessage!);
+                      }
+
+                      if (state.scannedReceipt != null &&
+                          state.scannedReceipt!.amount == 0.0) {
+                        _showManualEntryDialog(context, state.scannedReceipt!);
+                      }
+
+                      // Handle successful expense save - auto navigate back
+                      if (state.expenseSavedSuccessfully) {
+                        context.read<AddExpenseCubit>().resetSavedFlag();
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Expense added successfully!'),
+                            backgroundColor: accentGreen,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+
+                        Navigator.pop(context);
+                      }
+
+                      // Handle successful expense edit
+                      if (state.expenseEditedSuccessfully) {
+                        context.read<AddExpenseCubit>().resetEditedFlag();
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Expense updated successfully!'),
+                            backgroundColor: accentGreen,
+                            duration: Duration(seconds: 2),
+                          ),
+                        );
+
+                        Navigator.pop(context);
+                      }
+
+                      if (state.expenseToEdit != null) {
+                        final cubit = context.read<AddExpenseCubit>();
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => BlocProvider.value(
+                                value: cubit,
+                                child: ManualEntryScreen(
+                                  receipt: ReceiptModel(
+                                    id: state.expenseToEdit!.id,
+                                    date: state.expenseToEdit!.date,
+                                    amount: state.expenseToEdit!.amount,
+                                    receiptType: 'manual',
+                                    merchantName: state.expenseToEdit!.title,
+                                  ),
+                                  isEditing: true,
+                                  expenseToEdit: state.expenseToEdit,
+                                ),
+                              ),
+                            ),
+                          ).then((_) => cubit.clearScannedReceipt());
+                        });
+                      }
+                    },
+                    builder: (context, state) {
+                      return Stack(
+                        children: [
+                          SingleChildScrollView(
+                            padding: const EdgeInsets.all(20.0),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                _buildHeader(context, state, isDarkMode),
+                                const SizedBox(height: 20),
+                                _buildOptionsGrid(context, isDarkMode),
+                                const SizedBox(height: 30),
+                                _buildRecentUploadsHeader(isDarkMode),
+                                const SizedBox(height: 15),
+                                _buildRecentUploadsList(
+                                  state,
+                                  context,
+                                  isDarkMode,
+                                ),
+                                const SizedBox(height: 20),
+                                _buildViewAllButton(context, isDarkMode),
+                              ],
+                            ),
+                          ),
+                          if (state.isLoading)
+                            Container(
+                              color: Colors.black.withOpacity(0.3),
+                              child: const Center(
+                                child: CircularProgressIndicator(
+                                  color: accentGreen,
+                                ),
+                              ),
+                            ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -280,7 +270,6 @@ class AddExpenseScreen extends StatelessWidget {
           },
         ),
         const SizedBox(height: 12),
-        // NEW: Multiple Image Upload Option
         _buildOptionCard(
           icon: Icons.photo_library_outlined,
           title: 'Upload Multiple',
@@ -291,13 +280,11 @@ class AddExpenseScreen extends StatelessWidget {
             print("🟢 MULTIPLE UPLOAD TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
 
-            // Call the multiple upload method
             await addExpenseCubit.uploadMultipleImages();
 
             final state = addExpenseCubit.state;
 
             if (state.multipleReceipts.isNotEmpty) {
-              // Show a dialog to indicate multiple receipts were processed
               _showMultipleReceiptsDialog(context, state.multipleReceipts);
             } else if (state.errorMessage != null) {
               _showErrorDialog(context, state.errorMessage!);
@@ -346,8 +333,6 @@ class AddExpenseScreen extends StatelessWidget {
       ],
     );
   }
-
-  // --- UI Helper Methods ---
 
   Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
@@ -407,7 +392,6 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 15),
-              // Notification badge
               IconTheme(
                 data: IconThemeData(
                   color: isDarkMode ? Colors.white : darkText,
@@ -594,7 +578,6 @@ class AddExpenseScreen extends StatelessWidget {
               ),
             );
 
-            // If expense was saved, auto navigate back
             if (result == true) {
               Navigator.pop(context);
             }
@@ -712,7 +695,6 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  // FIXED Bottom Navigation Bar
   Widget _buildBottomNavigation(
     BuildContext context,
     bool isDarkMode,
@@ -735,12 +717,18 @@ class AddExpenseScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // Navigate to Dashboard
+                // FIXED: Use existing instances
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => BlocProvider.value(
-                      value: BlocProvider.of<ExpenseCubit>(context),
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider.value(
+                          value: context.read<budget_cubit.BudgetCubit>(),
+                        ),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
+                      ],
                       child: const DashboardScreen(),
                     ),
                   ),
@@ -755,19 +743,25 @@ class AddExpenseScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // Navigate to History Screen
+                // FIXED: Use existing instances
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => BlocProvider.value(
-                      value: BlocProvider.of<ExpenseCubit>(context),
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider.value(
+                          value: context.read<budget_cubit.BudgetCubit>(),
+                        ),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
+                      ],
                       child: const ExpenseHistoryScreen(),
                     ),
                   ),
                 );
               },
             ),
-            const SizedBox(width: 40), // Gap for the FAB notch
+            const SizedBox(width: 40),
             _navItem(
               Icons.pie_chart_outline,
               Icons.pie_chart,
@@ -776,12 +770,18 @@ class AddExpenseScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // Navigate to Budget Screen
+                // FIXED: Use existing instances
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => BlocProvider.value(
-                      value: BlocProvider.of<ExpenseCubit>(context),
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider.value(
+                          value: context.read<budget_cubit.BudgetCubit>(),
+                        ),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
+                      ],
                       child: const BudgetScreen(),
                     ),
                   ),
@@ -796,13 +796,14 @@ class AddExpenseScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
+                // FIXED: Use existing ProfileCubit
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => MultiBlocProvider(
                       providers: [
                         BlocProvider.value(value: context.read<ExpenseCubit>()),
-                        BlocProvider(create: (context) => ProfileCubit()),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
                       ],
                       child: const ProfileScreen(),
                     ),
@@ -925,7 +926,6 @@ void _showMultipleReceiptsDialog(
         TextButton(
           onPressed: () {
             Navigator.pop(dialogContext);
-            // Clear multiple receipts
             final cubit = context.read<AddExpenseCubit>();
             if (cubit.state.multipleReceipts.isNotEmpty) {
               cubit.clearScannedReceipt();
@@ -936,7 +936,6 @@ void _showMultipleReceiptsDialog(
         ElevatedButton(
           onPressed: () async {
             Navigator.pop(dialogContext);
-            // Process each receipt one by one
             await _processMultipleReceipts(context, receipts);
           },
           style: ElevatedButton.styleFrom(
@@ -960,7 +959,6 @@ Future<void> _processMultipleReceipts(
   for (int i = 0; i < receipts.length; i++) {
     final receipt = receipts[i];
 
-    // Show progress indicator for multiple receipts
     if (receipts.length > 1) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -982,7 +980,6 @@ Future<void> _processMultipleReceipts(
     );
 
     if (result == true && i == receipts.length - 1) {
-      // Only pop back to previous screen after last receipt
       if (context.mounted) {
         Navigator.pop(context);
       }

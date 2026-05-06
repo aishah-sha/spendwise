@@ -31,103 +31,126 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Don't create new ProfileCubit here - use existing one from parent
-    return Scaffold(
-      backgroundColor: bgColor,
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
-      floatingActionButton: _buildFab(context),
-      bottomNavigationBar: _buildBottomNavigation(context),
-      body: Column(
-        children: [
-          _buildTopHeader(context),
-          Expanded(
-            child: Stack(
+    return BlocBuilder<ProfileCubit, ProfileState>(
+      builder: (context, profileState) {
+        bool isDarkMode = (profileState is ProfileLoaded)
+            ? profileState.user.isDarkMode
+            : false;
+
+        return Theme(
+          data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+          child: Scaffold(
+            backgroundColor: isDarkMode ? Colors.black : bgColor,
+            floatingActionButtonLocation:
+                FloatingActionButtonLocation.centerDocked,
+            floatingActionButton: _buildFab(context, isDarkMode),
+            bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
+            body: Column(
               children: [
-                // Background Image Layer
-                Positioned(
-                  top: -80,
-                  right: -40,
-                  child: Opacity(
-                    opacity: 0.5,
-                    child: Image.asset('assets/FYP2.png', width: 400),
-                  ),
-                ),
-                // Foreground Content
-                MultiBlocListener(
-                  listeners: [
-                    BlocListener<BudgetCubit, budget_cubit.BudgetState>(
-                      listener: (context, budgetState) {
-                        if (budgetState is budget_cubit.BudgetLoaded) {
-                          context.read<ExpenseCubit>().updateBudget(
-                            budgetState.budget.monthlyLimit,
-                          );
-                        }
-                      },
-                    ),
-                  ],
-                  child: BlocBuilder<ExpenseCubit, ExpenseState>(
-                    builder: (context, expenseState) {
-                      return BlocBuilder<BudgetCubit, budget_cubit.BudgetState>(
-                        builder: (context, budgetState) {
-                          double monthlyBudget = expenseState.budget;
-                          double totalSpent = expenseState.totalSpending;
+                _buildTopHeader(context, isDarkMode),
+                Expanded(
+                  child: Stack(
+                    children: [
+                      // Background Image Layer
+                      Positioned(
+                        top: -80,
+                        right: -40,
+                        child: Opacity(
+                          opacity: isDarkMode ? 0.1 : 0.5,
+                          child: Image.asset('assets/FYP2.png', width: 400),
+                        ),
+                      ),
+                      // Foreground Content
+                      MultiBlocListener(
+                        listeners: [
+                          BlocListener<BudgetCubit, budget_cubit.BudgetState>(
+                            listener: (context, budgetState) {
+                              if (budgetState is budget_cubit.BudgetLoaded) {
+                                context.read<ExpenseCubit>().updateBudget(
+                                  budgetState.budget.monthlyLimit,
+                                );
+                              }
+                            },
+                          ),
+                        ],
+                        child: BlocBuilder<ExpenseCubit, ExpenseState>(
+                          builder: (context, expenseState) {
+                            return BlocBuilder<
+                              BudgetCubit,
+                              budget_cubit.BudgetState
+                            >(
+                              builder: (context, budgetState) {
+                                double monthlyBudget = expenseState.budget;
+                                double totalSpent = expenseState.totalSpending;
 
-                          if (budgetState is budget_cubit.BudgetLoaded) {
-                            monthlyBudget = budgetState.budget.monthlyLimit;
-                          }
+                                if (budgetState is budget_cubit.BudgetLoaded) {
+                                  monthlyBudget =
+                                      budgetState.budget.monthlyLimit;
+                                }
 
-                          return SingleChildScrollView(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 20.0,
-                              vertical: 10,
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                _buildWelcomeSection(context),
-                                const SizedBox(height: 20),
-                                _buildTotalBalanceCard(expenseState, context),
-                                const SizedBox(height: 20),
-                                _buildStatsRow(
-                                  expenseState,
-                                  context,
-                                  monthlyBudget,
-                                  totalSpent,
-                                ),
-                                const SizedBox(height: 20),
-                                _buildBudgetProgress(
-                                  expenseState,
-                                  monthlyBudget,
-                                  totalSpent,
-                                ),
-                                const SizedBox(height: 25),
-                                _buildRecentExpensesSection(
-                                  expenseState,
-                                  context,
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      );
-                    },
+                                return SingleChildScrollView(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 20.0,
+                                    vertical: 10,
+                                  ),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      _buildWelcomeSection(context, isDarkMode),
+                                      const SizedBox(height: 20),
+                                      _buildTotalBalanceCard(
+                                        expenseState,
+                                        context,
+                                        isDarkMode,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      _buildStatsRow(
+                                        expenseState,
+                                        context,
+                                        monthlyBudget,
+                                        totalSpent,
+                                        isDarkMode,
+                                      ),
+                                      const SizedBox(height: 20),
+                                      _buildBudgetProgress(
+                                        expenseState,
+                                        monthlyBudget,
+                                        totalSpent,
+                                        isDarkMode,
+                                      ),
+                                      const SizedBox(height: 25),
+                                      _buildRecentExpensesSection(
+                                        expenseState,
+                                        context,
+                                        isDarkMode,
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
-  Widget _buildFab(BuildContext context) {
+  Widget _buildFab(BuildContext context, bool isDarkMode) {
     return Container(
       margin: const EdgeInsets.only(top: 30),
       height: 70,
       width: 70,
       child: FloatingActionButton(
-        backgroundColor: Colors.white,
+        backgroundColor: isDarkMode ? Colors.grey[800] : Colors.white,
         elevation: 4,
         shape: const CircleBorder(
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
@@ -148,10 +171,12 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildTopHeader(BuildContext context) {
+  Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
       padding: const EdgeInsets.only(top: 35, left: 20, right: 20, bottom: 15),
-      decoration: const BoxDecoration(color: headerColor),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[900] : headerColor,
+      ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
@@ -170,12 +195,12 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              const Text(
+              Text(
                 'SpendWise',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.bold,
-                  color: darkText,
+                  color: isDarkMode ? Colors.white : darkText,
                 ),
               ),
             ],
@@ -194,12 +219,21 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   );
                 },
-                child: const Icon(Icons.bar_chart, size: 28, color: darkText),
+                child: Icon(
+                  Icons.bar_chart,
+                  size: 28,
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
               ),
               const SizedBox(width: 15),
-              const IconTheme(
-                data: IconThemeData(color: darkText),
-                child: NotificationBadge(iconSize: 28),
+              IconTheme(
+                data: IconThemeData(
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
+                child: BlocProvider(
+                  create: (context) => NotificationCubit(),
+                  child: const NotificationBadge(iconSize: 28),
+                ),
               ),
             ],
           ),
@@ -208,14 +242,12 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // Fixed welcome section - properly gets user name from ProfileCubit
-  Widget _buildWelcomeSection(BuildContext context) {
+  Widget _buildWelcomeSection(BuildContext context, bool isDarkMode) {
     final profileState = context.watch<ProfileCubit>().state;
 
     String userName = 'User';
 
     if (profileState is ProfileLoaded) {
-      // Get first name from full name
       userName = profileState.user.fullName.split(' ').first;
     } else if (profileState is ProfileLoading) {
       userName = 'Loading...';
@@ -226,22 +258,32 @@ class DashboardScreen extends StatelessWidget {
       children: [
         Text(
           'Welcome, $userName!',
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 25,
             fontWeight: FontWeight.bold,
             fontFamily: 'Poppins',
-            color: darkText,
+            color: isDarkMode ? Colors.white : darkText,
           ),
         ),
         Text(
           DateFormat('dd MMMM yyyy').format(DateTime.now()),
-          style: TextStyle(fontSize: 16, color: darkText.withOpacity(0.6)),
+          style: TextStyle(
+            fontSize: 16,
+            color: isDarkMode ? Colors.white60 : darkText.withOpacity(0.6),
+          ),
         ),
       ],
     );
   }
 
-  Widget _buildTotalBalanceCard(ExpenseState state, BuildContext context) {
+  Widget _buildTotalBalanceCard(
+    ExpenseState state,
+    BuildContext context,
+    bool isDarkMode,
+  ) {
+    // Ensure total balance doesn't go negative for display
+    final displayBalance = state.totalBalance < 0 ? 0.0 : state.totalBalance;
+
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(25),
@@ -257,7 +299,9 @@ class DashboardScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.3),
+            color: isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.white.withOpacity(0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -279,7 +323,7 @@ class DashboardScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'RM${state.totalBalance.toStringAsFixed(2)}',
+                'RM${displayBalance.toStringAsFixed(2)}',
                 style: const TextStyle(
                   fontSize: 36,
                   fontWeight: FontWeight.bold,
@@ -288,7 +332,7 @@ class DashboardScreen extends StatelessWidget {
               ),
               GestureDetector(
                 onTap: () {
-                  _showAddMoneyDialog(context);
+                  _showAddMoneyDialog(context, isDarkMode);
                 },
                 child: Container(
                   width: 45,
@@ -313,6 +357,7 @@ class DashboardScreen extends StatelessWidget {
     IconData icon, {
     bool isClickable = false,
     VoidCallback? onTap,
+    required bool isDarkMode,
   }) {
     return Expanded(
       child: GestureDetector(
@@ -320,7 +365,7 @@ class DashboardScreen extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: headerColor,
+            color: isDarkMode ? Colors.grey[850] : headerColor,
             borderRadius: BorderRadius.circular(15),
           ),
           child: Column(
@@ -333,10 +378,10 @@ class DashboardScreen extends StatelessWidget {
                   Expanded(
                     child: Text(
                       label,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w500,
-                        color: darkText,
+                        color: isDarkMode ? Colors.white70 : darkText,
                       ),
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -346,10 +391,10 @@ class DashboardScreen extends StatelessWidget {
               const SizedBox(height: 6),
               Text(
                 value,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.bold,
-                  color: darkText,
+                  color: isDarkMode ? Colors.white : darkText,
                 ),
               ),
             ],
@@ -364,6 +409,7 @@ class DashboardScreen extends StatelessWidget {
     BuildContext context,
     double monthlyBudget,
     double totalSpent,
+    bool isDarkMode,
   ) {
     double remainingBudget = monthlyBudget - totalSpent;
 
@@ -373,6 +419,7 @@ class DashboardScreen extends StatelessWidget {
           'Total Spending',
           'RM${totalSpent.toStringAsFixed(2)}',
           Icons.trending_down,
+          isDarkMode: isDarkMode,
         ),
         const SizedBox(width: 10),
         _statItem(
@@ -381,25 +428,29 @@ class DashboardScreen extends StatelessWidget {
           Icons.account_balance,
           isClickable: true,
           onTap: () {
+            // FIXED: Use existing BudgetCubit, don't create new one
             Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => MultiBlocProvider(
                   providers: [
                     BlocProvider.value(value: context.read<ExpenseCubit>()),
-                    BlocProvider(create: (context) => BudgetCubit()),
+                    BlocProvider.value(value: context.read<BudgetCubit>()),
+                    BlocProvider.value(value: context.read<ProfileCubit>()),
                   ],
                   child: const BudgetScreen(),
                 ),
               ),
             );
           },
+          isDarkMode: isDarkMode,
         ),
         const SizedBox(width: 10),
         _statItem(
           'Remaining',
           'RM${remainingBudget.toStringAsFixed(2)}',
           Icons.wallet,
+          isDarkMode: isDarkMode,
         ),
       ],
     );
@@ -409,6 +460,7 @@ class DashboardScreen extends StatelessWidget {
     ExpenseState expenseState,
     double monthlyBudget,
     double totalSpent,
+    bool isDarkMode,
   ) {
     double progress = monthlyBudget > 0 ? totalSpent / monthlyBudget : 0;
 
@@ -426,7 +478,9 @@ class DashboardScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(15),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withOpacity(0.3),
+            color: isDarkMode
+                ? Colors.black.withOpacity(0.3)
+                : Colors.white.withOpacity(0.3),
             blurRadius: 20,
             offset: const Offset(0, 10),
           ),
@@ -471,27 +525,31 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentExpensesSection(ExpenseState state, BuildContext context) {
+  Widget _buildRecentExpensesSection(
+    ExpenseState state,
+    BuildContext context,
+    bool isDarkMode,
+  ) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _buildRecentExpensesHeader(context),
+        _buildRecentExpensesHeader(context, isDarkMode),
         const SizedBox(height: 1),
-        _buildRecentExpensesList(state, context),
+        _buildRecentExpensesList(state, context, isDarkMode),
       ],
     );
   }
 
-  Widget _buildRecentExpensesHeader(BuildContext context) {
+  Widget _buildRecentExpensesHeader(BuildContext context, bool isDarkMode) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        const Text(
+        Text(
           'Recent Expenses',
           style: TextStyle(
             fontSize: 18,
             fontWeight: FontWeight.bold,
-            color: darkText,
+            color: isDarkMode ? Colors.white : darkText,
           ),
         ),
         GestureDetector(
@@ -515,7 +573,11 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentExpensesList(ExpenseState state, BuildContext context) {
+  Widget _buildRecentExpensesList(
+    ExpenseState state,
+    BuildContext context,
+    bool isDarkMode,
+  ) {
     final recentExpenses = state.allExpenses.length > 5
         ? state.allExpenses.sublist(0, 5)
         : state.allExpenses;
@@ -524,22 +586,32 @@ class DashboardScreen extends StatelessWidget {
       return Container(
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: isDarkMode ? Colors.grey[850] : Colors.white,
           borderRadius: BorderRadius.circular(15),
         ),
-        child: const Center(
+        child: Center(
           child: Column(
             children: [
-              Icon(Icons.receipt_outlined, size: 40, color: Colors.grey),
-              SizedBox(height: 8),
+              Icon(
+                Icons.receipt_outlined,
+                size: 40,
+                color: isDarkMode ? Colors.white60 : Colors.grey,
+              ),
+              const SizedBox(height: 8),
               Text(
                 'No expenses yet',
-                style: TextStyle(fontSize: 16, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: isDarkMode ? Colors.white60 : Colors.grey,
+                ),
               ),
-              SizedBox(height: 4),
+              const SizedBox(height: 4),
               Text(
                 'Tap the + button to add an expense',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDarkMode ? Colors.white60 : Colors.grey,
+                ),
               ),
             ],
           ),
@@ -557,12 +629,17 @@ class DashboardScreen extends StatelessWidget {
           margin: const EdgeInsets.only(bottom: 15),
           padding: const EdgeInsets.all(15),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: isDarkMode ? Colors.grey[850] : Colors.white,
             borderRadius: BorderRadius.circular(15),
-            border: Border.all(color: Colors.grey.shade200, width: 1),
+            border: Border.all(
+              color: isDarkMode ? Colors.grey[800]! : Colors.grey.shade200,
+              width: 1,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.grey.withOpacity(0.05),
+                color: isDarkMode
+                    ? Colors.black.withOpacity(0.3)
+                    : Colors.grey.withOpacity(0.05),
                 blurRadius: 5,
                 offset: const Offset(0, 2),
               ),
@@ -590,16 +667,19 @@ class DashboardScreen extends StatelessWidget {
                   children: [
                     Text(
                       expense.title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
-                        color: darkText,
+                        color: isDarkMode ? Colors.white : darkText,
                       ),
                     ),
                     const SizedBox(height: 4),
                     Text(
                       expense.category,
-                      style: TextStyle(fontSize: 13, color: Colors.grey[600]),
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: isDarkMode ? Colors.white60 : Colors.grey[600],
+                      ),
                     ),
                     if (expense.isIncome ?? false)
                       Padding(
@@ -632,7 +712,10 @@ class DashboardScreen extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     DateFormat('MMM d').format(expense.date),
-                    style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDarkMode ? Colors.white60 : Colors.grey[600],
+                    ),
                   ),
                 ],
               ),
@@ -643,9 +726,9 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildBottomNavigation(BuildContext context) {
+  Widget _buildBottomNavigation(BuildContext context, bool isDarkMode) {
     return BottomAppBar(
-      color: headerColor,
+      color: isDarkMode ? Colors.grey[900] : headerColor,
       notchMargin: 8,
       shape: const CircularNotchedRectangle(),
       child: SizedBox(
@@ -653,14 +736,22 @@ class DashboardScreen extends StatelessWidget {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _navItem(Icons.home_outlined, Icons.home, 'Home', true, () {
-              // Already on home screen
-            }),
+            _navItem(
+              Icons.home_outlined,
+              Icons.home,
+              'Home',
+              true,
+              isDarkMode,
+              () {
+                // Already on home screen
+              },
+            ),
             _navItem(
               Icons.history_outlined,
               Icons.history,
               'History',
               false,
+              isDarkMode,
               () {
                 Navigator.push(
                   context,
@@ -679,14 +770,17 @@ class DashboardScreen extends StatelessWidget {
               Icons.pie_chart,
               'Budget',
               false,
+              isDarkMode,
               () {
+                // FIXED: Use existing BudgetCubit and ProfileCubit, don't create new ones
                 Navigator.push(
                   context,
                   MaterialPageRoute(
                     builder: (context) => MultiBlocProvider(
                       providers: [
                         BlocProvider.value(value: context.read<ExpenseCubit>()),
-                        BlocProvider(create: (context) => BudgetCubit()),
+                        BlocProvider.value(value: context.read<BudgetCubit>()),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
                       ],
                       child: const BudgetScreen(),
                     ),
@@ -694,12 +788,28 @@ class DashboardScreen extends StatelessWidget {
                 );
               },
             ),
-            _navItem(Icons.person_outline, Icons.person, 'Profile', false, () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (context) => const ProfileScreen()),
-              );
-            }),
+            _navItem(
+              Icons.person_outline,
+              Icons.person,
+              'Profile',
+              false,
+              isDarkMode,
+              () {
+                // FIXED: Use existing ProfileCubit, don't create new one
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
+                      ],
+                      child: const ProfileScreen(),
+                    ),
+                  ),
+                );
+              },
+            ),
           ],
         ),
       ),
@@ -711,6 +821,7 @@ class DashboardScreen extends StatelessWidget {
     IconData activeIcon,
     String label,
     bool active,
+    bool isDarkMode,
     VoidCallback onTap,
   ) {
     return GestureDetector(
@@ -721,7 +832,9 @@ class DashboardScreen extends StatelessWidget {
         children: [
           Icon(
             active ? activeIcon : icon,
-            color: active ? accentGreen : Colors.black54,
+            color: active
+                ? accentGreen
+                : (isDarkMode ? Colors.white70 : Colors.black54),
             size: 26,
           ),
           Text(
@@ -729,7 +842,9 @@ class DashboardScreen extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: active ? FontWeight.w600 : FontWeight.normal,
-              color: active ? accentGreen : Colors.black54,
+              color: active
+                  ? accentGreen
+                  : (isDarkMode ? Colors.white70 : Colors.black54),
             ),
           ),
         ],
@@ -737,29 +852,43 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  void _showAddMoneyDialog(BuildContext context) {
+  void _showAddMoneyDialog(BuildContext context, bool isDarkMode) {
     final TextEditingController amountController = TextEditingController();
 
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
+        backgroundColor: isDarkMode ? Colors.grey[850] : Colors.white,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Add Money'),
+        title: Text(
+          'Add Money',
+          style: TextStyle(color: isDarkMode ? Colors.white : darkText),
+        ),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             TextField(
               controller: amountController,
               keyboardType: TextInputType.number,
+              style: TextStyle(color: isDarkMode ? Colors.white : darkText),
               decoration: InputDecoration(
                 prefixText: 'RM ',
                 hintText: '0.00',
+                hintStyle: TextStyle(
+                  color: isDarkMode ? Colors.white60 : Colors.grey,
+                ),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(10),
                   borderSide: const BorderSide(color: accentGreen, width: 2),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(
+                    color: isDarkMode ? Colors.grey[700]! : Colors.grey,
+                  ),
                 ),
               ),
             ),
@@ -768,7 +897,12 @@ class DashboardScreen extends StatelessWidget {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
+            child: Text(
+              'Cancel',
+              style: TextStyle(
+                color: isDarkMode ? Colors.white70 : Colors.grey,
+              ),
+            ),
           ),
           ElevatedButton(
             onPressed: () {

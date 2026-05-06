@@ -998,15 +998,14 @@ class _ProfileContent extends StatelessWidget {
                   ),
                 );
 
-                // Call sign out and wait for it to complete
+                // Call sign out
                 await context.read<AuthCubit>().signOut();
 
-                // Clear local profile data
-                context.read<ProfileCubit>().clearLocalProfileData();
+                // REMOVE or COMMENT OUT this line:
+                // context.read<ProfileCubit>().clearLocalProfileData();
 
                 // Force navigation to welcome screen
                 if (context.mounted) {
-                  // Navigate to welcome screen and remove all previous routes
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(
                       builder: (context) => const WelcomeScreen(),

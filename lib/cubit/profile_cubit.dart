@@ -4,50 +4,85 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'profile_state.dart';
 import '../models/user_model.dart';
+import '../services/supabase_service.dart';
 
 class ProfileCubit extends Cubit<ProfileState> {
+  final SupabaseService _supabaseService = SupabaseService();
   static const String _userStorageKey = 'user_data';
+  bool _isLoading = false;
 
   ProfileCubit() : super(ProfileInitial());
 
-  // Load profile from SharedPreferences
+  // Load profile from Supabase (not local storage)
   Future<void> loadProfile() async {
+    if (_isLoading) return;
+    _isLoading = true;
+
     emit(ProfileLoading());
 
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? userJson = prefs.getString(_userStorageKey);
+      final profileData = await _supabaseService.getUserProfile();
 
-      UserModel user;
-      if (userJson != null && userJson.isNotEmpty) {
-        final Map<String, dynamic> decoded = json.decode(userJson);
-        user = UserModel.fromJson(decoded);
-      } else {
-        user = UserModel.defaultUser();
+      if (profileData != null) {
+        final user = UserModel.fromJson(profileData);
+        // Save to local storage as cache only
         await _saveUser(user);
+        emit(ProfileLoaded(user: user, isEditing: false));
+      } else {
+        // No profile in Supabase, create default
+        final defaultUser = UserModel.defaultUser();
+        await _saveUser(defaultUser);
+        emit(ProfileLoaded(user: defaultUser, isEditing: false));
       }
-
-      emit(ProfileLoaded(user: user, isEditing: false));
     } catch (e) {
-      final user = UserModel.defaultUser();
-      emit(ProfileLoaded(user: user, isEditing: false));
+      // Try to load from local cache as fallback
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        final String? userJson = prefs.getString(_userStorageKey);
+        if (userJson != null && userJson.isNotEmpty) {
+          final Map<String, dynamic> decoded = json.decode(userJson);
+          final user = UserModel.fromJson(decoded);
+          emit(ProfileLoaded(user: user, isEditing: false));
+        } else {
+          final defaultUser = UserModel.defaultUser();
+          emit(ProfileLoaded(user: defaultUser, isEditing: false));
+        }
+      } catch (fallbackError) {
+        final defaultUser = UserModel.defaultUser();
+        emit(ProfileLoaded(user: defaultUser, isEditing: false));
+      }
+    } finally {
+      _isLoading = false;
     }
   }
 
-  // Save user to SharedPreferences
+  // Save user to local SharedPreferences (cache only)
   Future<void> _saveUser(UserModel user) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userStorageKey, json.encode(user.toJson()));
     } catch (e) {
-      // Silent fail
+      // Silent fail - not critical
     }
   }
 
-  // Public method to save user (for login)
+  // Public method to save user to Supabase
   Future<void> saveUser(UserModel user) async {
-    await _saveUser(user);
-    emit(ProfileLoaded(user: user, isEditing: false));
+    try {
+      await _supabaseService.updateUserProfile(
+        fullName: user.fullName,
+        currency: user.currency,
+        isDarkMode: user.isDarkMode,
+        pushNotificationsEnabled: user.pushNotificationsEnabled,
+        biometricEnabled: user.biometricEnabled,
+        smallExpensesLimit: user.smallExpensesLimit,
+        profileImageUrl: user.profileImageUrl,
+      );
+      await _saveUser(user);
+      emit(ProfileLoaded(user: user, isEditing: false));
+    } catch (e) {
+      emit(ProfileError(message: 'Failed to save profile: ${e.toString()}'));
+    }
   }
 
   void togglePushNotifications() {
@@ -58,6 +93,10 @@ class ProfileCubit extends Cubit<ProfileState> {
       );
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       _saveUser(updatedUser);
+      // Update in Supabase
+      _supabaseService.updateUserProfile(
+        pushNotificationsEnabled: updatedUser.pushNotificationsEnabled,
+      );
     }
   }
 
@@ -69,6 +108,8 @@ class ProfileCubit extends Cubit<ProfileState> {
       );
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       _saveUser(updatedUser);
+      // Update in Supabase
+      _supabaseService.updateUserProfile(isDarkMode: updatedUser.isDarkMode);
     }
   }
 
@@ -80,6 +121,10 @@ class ProfileCubit extends Cubit<ProfileState> {
       );
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       _saveUser(updatedUser);
+      // Update in Supabase
+      _supabaseService.updateUserProfile(
+        biometricEnabled: updatedUser.biometricEnabled,
+      );
     }
   }
 
@@ -102,6 +147,8 @@ class ProfileCubit extends Cubit<ProfileState> {
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileUpdateSuccess(message: 'Currency updated to $currency'));
       _saveUser(updatedUser);
+      // Update in Supabase
+      _supabaseService.updateUserProfile(currency: currency);
     }
   }
 
@@ -117,6 +164,8 @@ class ProfileCubit extends Cubit<ProfileState> {
         ),
       );
       _saveUser(updatedUser);
+      // Update in Supabase
+      _supabaseService.updateUserProfile(smallExpensesLimit: limit);
     }
   }
 
@@ -127,6 +176,8 @@ class ProfileCubit extends Cubit<ProfileState> {
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileImageUpdated(imageUrl: imageUrl));
       _saveUser(updatedUser);
+      // Update in Supabase
+      _supabaseService.updateUserProfile(profileImageUrl: imageUrl);
     }
   }
 
@@ -141,6 +192,8 @@ class ProfileCubit extends Cubit<ProfileState> {
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileUpdateSuccess(message: 'Full name updated successfully'));
       _saveUser(updatedUser);
+      // Update in Supabase
+      _supabaseService.updateUserProfile(fullName: fullName.trim());
     }
   }
 
@@ -155,6 +208,8 @@ class ProfileCubit extends Cubit<ProfileState> {
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileUpdateSuccess(message: 'Email updated successfully'));
       _saveUser(updatedUser);
+      // Note: Email update through Supabase requires special handling
+      // This might require re-authentication
     }
   }
 
