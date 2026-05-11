@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/receipt_cubit.dart';
 import '../cubit/add_expense_cubit.dart';
@@ -18,6 +19,8 @@ class ReceiptScannerPage extends StatefulWidget {
 }
 
 class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
+  String? get _currentUserId => Supabase.instance.client.auth.currentUser?.id;
+
   @override
   void initState() {
     super.initState();
@@ -222,22 +225,13 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
             TextButton.icon(
               onPressed: () async {
                 print("🔵 EDIT BUTTON PRESSED");
-                print("🔵 fromAddExpense: ${widget.fromAddExpense}");
-                print("🔵 Receipt being passed: ${receipt.merchantName}");
-                print("🔵 Items count: ${receipt.items?.length ?? 0}");
-
-                // Close the dialog first
                 Navigator.of(dialogContext).pop();
                 context.read<ReceiptCubit>().closeDialog();
 
                 await Future.delayed(const Duration(milliseconds: 100));
 
-                print("🔵 Navigating to ManualEntryScreen");
-
-                // Get the AddExpenseCubit from parent
                 final addExpenseCubit = context.read<AddExpenseCubit>();
 
-                // Navigate to manual entry screen with the cubit
                 final editedReceipt = await Navigator.push<ReceiptModel?>(
                   context,
                   MaterialPageRoute(
@@ -254,12 +248,18 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
                   ),
                 );
 
-                print(
-                  "🔵 Returned from ManualEntryScreen with: $editedReceipt",
-                );
-
                 if (editedReceipt != null && mounted) {
-                  // Create expense from edited receipt and save it
+                  final userId = _currentUserId;
+                  if (userId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('User not authenticated'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
+
                   final expense = ExpenseModel(
                     id: DateTime.now().millisecondsSinceEpoch.toString(),
                     title: editedReceipt.merchantName ?? 'Unknown Store',
@@ -268,43 +268,54 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
                     date: editedReceipt.date,
                     isIncome: false,
                     note: '${editedReceipt.items?.length ?? 0} items',
+                    userId: userId, // FIXED: Add user ID
                   );
 
-                  // Save to ExpenseCubit (for Dashboard and History)
                   context.read<ExpenseCubit>().addExpense(expense);
 
-                  // Save to AddExpenseCubit (for Recent Uploads)
-                  context.read<AddExpenseCubit>().addReceipt(editedReceipt);
-
-                  // Show success message
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Expense saved successfully'),
-                      backgroundColor: Color(0xFF32BA32),
-                      duration: Duration(seconds: 2),
-                    ),
+                  final receiptWithUserId = editedReceipt.copyWith(
+                    userId: userId,
+                    processed: true,
                   );
+                  context.read<AddExpenseCubit>().addReceipt(receiptWithUserId);
 
-                  // Navigate back
-                  Future.delayed(const Duration(seconds: 1), () {
-                    Navigator.pop(context, editedReceipt);
-                  });
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Expense saved successfully'),
+                        backgroundColor: Color(0xFF32BA32),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+
+                    Future.delayed(const Duration(seconds: 1), () {
+                      Navigator.pop(context, receiptWithUserId);
+                    });
+                  }
                 }
               },
               icon: const Icon(Icons.edit),
               label: const Text("Edit"),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 print("🔵 Save & Continue button pressed");
 
                 Navigator.of(dialogContext).pop();
                 context.read<ReceiptCubit>().closeDialog();
 
                 if (widget.fromAddExpense) {
-                  print("🔵 Returning receipt to add expense");
+                  final userId = _currentUserId;
+                  if (userId == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('User not authenticated'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                    return;
+                  }
 
-                  // Create expense from receipt and save it directly
                   final expense = ExpenseModel(
                     id: DateTime.now().millisecondsSinceEpoch.toString(),
                     title: receipt.merchantName ?? 'Unknown Store',
@@ -313,27 +324,30 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
                     date: receipt.date,
                     isIncome: false,
                     note: '${receipt.items?.length ?? 0} items',
+                    userId: userId, // FIXED: Add user ID
                   );
 
-                  // Save to ExpenseCubit (for Dashboard and History)
                   context.read<ExpenseCubit>().addExpense(expense);
 
-                  // Save to AddExpenseCubit (for Recent Uploads)
-                  context.read<AddExpenseCubit>().addReceipt(receipt);
-
-                  // Show success message
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Expense saved successfully'),
-                      backgroundColor: Color(0xFF32BA32),
-                      duration: Duration(seconds: 2),
-                    ),
+                  final receiptWithUserId = receipt.copyWith(
+                    userId: userId,
+                    processed: true,
                   );
+                  context.read<AddExpenseCubit>().addReceipt(receiptWithUserId);
 
-                  // Navigate back to Add Expense screen with success
-                  Future.delayed(const Duration(seconds: 1), () {
-                    Navigator.pop(context, receipt);
-                  });
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Expense saved successfully'),
+                        backgroundColor: Color(0xFF32BA32),
+                        duration: Duration(seconds: 2),
+                      ),
+                    );
+
+                    Future.delayed(const Duration(seconds: 1), () {
+                      Navigator.pop(context, receiptWithUserId);
+                    });
+                  }
                 }
               },
               style: ElevatedButton.styleFrom(

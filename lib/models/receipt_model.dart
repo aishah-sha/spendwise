@@ -1,5 +1,3 @@
-import 'package:flutter/foundation.dart';
-
 class ReceiptItemOld {
   final String name;
   final double price;
@@ -38,7 +36,7 @@ class ReceiptData {
     required this.items,
   });
 
-  ReceiptModel toReceiptModel({String? id}) {
+  ReceiptModel toReceiptModel({String? id, String? userId}) {
     return ReceiptModel(
       id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       date: DateTime.now(),
@@ -48,6 +46,8 @@ class ReceiptData {
       receiptType: 'scan',
       currency: 'RM',
       ocrStatus: 'SUCCESS',
+      userId: userId,
+      processed: false,
     );
   }
 }
@@ -66,6 +66,9 @@ class ReceiptModel {
   final String? currency;
   final String? ocrStatus;
   final List<ReceiptItem>? items;
+  final String? userId;
+  final bool processed;
+  final String? expenseId;
 
   ReceiptModel({
     required this.id,
@@ -81,6 +84,9 @@ class ReceiptModel {
     this.currency,
     this.ocrStatus,
     this.items,
+    this.userId,
+    this.processed = false,
+    this.expenseId,
   });
 
   bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
@@ -184,7 +190,11 @@ class ReceiptModel {
     );
   }
 
-  factory ReceiptModel.fromReceiptData(ReceiptData data, {String? id}) {
+  factory ReceiptModel.fromReceiptData(
+    ReceiptData data, {
+    String? id,
+    String? userId,
+  }) {
     return ReceiptModel(
       id: id ?? DateTime.now().millisecondsSinceEpoch.toString(),
       date: DateTime.now(),
@@ -194,6 +204,8 @@ class ReceiptModel {
       receiptType: 'scan',
       currency: 'RM',
       ocrStatus: 'SUCCESS',
+      userId: userId,
+      processed: false,
     );
   }
 
@@ -213,6 +225,10 @@ class ReceiptModel {
       'category': category,
       'currency': currency ?? 'RM',
       'ocr_status': ocrStatus,
+      'user_id': userId,
+      'processed': processed,
+      'expense_id': expenseId,
+      'created_at': DateTime.now().toIso8601String(),
     };
   }
 
@@ -231,6 +247,9 @@ class ReceiptModel {
       category: json['category'] as String?,
       currency: json['currency'] as String?,
       ocrStatus: json['ocr_status'] as String?,
+      userId: json['user_id'] as String?,
+      processed: json['processed'] as bool? ?? false,
+      expenseId: json['expense_id'] as String?,
       items: json['items'] != null
           ? (json['items'] as List)
                 .map((item) => ReceiptItem.fromJson(item))
@@ -253,6 +272,9 @@ class ReceiptModel {
       'category': category,
       'currency': currency,
       'ocrStatus': ocrStatus,
+      'userId': userId,
+      'processed': processed,
+      'expenseId': expenseId,
       'items': items?.map((item) => item.toJson()).toList(),
       'hasImage': hasImage,
     };
@@ -272,11 +294,52 @@ class ReceiptModel {
       category: json['category'],
       currency: json['currency'],
       ocrStatus: json['ocrStatus'],
+      userId: json['userId'],
+      processed: json['processed'] ?? false,
+      expenseId: json['expenseId'],
       items: json['items'] != null
           ? (json['items'] as List)
                 .map((item) => ReceiptItem.fromJson(item))
                 .toList()
           : null,
+    );
+  }
+
+  ReceiptModel copyWith({
+    String? id,
+    DateTime? date,
+    double? amount,
+    double? tax,
+    double? subtotal,
+    double? serviceCharge,
+    String? imagePath,
+    String? receiptType,
+    String? merchantName,
+    String? category,
+    String? currency,
+    String? ocrStatus,
+    List<ReceiptItem>? items,
+    String? userId,
+    bool? processed,
+    String? expenseId,
+  }) {
+    return ReceiptModel(
+      id: id ?? this.id,
+      date: date ?? this.date,
+      amount: amount ?? this.amount,
+      tax: tax ?? this.tax,
+      subtotal: subtotal ?? this.subtotal,
+      serviceCharge: serviceCharge ?? this.serviceCharge,
+      imagePath: imagePath ?? this.imagePath,
+      receiptType: receiptType ?? this.receiptType,
+      merchantName: merchantName ?? this.merchantName,
+      category: category ?? this.category,
+      currency: currency ?? this.currency,
+      ocrStatus: ocrStatus ?? this.ocrStatus,
+      items: items ?? this.items,
+      userId: userId ?? this.userId,
+      processed: processed ?? this.processed,
+      expenseId: expenseId ?? this.expenseId,
     );
   }
 }
@@ -365,6 +428,7 @@ extension ReceiptModelSample on ReceiptModel {
       category: 'Food & Beverage',
       currency: 'RM',
       ocrStatus: 'SUCCESS',
+      processed: false,
       items: [
         ReceiptItem(
           name: 'Imperial Roll Shrimp Springroll',

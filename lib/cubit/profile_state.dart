@@ -12,6 +12,9 @@ class ProfileInitial extends ProfileState {}
 
 class ProfileLoading extends ProfileState {}
 
+class ProfileUnauthenticated
+    extends ProfileState {} // ← ADDED: User is not logged in
+
 class ProfileLoaded extends ProfileState {
   final UserModel user;
   final bool isEditing;

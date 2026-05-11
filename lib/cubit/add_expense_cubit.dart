@@ -1,214 +1,456 @@
-import 'package:bloc/bloc.dart';
-import 'package:equatable/equatable.dart';
-import 'dart:io';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
-import '../models/receipt_model.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:io';
 import '../models/expense_model.dart';
-import '../services/ml_kit_service.dart';
-import 'expense_cubit.dart';
-import '../services/image_picker_service.dart';
-import '../services/supabase_service.dart'; // ← Change this import
+import '../models/receipt_model.dart';
+import '../services/supabase_service.dart';
 
-// State
-class AddExpenseState extends Equatable {
+// State class
+class AddExpenseState {
   final List<ReceiptModel> recentUploads;
+  final List<ReceiptModel> multipleReceipts;
+  final ReceiptModel? scannedReceipt;
   final bool isLoading;
   final String? errorMessage;
-  final ReceiptModel? scannedReceipt;
-  final File? capturedImage;
-  final ExpenseModel? expenseToEdit;
   final bool expenseSavedSuccessfully;
   final bool expenseEditedSuccessfully;
-  final List<ReceiptModel> multipleReceipts;
-  final int currentReceiptIndex;
+  final ExpenseModel? expenseToEdit;
 
-  const AddExpenseState({
-    required this.recentUploads,
-    required this.isLoading,
-    this.errorMessage,
+  // These fields for editing
+  final String title;
+  final double amount;
+  final String category;
+  final DateTime date; // This should be DateTime, not List
+  final bool isIncome;
+  final String note;
+
+  AddExpenseState({
+    this.recentUploads = const [],
+    this.multipleReceipts = const [],
     this.scannedReceipt,
-    this.capturedImage,
-    this.expenseToEdit,
+    this.isLoading = false,
+    this.errorMessage,
     this.expenseSavedSuccessfully = false,
     this.expenseEditedSuccessfully = false,
-    this.multipleReceipts = const [],
-    this.currentReceiptIndex = 0,
-  });
-
-  factory AddExpenseState.initial() {
-    return AddExpenseState(
-      recentUploads: [],
-      isLoading: false,
-      errorMessage: null,
-      scannedReceipt: null,
-      capturedImage: null,
-      expenseToEdit: null,
-      expenseSavedSuccessfully: false,
-      expenseEditedSuccessfully: false,
-      multipleReceipts: [],
-      currentReceiptIndex: 0,
-    );
-  }
+    this.expenseToEdit,
+    this.title = '',
+    this.amount = 0.0,
+    this.category = 'Food',
+    DateTime? date, // Change to DateTime? with default
+    this.isIncome = false,
+    this.note = '',
+  }) : date = date ?? DateTime.now(); // Initialize with DateTime.now() if null
 
   AddExpenseState copyWith({
     List<ReceiptModel>? recentUploads,
+    List<ReceiptModel>? multipleReceipts,
+    ReceiptModel? scannedReceipt,
     bool? isLoading,
     String? errorMessage,
-    ReceiptModel? scannedReceipt,
-    File? capturedImage,
-    ExpenseModel? expenseToEdit,
-    bool clearExpenseToEdit = false,
     bool? expenseSavedSuccessfully,
     bool? expenseEditedSuccessfully,
-    List<ReceiptModel>? multipleReceipts,
-    int? currentReceiptIndex,
+    ExpenseModel? expenseToEdit,
+    String? title,
+    double? amount,
+    String? category,
+    DateTime? date,
+    bool? isIncome,
+    String? note,
   }) {
     return AddExpenseState(
       recentUploads: recentUploads ?? this.recentUploads,
+      multipleReceipts: multipleReceipts ?? this.multipleReceipts,
+      scannedReceipt: scannedReceipt ?? this.scannedReceipt,
       isLoading: isLoading ?? this.isLoading,
       errorMessage: errorMessage,
-      scannedReceipt: scannedReceipt,
-      capturedImage: capturedImage ?? this.capturedImage,
-      expenseToEdit: clearExpenseToEdit
-          ? null
-          : (expenseToEdit ?? this.expenseToEdit),
       expenseSavedSuccessfully:
           expenseSavedSuccessfully ?? this.expenseSavedSuccessfully,
       expenseEditedSuccessfully:
           expenseEditedSuccessfully ?? this.expenseEditedSuccessfully,
-      multipleReceipts: multipleReceipts ?? this.multipleReceipts,
-      currentReceiptIndex: currentReceiptIndex ?? this.currentReceiptIndex,
+      expenseToEdit: expenseToEdit ?? this.expenseToEdit,
+      title: title ?? this.title,
+      amount: amount ?? this.amount,
+      category: category ?? this.category,
+      date: date ?? this.date,
+      isIncome: isIncome ?? this.isIncome,
+      note: note ?? this.note,
     );
   }
-
-  @override
-  List<Object?> get props => [
-    recentUploads,
-    isLoading,
-    errorMessage,
-    scannedReceipt,
-    capturedImage,
-    expenseToEdit,
-    expenseSavedSuccessfully,
-    expenseEditedSuccessfully,
-    multipleReceipts,
-    currentReceiptIndex,
-  ];
 }
 
-// Cubit
+// Cubit class
 class AddExpenseCubit extends Cubit<AddExpenseState> {
-  final MLKitService _mlKitService = MLKitService();
-  final ImagePickerService _imagePickerService = ImagePickerService();
-  final SupabaseService _supabaseService = SupabaseService(); // ← Changed here
+  final SupabaseService _supabaseService = SupabaseService();
+  final ImagePicker _imagePicker = ImagePicker();
 
-  static const String _receiptsStorageKey = 'recent_receipts';
+  String? get _currentUserId => Supabase.instance.client.auth.currentUser?.id;
 
-  // Form fields for manual entry
-  String title = '';
-  String category = 'Food';
-  double amount = 0.0;
-  DateTime date = DateTime.now();
-  bool isIncome = false;
-  String? note;
-
-  // Constructor with optional expense to edit
-  AddExpenseCubit({ExpenseModel? expenseToEdit})
-    : super(AddExpenseState.initial()) {
-    if (expenseToEdit != null) {
-      _initializeWithExpense(expenseToEdit);
-      emit(state.copyWith(expenseToEdit: expenseToEdit));
-    }
-    _loadSavedReceipts();
+  AddExpenseCubit() : super(AddExpenseState()) {
+    _loadRecentUploads();
   }
 
-  // Load receipts from SharedPreferences
-  Future<void> _loadSavedReceipts() async {
+  Future<void> _loadRecentUploads() async {
+    final userId = _currentUserId;
+    if (userId == null) {
+      print('No user logged in, cannot load receipts');
+      return;
+    }
+
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? receiptsJson = prefs.getString(_receiptsStorageKey);
+      print('Loading receipts for user: $userId');
 
-      if (receiptsJson != null && receiptsJson.isNotEmpty) {
-        final List<dynamic> decoded = json.decode(receiptsJson);
-        final List<ReceiptModel> receipts = decoded
-            .map((item) => ReceiptModel.fromJson(item as Map<String, dynamic>))
-            .toList();
+      final response = await Supabase.instance.client
+          .from('receipts')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false)
+          .limit(10);
 
-        emit(state.copyWith(recentUploads: receipts));
-      }
+      print('Found ${response.length} receipts for user');
+
+      final receipts = (response as List).map((json) {
+        return ReceiptModel.fromDatabaseJson(json);
+      }).toList();
+
+      emit(state.copyWith(recentUploads: receipts));
     } catch (e) {
-      print('Error loading saved receipts: $e');
+      print('Error loading recent uploads: $e');
     }
   }
 
-  // Save receipts to SharedPreferences
-  Future<void> _saveReceiptsToStorage(List<ReceiptModel> receipts) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final List<Map<String, dynamic>> encoded = receipts
-          .map((r) => r.toJson())
-          .toList();
-      await prefs.setString(_receiptsStorageKey, json.encode(encoded));
-    } catch (e) {
-      print('Error saving receipts: $e');
-    }
+  // Update title for editing
+  void updateTitle(String title) {
+    emit(state.copyWith(title: title));
   }
 
-  // Initialize form fields with expense data for editing
-  void _initializeWithExpense(ExpenseModel expense) {
-    title = expense.title;
-    category = expense.category;
-    amount = expense.amount;
-    date = expense.date;
-    isIncome = expense.isIncome ?? false;
-    note = expense.note;
+  // Update amount for editing
+  void updateAmount(double amount) {
+    emit(state.copyWith(amount: amount));
   }
 
-  // Form field update methods
-  void updateTitle(String value) {
-    title = value;
+  // Update category for editing
+  void updateCategory(String category) {
+    emit(state.copyWith(category: category));
   }
 
-  void updateCategory(String value) {
-    category = value;
+  // Update date for editing
+  void updateDate(DateTime date) {
+    emit(state.copyWith(date: date));
   }
 
-  void updateAmount(double value) {
-    amount = value;
+  // Update isIncome for editing
+  void updateIsIncome(bool isIncome) {
+    emit(state.copyWith(isIncome: isIncome));
   }
 
-  void updateDate(DateTime value) {
-    date = value;
+  // Update note for editing
+  void updateNote(String note) {
+    emit(state.copyWith(note: note));
   }
 
-  void updateIsIncome(bool value) {
-    isIncome = value;
-  }
-
-  void updateNote(String value) {
-    note = value;
-  }
-
-  // Reset form fields
-  void resetForm() {
-    title = '';
-    category = 'Food';
-    amount = 0.0;
-    date = DateTime.now();
-    isIncome = false;
-    note = null;
+  // Set expense to edit
+  void setExpenseToEdit(ExpenseModel expense) {
     emit(
       state.copyWith(
-        expenseToEdit: null,
-        scannedReceipt: null,
-        capturedImage: null,
+        expenseToEdit: expense,
+        title: expense.title,
+        amount: expense.amount,
+        category: expense.category,
+        date: expense.date,
+        isIncome: expense.isIncome,
+        note: expense.note ?? '',
       ),
     );
   }
 
-  // Reset saved flags
+  // Add receipt to recent uploads
+  Future<void> addReceipt(ReceiptModel receipt) async {
+    final userId = _currentUserId;
+    if (userId == null) return;
+
+    try {
+      // Save to database
+      final receiptWithUserId = receipt.copyWith(userId: userId);
+      await Supabase.instance.client
+          .from('receipts')
+          .insert(receiptWithUserId.toDatabaseJson());
+
+      // Reload recent uploads
+      await _loadRecentUploads();
+    } catch (e) {
+      print('Error adding receipt: $e');
+    }
+  }
+
+  Future<void> uploadImage() async {
+    emit(state.copyWith(isLoading: true, errorMessage: null));
+
+    try {
+      final XFile? image = await _imagePicker.pickImage(
+        source: ImageSource.gallery,
+      );
+
+      if (image == null) {
+        emit(state.copyWith(isLoading: false));
+        return;
+      }
+
+      final userId = _currentUserId;
+      if (userId == null) {
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage: 'User not authenticated',
+          ),
+        );
+        return;
+      }
+
+      final file = File(image.path);
+      final fileName = '${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final filePath = 'receipts/$userId/$fileName';
+
+      await Supabase.instance.client.storage
+          .from('receipts')
+          .upload(filePath, file);
+
+      final imageUrl = Supabase.instance.client.storage
+          .from('receipts')
+          .getPublicUrl(filePath);
+
+      final receipt = ReceiptModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        date: DateTime.now(),
+        amount: 0.0,
+        receiptType: 'image',
+        imagePath: imageUrl,
+        merchantName: null,
+        userId: userId,
+        processed: false,
+      );
+
+      await Supabase.instance.client
+          .from('receipts')
+          .insert(receipt.toDatabaseJson());
+
+      await _loadRecentUploads();
+
+      emit(state.copyWith(isLoading: false, scannedReceipt: receipt));
+    } catch (e) {
+      emit(
+        state.copyWith(
+          isLoading: false,
+          errorMessage: 'Failed to upload image: $e',
+        ),
+      );
+    }
+  }
+
+  Future<void> uploadMultipleImages() async {
+    emit(state.copyWith(isLoading: true, errorMessage: null));
+
+    try {
+      final List<XFile> images = await _imagePicker.pickMultiImage();
+
+      if (images.isEmpty) {
+        emit(state.copyWith(isLoading: false));
+        return;
+      }
+
+      final userId = _currentUserId;
+      if (userId == null) {
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage: 'User not authenticated',
+          ),
+        );
+        return;
+      }
+
+      final List<ReceiptModel> receipts = [];
+
+      for (XFile image in images) {
+        final file = File(image.path);
+        final fileName =
+            '${DateTime.now().millisecondsSinceEpoch}_${image.name}';
+        final filePath = 'receipts/$userId/$fileName';
+
+        await Supabase.instance.client.storage
+            .from('receipts')
+            .upload(filePath, file);
+
+        final imageUrl = Supabase.instance.client.storage
+            .from('receipts')
+            .getPublicUrl(filePath);
+
+        final receipt = ReceiptModel(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          date: DateTime.now(),
+          amount: 0.0,
+          receiptType: 'image',
+          imagePath: imageUrl,
+          merchantName: null,
+          userId: userId,
+          processed: false,
+        );
+
+        await Supabase.instance.client
+            .from('receipts')
+            .insert(receipt.toDatabaseJson());
+        receipts.add(receipt);
+      }
+
+      await _loadRecentUploads();
+
+      emit(state.copyWith(isLoading: false, multipleReceipts: receipts));
+    } catch (e) {
+      emit(
+        state.copyWith(
+          isLoading: false,
+          errorMessage: 'Failed to upload multiple images: $e',
+        ),
+      );
+    }
+  }
+
+  Future<void> confirmManualEntry(double amount, String merchantName) async {
+    final receipt = state.scannedReceipt;
+    if (receipt == null) return;
+
+    final userId = _currentUserId;
+    if (userId == null) return;
+
+    final updatedReceipt = receipt.copyWith(
+      amount: amount,
+      merchantName: merchantName,
+    );
+
+    await Supabase.instance.client
+        .from('receipts')
+        .update({'amount': amount, 'merchant_name': merchantName})
+        .eq('id', receipt.id)
+        .eq('user_id', userId);
+
+    await _loadRecentUploads();
+
+    emit(state.copyWith(scannedReceipt: updatedReceipt));
+  }
+
+  Future<void> saveExpenseFromReceipt({
+    required String title,
+    required double amount,
+    required String category,
+    required DateTime date,
+    required String note,
+  }) async {
+    emit(state.copyWith(isLoading: true));
+
+    try {
+      final userId = _currentUserId;
+      if (userId == null) {
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage: 'User not authenticated',
+          ),
+        );
+        return;
+      }
+
+      final expense = ExpenseModel(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        title: title,
+        amount: amount,
+        category: category,
+        date: date,
+        isIncome: false,
+        note: note,
+        userId: userId,
+      );
+
+      await _supabaseService.addTransaction(
+        amount: expense.amount,
+        category: expense.category,
+        type: 'expense',
+        description: expense.title,
+        date: expense.date,
+      );
+
+      final receipt = state.scannedReceipt;
+      if (receipt != null) {
+        await Supabase.instance.client
+            .from('receipts')
+            .update({'processed': true, 'expense_id': expense.id})
+            .eq('id', receipt.id)
+            .eq('user_id', userId);
+      }
+
+      await _loadRecentUploads();
+
+      emit(
+        state.copyWith(
+          isLoading: false,
+          expenseSavedSuccessfully: true,
+          scannedReceipt: null,
+        ),
+      );
+    } catch (e) {
+      emit(
+        state.copyWith(
+          isLoading: false,
+          errorMessage: 'Failed to save expense: $e',
+        ),
+      );
+    }
+  }
+
+  // Update existing expense
+  Future<void> updateExpense(ExpenseModel expense) async {
+    emit(state.copyWith(isLoading: true));
+
+    try {
+      final userId = _currentUserId;
+      if (userId == null) {
+        emit(
+          state.copyWith(
+            isLoading: false,
+            errorMessage: 'User not authenticated',
+          ),
+        );
+        return;
+      }
+
+      await _supabaseService.updateTransaction(expense.id, {
+        'amount': expense.amount,
+        'category': expense.category,
+        'description': expense.title,
+        'type': expense.isIncome ? 'income' : 'expense',
+        'date': expense.date.toIso8601String(),
+      });
+
+      emit(
+        state.copyWith(
+          isLoading: false,
+          expenseEditedSuccessfully: true,
+          expenseToEdit: null,
+        ),
+      );
+    } catch (e) {
+      emit(
+        state.copyWith(
+          isLoading: false,
+          errorMessage: 'Failed to update expense: $e',
+        ),
+      );
+    }
+  }
+
+  void clearScannedReceipt() {
+    emit(state.copyWith(scannedReceipt: null, multipleReceipts: const []));
+  }
+
   void resetSavedFlag() {
     emit(state.copyWith(expenseSavedSuccessfully: false));
   }
@@ -217,407 +459,7 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     emit(state.copyWith(expenseEditedSuccessfully: false));
   }
 
-  // Add receipt to recent uploads
-  Future<void> addReceipt(ReceiptModel receipt) async {
-    final updatedUploads = List<ReceiptModel>.from(state.recentUploads);
-
-    final existingIndex = updatedUploads.indexWhere((r) => r.id == receipt.id);
-    if (existingIndex != -1) {
-      updatedUploads[existingIndex] = receipt;
-    } else {
-      updatedUploads.insert(0, receipt);
-    }
-
-    if (updatedUploads.length > 20) {
-      updatedUploads.removeLast();
-    }
-
-    await _saveReceiptsToStorage(updatedUploads);
-    emit(state.copyWith(recentUploads: updatedUploads, isLoading: false));
-  }
-
-  // Remove receipt from recent uploads
-  Future<void> removeReceipt(String receiptId) async {
-    final updatedUploads = state.recentUploads
-        .where((r) => r.id != receiptId)
-        .toList();
-
-    await _saveReceiptsToStorage(updatedUploads);
-    emit(state.copyWith(recentUploads: updatedUploads));
-  }
-
-  // Clear all recent uploads
-  Future<void> clearRecentUploads() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_receiptsStorageKey);
-    emit(state.copyWith(recentUploads: []));
-  }
-
-  void clearMultipleReceipts() {
-    emit(state.copyWith(multipleReceipts: [], currentReceiptIndex: 0));
-  }
-
-  // Upload multiple images at once
-  Future<void> uploadMultipleImages() async {
-    emit(state.copyWith(isLoading: true, errorMessage: null));
-
-    try {
-      final List<XFile>? images = await ImagePicker().pickMultiImage();
-
-      if (images == null || images.isEmpty) {
-        emit(
-          state.copyWith(isLoading: false, errorMessage: 'No images selected'),
-        );
-        return;
-      }
-
-      List<ReceiptModel> processedReceipts = [];
-
-      for (XFile image in images) {
-        final File imageFile = File(image.path);
-
-        final receiptData = await _mlKitService.processReceiptImage(imageFile);
-
-        List<ReceiptItem> items = [];
-        if (receiptData['items'] != null) {
-          try {
-            items = (receiptData['items'] as List).map((item) {
-              return ReceiptItem(
-                name: item['name']?.toString() ?? '',
-                price: (item['price'] as num?)?.toDouble() ?? 0.0,
-                quantity: (item['quantity'] as num?)?.toInt() ?? 1,
-                category: item['category']?.toString() ?? 'Food',
-              );
-            }).toList();
-          } catch (e) {
-            print('Error parsing items: $e');
-          }
-        }
-
-        final scannedReceipt = ReceiptModel(
-          id:
-              DateTime.now().millisecondsSinceEpoch.toString() +
-              '_${processedReceipts.length}',
-          date: DateTime.now(),
-          amount: (receiptData['totalAmount'] as num?)?.toDouble() ?? 0.0,
-          imagePath: image.path,
-          receiptType: 'upload',
-          merchantName:
-              receiptData['merchantName']?.toString() ?? 'Unknown Store',
-          items: items,
-        );
-
-        processedReceipts.add(scannedReceipt);
-      }
-
-      for (var receipt in processedReceipts) {
-        await addReceipt(receipt);
-      }
-
-      emit(
-        state.copyWith(
-          isLoading: false,
-          multipleReceipts: processedReceipts,
-          errorMessage: processedReceipts.length > 0
-              ? 'Successfully processed ${processedReceipts.length} receipts'
-              : null,
-        ),
-      );
-    } catch (e) {
-      emit(
-        state.copyWith(
-          isLoading: false,
-          errorMessage: 'Error uploading multiple images: $e',
-        ),
-      );
-    }
-  }
-
-  // Upload single image
-  Future<void> uploadImage() async {
-    emit(state.copyWith(isLoading: true, errorMessage: null));
-
-    try {
-      final File? image = await _imagePickerService.pickImageFromGallery();
-
-      if (image == null) {
-        emit(
-          state.copyWith(isLoading: false, errorMessage: 'No image selected'),
-        );
-        return;
-      }
-
-      emit(state.copyWith(capturedImage: image, isLoading: true));
-
-      final receiptData = await _mlKitService.processReceiptImage(image);
-
-      List<ReceiptItem> items = [];
-      if (receiptData['items'] != null) {
-        try {
-          items = (receiptData['items'] as List).map((item) {
-            return ReceiptItem(
-              name: item['name']?.toString() ?? '',
-              price: (item['price'] as num?)?.toDouble() ?? 0.0,
-              quantity: (item['quantity'] as num?)?.toInt() ?? 1,
-              category: item['category']?.toString() ?? 'Food',
-            );
-          }).toList();
-        } catch (e) {
-          print('Error parsing items: $e');
-        }
-      }
-
-      final scannedReceipt = ReceiptModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        date: DateTime.now(),
-        amount: (receiptData['totalAmount'] as num?)?.toDouble() ?? 0.0,
-        imagePath: image.path,
-        receiptType: 'upload',
-        merchantName:
-            receiptData['merchantName']?.toString() ?? 'Unknown Store',
-        items: items,
-      );
-
-      title = scannedReceipt.merchantName ?? '';
-      amount = scannedReceipt.amount;
-
-      emit(
-        state.copyWith(
-          isLoading: false,
-          scannedReceipt: scannedReceipt,
-          errorMessage: scannedReceipt.amount == 0.0
-              ? 'Could not detect amount. Please verify and edit.'
-              : null,
-        ),
-      );
-    } catch (e) {
-      emit(
-        state.copyWith(
-          isLoading: false,
-          errorMessage: 'Error uploading image: $e',
-        ),
-      );
-    }
-  }
-
-  Future<void> scanReceipt() async {
-    emit(state.copyWith(isLoading: true, errorMessage: null));
-
-    try {
-      final XFile? image = await _mlKitService.pickImageFromCamera();
-
-      if (image == null) {
-        emit(
-          state.copyWith(
-            isLoading: false,
-            errorMessage: 'Camera cancelled or no image captured',
-          ),
-        );
-        return;
-      }
-
-      final File imageFile = File(image.path);
-      emit(state.copyWith(capturedImage: imageFile, isLoading: true));
-
-      final receiptData = await _mlKitService.processReceiptImage(imageFile);
-
-      List<ReceiptItem> items = [];
-      if (receiptData['items'] != null) {
-        try {
-          items = (receiptData['items'] as List).map((item) {
-            return ReceiptItem(
-              name: item['name']?.toString() ?? '',
-              price: (item['price'] as num?)?.toDouble() ?? 0.0,
-              quantity: (item['quantity'] as num?)?.toInt() ?? 1,
-              category: item['category']?.toString() ?? 'Food',
-            );
-          }).toList();
-        } catch (e) {
-          print('Error parsing items: $e');
-        }
-      }
-
-      final scannedReceipt = ReceiptModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
-        date: DateTime.now(),
-        amount: (receiptData['totalAmount'] as num?)?.toDouble() ?? 0.0,
-        imagePath: image.path,
-        receiptType: 'scan',
-        merchantName:
-            receiptData['merchantName']?.toString() ?? 'Unknown Store',
-        items: items,
-      );
-
-      title = scannedReceipt.merchantName ?? '';
-      amount = scannedReceipt.amount;
-
-      emit(
-        state.copyWith(
-          isLoading: false,
-          scannedReceipt: scannedReceipt,
-          errorMessage: scannedReceipt.amount == 0.0
-              ? 'Could not detect amount. Please verify and edit.'
-              : null,
-        ),
-      );
-    } catch (e) {
-      emit(
-        state.copyWith(
-          isLoading: false,
-          errorMessage: 'Error scanning receipt: $e',
-        ),
-      );
-    }
-  }
-
-  void manualEntry() {
-    emit(
-      state.copyWith(
-        isLoading: false,
-        scannedReceipt: ReceiptModel(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          date: DateTime.now(),
-          amount: 0.0,
-          receiptType: 'manual',
-          merchantName: '',
-          items: [],
-        ),
-      ),
-    );
-  }
-
-  void confirmManualEntry(double amount, String merchantName) {
-    this.amount = amount;
-    title = merchantName;
-
-    final receipt = ReceiptModel(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      date: DateTime.now(),
-      amount: amount,
-      receiptType: 'manual',
-      merchantName: merchantName,
-      imagePath: state.capturedImage?.path,
-      items: [],
-    );
-
-    emit(state.copyWith(scannedReceipt: receipt, isLoading: false));
-  }
-
-  void clearScannedReceipt() {
-    emit(
-      state.copyWith(
-        scannedReceipt: null,
-        errorMessage: null,
-        capturedImage: null,
-      ),
-    );
-  }
-
   void viewAll() {
-    emit(state.copyWith(errorMessage: null));
-  }
-
-  // Save expense to Supabase (updated)
-  Future<void> saveExpense(ExpenseCubit expenseCubit) async {
-    emit(state.copyWith(isLoading: true, errorMessage: null));
-
-    try {
-      // Validate
-      if (title.isEmpty) {
-        emit(
-          state.copyWith(
-            isLoading: false,
-            errorMessage: 'Please enter a title',
-          ),
-        );
-        return;
-      }
-
-      if (amount <= 0) {
-        emit(
-          state.copyWith(
-            isLoading: false,
-            errorMessage: 'Please enter a valid amount',
-          ),
-        );
-        return;
-      }
-
-      final expenseType = isIncome ? 'income' : 'expense';
-
-      if (state.expenseToEdit != null) {
-        // UPDATE existing expense in Supabase
-        await _supabaseService.updateTransaction(state.expenseToEdit!.id, {
-          'amount': amount,
-          'category': category,
-          'description': title,
-          'type': expenseType,
-          'date': date.toIso8601String(),
-        });
-
-        emit(
-          state.copyWith(
-            isLoading: false,
-            errorMessage: null,
-            expenseEditedSuccessfully: true,
-          ),
-        );
-      } else {
-        // ADD new expense to Supabase
-        await _supabaseService.addTransaction(
-          amount: amount,
-          category: category,
-          type: expenseType,
-          description: title,
-          date: date,
-        );
-
-        emit(
-          state.copyWith(
-            isLoading: false,
-            errorMessage: null,
-            expenseSavedSuccessfully: true,
-          ),
-        );
-      }
-
-      // Create receipt for recent uploads (local storage)
-      final receipt = ReceiptModel(
-        id:
-            state.expenseToEdit?.id ??
-            DateTime.now().millisecondsSinceEpoch.toString(),
-        date: date,
-        amount: amount,
-        receiptType: state.scannedReceipt?.receiptType ?? 'manual',
-        merchantName: title,
-        items: state.scannedReceipt?.items ?? [],
-        imagePath: state.capturedImage?.path ?? state.scannedReceipt?.imagePath,
-        tax: state.scannedReceipt?.tax,
-        subtotal: state.scannedReceipt?.subtotal,
-        serviceCharge: state.scannedReceipt?.serviceCharge,
-        category: category,
-        currency: 'RM',
-        ocrStatus: state.scannedReceipt?.ocrStatus,
-      );
-
-      await addReceipt(receipt);
-      resetForm();
-
-      // Refresh the expense cubit to show updated data
-      expenseCubit.loadExpenses();
-    } catch (e) {
-      emit(
-        state.copyWith(
-          isLoading: false,
-          errorMessage: 'Error saving expense: $e',
-        ),
-      );
-    }
-  }
-
-  @override
-  Future<void> close() {
-    _mlKitService.dispose();
-    return super.close();
+    // Navigate to all receipts screen
   }
 }

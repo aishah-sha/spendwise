@@ -18,7 +18,6 @@ import 'profile_screen.dart';
 class ExpenseHistoryScreen extends StatelessWidget {
   const ExpenseHistoryScreen({super.key});
 
-  // Same colors as dashboard for consistency
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
   static const Color accentGreen = Color(0xFF32BA32);
@@ -26,7 +25,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIXED: Use existing ProfileCubit, don't create a new one
     return BlocBuilder<ProfileCubit, ProfileState>(
       builder: (context, profileState) {
         bool isDarkMode = (profileState is ProfileLoaded)
@@ -48,7 +46,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
             body: Column(
               children: [
                 _buildTopHeader(context, isDarkMode),
-                // Title Section (below header)
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(20, 15, 20, 10),
@@ -77,8 +74,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-
-                // Search Bar
                 Padding(
                   padding: const EdgeInsets.all(16.0),
                   child: Container(
@@ -118,8 +113,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                     ),
                   ),
                 ),
-
-                // Filter Row
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Row(
@@ -138,13 +131,8 @@ class ExpenseHistoryScreen extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 16),
-
-                // Summary Cards
                 _buildSummaryCards(isDarkMode),
-
                 const SizedBox(height: 16),
-
-                // Expense List
                 Expanded(
                   child: BlocBuilder<ExpenseCubit, ExpenseState>(
                     builder: (context, state) {
@@ -184,7 +172,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
                           return Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Date Header
                               Padding(
                                 padding: const EdgeInsets.symmetric(
                                   vertical: 8.0,
@@ -232,14 +219,12 @@ class ExpenseHistoryScreen extends StatelessWidget {
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
         ),
         onPressed: () {
-          // Navigate to add expense screen
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => MultiBlocProvider(
                 providers: [
                   BlocProvider(create: (context) => AddExpenseCubit()),
-                  // FIXED: Use existing BudgetCubit, don't create new one
                   BlocProvider.value(
                     value: context.read<budget_cubit.BudgetCubit>(),
                   ),
@@ -805,16 +790,9 @@ class ExpenseHistoryScreen extends StatelessWidget {
   ) {
     return Dismissible(
       key: Key(expense.id),
-      direction: DismissDirection.horizontal,
-      background: Container(
-        alignment: Alignment.centerLeft,
-        padding: const EdgeInsets.only(left: 20),
-        decoration: BoxDecoration(
-          color: Colors.blue,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: const Icon(Icons.edit, color: Colors.white, size: 30),
-      ),
+      direction: DismissDirection
+          .endToStart, // Only allow swipe from right to left for delete
+      background: Container(), // No background for left swipe
       secondaryBackground: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
@@ -825,25 +803,38 @@ class ExpenseHistoryScreen extends StatelessWidget {
         child: const Icon(Icons.delete, color: Colors.white, size: 30),
       ),
       confirmDismiss: (direction) async {
-        if (direction == DismissDirection.startToEnd) {
-          _navigateToEditExpense(context, expense);
-          return false;
-        } else if (direction == DismissDirection.endToStart) {
+        if (direction == DismissDirection.endToStart) {
           final confirm = await _showDeleteConfirmation(context);
-          if (confirm) {
-            _updateBudgetOnDelete(context, expense);
-            context.read<ExpenseCubit>().deleteExpense(expense.id);
+          return confirm;
+        }
+        return false;
+      },
+      onDismissed: (direction) async {
+        if (direction == DismissDirection.endToStart) {
+          // Update budget before deletion
+          _updateBudgetOnDelete(context, expense);
+
+          // Delete the expense
+          await context.read<ExpenseCubit>().deleteExpense(expense.id);
+
+          // Force refresh on dashboard by loading expenses again
+          await context.read<ExpenseCubit>().loadExpenses();
+
+          // Also refresh budget to update remaining amounts
+          context.read<budget_cubit.BudgetCubit>().loadBudget(
+            forceRefresh: true,
+          );
+
+          if (context.mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('Expense deleted'),
-                backgroundColor: Colors.red,
+                content: Text('Expense deleted successfully'),
+                backgroundColor: Colors.green,
                 duration: Duration(seconds: 2),
               ),
             );
           }
-          return confirm;
         }
-        return false;
       },
       child: _buildExpenseItem(context, expense, isDarkMode),
     );
@@ -1087,11 +1078,9 @@ class ExpenseHistoryScreen extends StatelessWidget {
                     builder: (context) => MultiBlocProvider(
                       providers: [
                         BlocProvider.value(value: context.read<ExpenseCubit>()),
-                        // FIXED: Use existing BudgetCubit
                         BlocProvider.value(
                           value: context.read<budget_cubit.BudgetCubit>(),
                         ),
-                        // FIXED: Use existing ProfileCubit
                         BlocProvider.value(value: context.read<ProfileCubit>()),
                       ],
                       child: const DashboardScreen(),
@@ -1118,7 +1107,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // FIXED: Use existing BudgetCubit and ProfileCubit
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -1144,7 +1132,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // FIXED: Use existing ProfileCubit
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -1203,23 +1190,37 @@ class ExpenseHistoryScreen extends StatelessWidget {
   }
 }
 
+// FIXED: This function now properly creates and configures the AddExpenseCubit
 void _navigateToEditExpense(BuildContext context, dynamic expense) {
+  // Create a new AddExpenseCubit
+  final addExpenseCubit = AddExpenseCubit();
+
+  // Update the cubit with the expense data
+  addExpenseCubit.updateTitle(expense.title);
+  addExpenseCubit.updateAmount(expense.amount);
+  addExpenseCubit.updateCategory(expense.category);
+  addExpenseCubit.updateDate(expense.date);
+  addExpenseCubit.updateIsIncome(expense.isIncome ?? false);
+  addExpenseCubit.updateNote(expense.note ?? '');
+
+  // Navigate to edit screen
   Navigator.push(
     context,
     MaterialPageRoute(
       builder: (context) => MultiBlocProvider(
         providers: [
-          BlocProvider(
-            create: (context) => AddExpenseCubit(expenseToEdit: expense),
-          ),
-          // FIXED: Use existing BudgetCubit
+          BlocProvider.value(value: addExpenseCubit),
+          BlocProvider.value(value: context.read<ExpenseCubit>()),
           BlocProvider.value(value: context.read<budget_cubit.BudgetCubit>()),
+          BlocProvider.value(value: context.read<ProfileCubit>()),
         ],
         child: const AddExpenseScreen(),
       ),
     ),
   ).then((_) {
+    // Refresh data after returning
     context.read<budget_cubit.BudgetCubit>().loadBudget(forceRefresh: true);
+    context.read<ExpenseCubit>().loadExpenses();
   });
 }
 

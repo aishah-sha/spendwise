@@ -31,116 +31,134 @@ class DashboardScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<ProfileCubit, ProfileState>(
-      builder: (context, profileState) {
-        bool isDarkMode = (profileState is ProfileLoaded)
-            ? profileState.user.isDarkMode
-            : false;
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: context.read<ExpenseCubit>()),
+        BlocProvider.value(value: context.read<BudgetCubit>()),
+        BlocProvider.value(value: context.read<ProfileCubit>()),
+      ],
+      child: BlocBuilder<ProfileCubit, ProfileState>(
+        builder: (context, profileState) {
+          bool isDarkMode = (profileState is ProfileLoaded)
+              ? profileState.user.isDarkMode
+              : false;
 
-        return Theme(
-          data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-          child: Scaffold(
-            backgroundColor: isDarkMode ? Colors.black : bgColor,
-            floatingActionButtonLocation:
-                FloatingActionButtonLocation.centerDocked,
-            floatingActionButton: _buildFab(context, isDarkMode),
-            bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
-            body: Column(
-              children: [
-                _buildTopHeader(context, isDarkMode),
-                Expanded(
-                  child: Stack(
-                    children: [
-                      // Background Image Layer
-                      Positioned(
-                        top: -80,
-                        right: -40,
-                        child: Opacity(
-                          opacity: isDarkMode ? 0.1 : 0.5,
-                          child: Image.asset('assets/FYP2.png', width: 400),
-                        ),
-                      ),
-                      // Foreground Content
-                      MultiBlocListener(
-                        listeners: [
-                          BlocListener<BudgetCubit, budget_cubit.BudgetState>(
-                            listener: (context, budgetState) {
-                              if (budgetState is budget_cubit.BudgetLoaded) {
-                                context.read<ExpenseCubit>().updateBudget(
-                                  budgetState.budget.monthlyLimit,
-                                );
-                              }
-                            },
+          return Theme(
+            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+            child: Scaffold(
+              backgroundColor: isDarkMode ? Colors.black : bgColor,
+              floatingActionButtonLocation:
+                  FloatingActionButtonLocation.centerDocked,
+              floatingActionButton: _buildFab(context, isDarkMode),
+              bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
+              body: Column(
+                children: [
+                  _buildTopHeader(context, isDarkMode),
+                  Expanded(
+                    child: Stack(
+                      children: [
+                        // Background Image Layer
+                        Positioned(
+                          top: -80,
+                          right: -40,
+                          child: Opacity(
+                            opacity: isDarkMode ? 0.1 : 0.5,
+                            child: Image.asset('assets/FYP2.png', width: 400),
                           ),
-                        ],
-                        child: BlocBuilder<ExpenseCubit, ExpenseState>(
-                          builder: (context, expenseState) {
-                            return BlocBuilder<
-                              BudgetCubit,
-                              budget_cubit.BudgetState
-                            >(
-                              builder: (context, budgetState) {
-                                double monthlyBudget = expenseState.budget;
-                                double totalSpent = expenseState.totalSpending;
-
-                                if (budgetState is budget_cubit.BudgetLoaded) {
-                                  monthlyBudget =
-                                      budgetState.budget.monthlyLimit;
-                                }
-
-                                return SingleChildScrollView(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 20.0,
-                                    vertical: 10,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      _buildWelcomeSection(context, isDarkMode),
-                                      const SizedBox(height: 20),
-                                      _buildTotalBalanceCard(
-                                        expenseState,
-                                        context,
-                                        isDarkMode,
-                                      ),
-                                      const SizedBox(height: 20),
-                                      _buildStatsRow(
-                                        expenseState,
-                                        context,
-                                        monthlyBudget,
-                                        totalSpent,
-                                        isDarkMode,
-                                      ),
-                                      const SizedBox(height: 20),
-                                      _buildBudgetProgress(
-                                        expenseState,
-                                        monthlyBudget,
-                                        totalSpent,
-                                        isDarkMode,
-                                      ),
-                                      const SizedBox(height: 25),
-                                      _buildRecentExpensesSection(
-                                        expenseState,
-                                        context,
-                                        isDarkMode,
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
-                            );
-                          },
                         ),
-                      ),
-                    ],
+                        // Foreground Content
+                        _buildMainContent(context, isDarkMode),
+                      ],
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
+    );
+  }
+
+  // FIXED: Extract main content to a separate widget that listens to changes
+  Widget _buildMainContent(BuildContext context, bool isDarkMode) {
+    return MultiBlocListener(
+      listeners: [
+        BlocListener<BudgetCubit, budget_cubit.BudgetState>(
+          listener: (context, budgetState) {
+            if (budgetState is budget_cubit.BudgetLoaded) {
+              context.read<ExpenseCubit>().updateBudget(
+                budgetState.budget.monthlyLimit,
+              );
+            }
+          },
+        ),
+      ],
+      child: BlocBuilder<ExpenseCubit, ExpenseState>(
+        builder: (context, expenseState) {
+          return BlocBuilder<BudgetCubit, budget_cubit.BudgetState>(
+            builder: (context, budgetState) {
+              // Refresh expenses when returning to dashboard
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                context.read<ExpenseCubit>().loadExpenses();
+                context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+              });
+
+              double monthlyBudget = expenseState.budget;
+              double totalSpent = expenseState.totalSpending;
+              // Total Balance = Budget + (Total Income - Total Expenses)
+              double totalBalanceWithBudget =
+                  expenseState.totalBalance + monthlyBudget;
+
+              if (budgetState is budget_cubit.BudgetLoaded) {
+                monthlyBudget = budgetState.budget.monthlyLimit;
+                totalBalanceWithBudget =
+                    expenseState.totalBalance + monthlyBudget;
+              }
+
+              return SingleChildScrollView(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20.0,
+                  vertical: 10,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildWelcomeSection(context, isDarkMode),
+                    const SizedBox(height: 20),
+                    _buildTotalBalanceCard(
+                      totalBalanceWithBudget,
+                      context,
+                      isDarkMode,
+                    ),
+                    const SizedBox(height: 20),
+                    _buildStatsRow(
+                      expenseState,
+                      context,
+                      monthlyBudget,
+                      totalSpent,
+                      isDarkMode,
+                    ),
+                    const SizedBox(height: 20),
+                    _buildBudgetProgress(
+                      expenseState,
+                      monthlyBudget,
+                      totalSpent,
+                      isDarkMode,
+                    ),
+                    const SizedBox(height: 25),
+                    _buildRecentExpensesSection(
+                      expenseState,
+                      context,
+                      isDarkMode,
+                    ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
+      ),
     );
   }
 
@@ -164,7 +182,11 @@ class DashboardScreen extends StatelessWidget {
                 child: const AddExpenseScreen(),
               ),
             ),
-          );
+          ).then((_) {
+            // Refresh data when returning from add expense screen
+            context.read<ExpenseCubit>().loadExpenses();
+            context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+          });
         },
         child: const Icon(Icons.add, color: accentGreen, size: 45),
       ),
@@ -277,12 +299,11 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildTotalBalanceCard(
-    ExpenseState state,
+    double totalBalance,
     BuildContext context,
     bool isDarkMode,
   ) {
-    // Ensure total balance doesn't go negative for display
-    final displayBalance = state.totalBalance < 0 ? 0.0 : state.totalBalance;
+    final displayBalance = totalBalance < 0 ? 0.0 : totalBalance;
 
     return Container(
       width: double.infinity,
@@ -346,9 +367,34 @@ class DashboardScreen extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Budget: RM${(totalBalance - _getIncomeMinusExpenses(context)).toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.white.withOpacity(0.7),
+                ),
+              ),
+              Text(
+                'Income - Expenses: RM${_getIncomeMinusExpenses(context).toStringAsFixed(2)}',
+                style: TextStyle(
+                  fontSize: 10,
+                  color: Colors.white.withOpacity(0.7),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  double _getIncomeMinusExpenses(BuildContext context) {
+    final expenseState = context.read<ExpenseCubit>().state;
+    return expenseState.totalBalance;
   }
 
   Widget _statItem(
@@ -428,7 +474,6 @@ class DashboardScreen extends StatelessWidget {
           Icons.account_balance,
           isClickable: true,
           onTap: () {
-            // FIXED: Use existing BudgetCubit, don't create new one
             Navigator.push(
               context,
               MaterialPageRoute(
@@ -441,7 +486,11 @@ class DashboardScreen extends StatelessWidget {
                   child: const BudgetScreen(),
                 ),
               ),
-            );
+            ).then((_) {
+              // Refresh data when returning from budget screen
+              context.read<ExpenseCubit>().loadExpenses();
+              context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+            });
           },
           isDarkMode: isDarkMode,
         ),
@@ -530,12 +579,20 @@ class DashboardScreen extends StatelessWidget {
     BuildContext context,
     bool isDarkMode,
   ) {
+    // Get the 5 most recent expenses (non-income only for display)
+    final expensesOnly = state.allExpenses
+        .where((e) => !(e.isIncome ?? false))
+        .toList();
+    final recentExpenses = expensesOnly.length > 5
+        ? expensesOnly.sublist(0, 5)
+        : expensesOnly;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildRecentExpensesHeader(context, isDarkMode),
         const SizedBox(height: 1),
-        _buildRecentExpensesList(state, context, isDarkMode),
+        _buildRecentExpensesList(recentExpenses, context, isDarkMode),
       ],
     );
   }
@@ -557,12 +614,20 @@ class DashboardScreen extends StatelessWidget {
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => BlocProvider.value(
-                  value: context.read<ExpenseCubit>(),
+                builder: (context) => MultiBlocProvider(
+                  providers: [
+                    BlocProvider.value(value: context.read<ExpenseCubit>()),
+                    BlocProvider.value(value: context.read<BudgetCubit>()),
+                    BlocProvider.value(value: context.read<ProfileCubit>()),
+                  ],
                   child: const ExpenseHistoryScreen(),
                 ),
               ),
-            );
+            ).then((_) {
+              // Refresh data when returning from history screen
+              context.read<ExpenseCubit>().loadExpenses();
+              context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+            });
           },
           child: Text(
             'See All',
@@ -574,14 +639,10 @@ class DashboardScreen extends StatelessWidget {
   }
 
   Widget _buildRecentExpensesList(
-    ExpenseState state,
+    List<dynamic> recentExpenses,
     BuildContext context,
     bool isDarkMode,
   ) {
-    final recentExpenses = state.allExpenses.length > 5
-        ? state.allExpenses.sublist(0, 5)
-        : state.allExpenses;
-
     if (recentExpenses.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
@@ -681,18 +742,6 @@ class DashboardScreen extends StatelessWidget {
                         color: isDarkMode ? Colors.white60 : Colors.grey[600],
                       ),
                     ),
-                    if (expense.isIncome ?? false)
-                      Padding(
-                        padding: const EdgeInsets.only(top: 2),
-                        child: Text(
-                          'Income',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: accentGreen,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
                   ],
                 ),
               ),
@@ -700,13 +749,11 @@ class DashboardScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '${(expense.isIncome ?? false) ? '+' : '-'}RM${expense.amount.toStringAsFixed(2)}',
+                    '-RM${expense.amount.toStringAsFixed(2)}',
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
-                      color: (expense.isIncome ?? false)
-                          ? accentGreen
-                          : Colors.red,
+                      color: Colors.red,
                     ),
                   ),
                   const SizedBox(height: 4),
@@ -743,7 +790,9 @@ class DashboardScreen extends StatelessWidget {
               true,
               isDarkMode,
               () {
-                // Already on home screen
+                // Already on home screen - refresh data
+                context.read<ExpenseCubit>().loadExpenses();
+                context.read<BudgetCubit>().loadBudget(forceRefresh: true);
               },
             ),
             _navItem(
@@ -756,12 +805,20 @@ class DashboardScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => BlocProvider.value(
-                      value: context.read<ExpenseCubit>(),
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider.value(value: context.read<BudgetCubit>()),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
+                      ],
                       child: const ExpenseHistoryScreen(),
                     ),
                   ),
-                );
+                ).then((_) {
+                  // Refresh data when returning from history screen
+                  context.read<ExpenseCubit>().loadExpenses();
+                  context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+                });
               },
             ),
             const SizedBox(width: 40),
@@ -772,7 +829,6 @@ class DashboardScreen extends StatelessWidget {
               false,
               isDarkMode,
               () {
-                // FIXED: Use existing BudgetCubit and ProfileCubit, don't create new ones
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -785,7 +841,11 @@ class DashboardScreen extends StatelessWidget {
                       child: const BudgetScreen(),
                     ),
                   ),
-                );
+                ).then((_) {
+                  // Refresh data when returning from budget screen
+                  context.read<ExpenseCubit>().loadExpenses();
+                  context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+                });
               },
             ),
             _navItem(
@@ -795,7 +855,6 @@ class DashboardScreen extends StatelessWidget {
               false,
               isDarkMode,
               () {
-                // FIXED: Use existing ProfileCubit, don't create new one
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -905,20 +964,33 @@ class DashboardScreen extends StatelessWidget {
             ),
           ),
           ElevatedButton(
-            onPressed: () {
+            onPressed: () async {
               if (amountController.text.isNotEmpty) {
                 final amount = double.tryParse(amountController.text);
                 if (amount != null && amount > 0) {
-                  context.read<ExpenseCubit>().addIncome(amount);
                   Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Added RM${amount.toStringAsFixed(2)} to balance',
+                  await context.read<ExpenseCubit>().addIncome(amount);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(
+                          'Added RM${amount.toStringAsFixed(2)} to balance',
+                        ),
+                        backgroundColor: accentGreen,
+                        duration: const Duration(seconds: 2),
                       ),
-                      backgroundColor: accentGreen,
-                    ),
-                  );
+                    );
+                  }
+                } else {
+                  Navigator.pop(context);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Please enter a valid amount'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                 }
               }
             },

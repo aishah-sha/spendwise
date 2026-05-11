@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../cubit/auth_cubit.dart';
 
 class WelcomeScreen extends StatelessWidget {
@@ -57,6 +58,22 @@ class WelcomeView extends StatelessWidget {
                               Image.asset(
                                 'assets/spendwise_logo.png',
                                 height: 30,
+                                width: 30,
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    width: 30,
+                                    height: 30,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFF2E7D32),
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Icon(
+                                      Icons.account_balance_wallet,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  );
+                                },
                               ),
                               const SizedBox(width: 8),
                               const Text(
@@ -78,12 +95,26 @@ class WelcomeView extends StatelessWidget {
                             child: Image.asset(
                               'assets/FYP1.png',
                               fit: BoxFit.contain,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: double.infinity,
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFC8E6C9),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: const Icon(
+                                    Icons.account_balance_wallet,
+                                    size: 80,
+                                    color: Color(0xFF2E7D32),
+                                  ),
+                                );
+                              },
                             ),
                           ),
                           const SizedBox(height: 5),
                           // Welcome Message
                           const Text(
-                            'WELCOME, USER !',
+                            'WELCOME, USER!',
                             style: TextStyle(
                               fontSize: 28,
                               fontWeight: FontWeight.w900,
@@ -198,13 +229,10 @@ class WelcomeView extends StatelessWidget {
                                   }
                                 },
                               ),
-                              // Note: Facebook and Gmail sign-in are not available in Supabase
-                              // You would need to set up additional OAuth providers in Supabase dashboard
-                              // and enable them in the AuthCubit if needed
                             ],
                           ),
                           const SizedBox(height: 20),
-                          // Info about social login (optional)
+                          // Info about social login
                           Container(
                             padding: const EdgeInsets.all(12),
                             decoration: BoxDecoration(
@@ -277,7 +305,29 @@ class WelcomeView extends StatelessWidget {
   ) {
     return GestureDetector(
       onTap: onTap,
-      child: Image.asset(assetPath, height: 35),
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 10),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.1),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Image.asset(
+          assetPath,
+          height: 30,
+          width: 30,
+          errorBuilder: (context, error, stackTrace) {
+            return const Icon(Icons.login, size: 30, color: Color(0xFF2E7D32));
+          },
+        ),
+      ),
     );
   }
 }

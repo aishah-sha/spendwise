@@ -8,13 +8,16 @@ import '../services/supabase_service.dart';
 class ExpenseCubit extends Cubit<ExpenseState> {
   final SupabaseService _supabaseService = SupabaseService();
   StreamSubscription? _expensesSubscription;
+  bool _isInitialized = false;
 
   ExpenseCubit() : super(ExpenseState.initial()) {
     _listenToExpenses();
   }
 
-  // FIX: Real-time update logic includes recalculated balance based on current state budget
   void _listenToExpenses() {
+    // Cancel existing subscription if any
+    _expensesSubscription?.cancel();
+
     _expensesSubscription = _supabaseService.getTransactions().listen(
       (transactions) {
         final expenses = transactions.map((tx) {
@@ -29,35 +32,46 @@ class ExpenseCubit extends Cubit<ExpenseState> {
           );
         }).toList();
 
-        final totalSpending = _calculateTotalSpending(expenses);
-        final totalBalance = _calculateTotalBalance(expenses, state.budget);
-
-        emit(
-          _applyFilters(
-            state.copyWith(
-              allExpenses: expenses,
-              totalSpending: totalSpending,
-              totalBalance: totalBalance,
-            ),
-          ),
-        );
+        _updateStateWithExpenses(expenses);
       },
       onError: (error) {
         print('Error listening to expenses: $error');
+        if (!isClosed) {
+          emit(state.copyWith(error: error.toString(), isLoading: false));
+        }
       },
     );
   }
 
-  // FIX: Added a sync method for when BudgetCubit changes
-  void syncWithBudget(double newMonthlyLimit) {
-    final totalBalance = _calculateTotalBalance(
-      state.allExpenses,
-      newMonthlyLimit,
+  // Helper method to update state with expenses
+  void _updateStateWithExpenses(List<ExpenseModel> expenses) {
+    if (isClosed) return;
+
+    final totalSpending = _calculateTotalSpending(expenses);
+    final totalBalance = _calculateTotalBalance(expenses);
+
+    final newState = _applyFilters(
+      state.copyWith(
+        allExpenses: expenses,
+        filteredExpenses: expenses,
+        totalSpending: totalSpending,
+        totalBalance: totalBalance,
+        isLoading: false,
+        error: null,
+      ),
     );
-    emit(state.copyWith(budget: newMonthlyLimit, totalBalance: totalBalance));
+
+    if (!isClosed) {
+      emit(newState);
+    }
   }
 
+  // Single loadExpenses method
   Future<void> loadExpenses() async {
+    if (isClosed) return;
+
+    emit(state.copyWith(isLoading: true, error: null));
+
     try {
       final transactions = await _supabaseService.getTransactions().first;
       final expenses = transactions.map((tx) {
@@ -72,21 +86,17 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         );
       }).toList();
 
-      final totalSpending = _calculateTotalSpending(expenses);
-      final totalBalance = _calculateTotalBalance(expenses, state.budget);
-
-      emit(
-        _applyFilters(
-          state.copyWith(
-            allExpenses: expenses,
-            totalSpending: totalSpending,
-            totalBalance: totalBalance,
-          ),
-        ),
-      );
+      _updateStateWithExpenses(expenses);
     } catch (e) {
-      print('Error loading expenses: $e');
+      if (!isClosed) {
+        emit(state.copyWith(error: e.toString(), isLoading: false));
+      }
     }
+  }
+
+  void syncWithBudget(double newMonthlyLimit) {
+    if (isClosed) return;
+    emit(state.copyWith(budget: newMonthlyLimit));
   }
 
   Future<void> addExpense(ExpenseModel expense) async {
@@ -98,8 +108,14 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         description: expense.title,
         date: expense.date,
       );
+      // The stream subscription will automatically update the state
+      // Force a refresh to ensure immediate update
+      await loadExpenses();
     } catch (e) {
       print('Error adding expense: $e');
+      if (!isClosed) {
+        emit(state.copyWith(error: e.toString()));
+      }
     }
   }
 
@@ -110,11 +126,15 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         amount: amount,
         category: 'Income',
         type: 'income',
-        description: description ?? 'Income',
+        description: description ?? 'Income Added',
         date: DateTime.now(),
       );
+      await loadExpenses();
     } catch (e) {
       print('Error adding income: $e');
+      if (!isClosed) {
+        emit(state.copyWith(error: e.toString()));
+      }
     }
   }
 
@@ -127,25 +147,37 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         'type': updatedExpense.isIncome ? 'income' : 'expense',
         'date': updatedExpense.date.toIso8601String(),
       });
+      // Force a refresh to ensure immediate update
+      await loadExpenses();
     } catch (e) {
       print('Error updating expense: $e');
+      if (!isClosed) {
+        emit(state.copyWith(error: e.toString()));
+      }
     }
   }
 
   Future<void> deleteExpense(String id) async {
     try {
       await _supabaseService.deleteTransaction(id);
+      // Force a refresh to ensure immediate update
+      await loadExpenses();
     } catch (e) {
       print('Error deleting expense: $e');
+      if (!isClosed) {
+        emit(state.copyWith(error: e.toString()));
+      }
     }
   }
 
   void searchExpenses(String query) {
+    if (isClosed) return;
     final newState = state.copyWith(searchQuery: query);
     emit(_applyFilters(newState));
   }
 
   void filterByCategory(ExpenseFilter filter, {String? specificCategory}) {
+    if (isClosed) return;
     final newState = state.copyWith(
       categoryFilter: filter,
       selectedCategory: specificCategory,
@@ -158,6 +190,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     DateTime? startDate,
     DateTime? endDate,
   }) {
+    if (isClosed) return;
     final newState = state.copyWith(
       dateRangeFilter: range,
       customStartDate: startDate,
@@ -167,6 +200,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   }
 
   void resetFilters() {
+    if (isClosed) return;
     final newState = state.copyWith(
       searchQuery: '',
       categoryFilter: ExpenseFilter.all,
@@ -180,16 +214,24 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   }
 
   void updateBudget(double newBudget) {
-    final totalBalance = _calculateTotalBalance(state.allExpenses, newBudget);
+    if (isClosed) return;
+    final totalBalance = _calculateTotalBalance(state.allExpenses);
     emit(state.copyWith(budget: newBudget, totalBalance: totalBalance));
   }
 
   void changeAnalyticsPeriod(AnalyticsPeriod period) {
+    if (isClosed) return;
     emit(state.copyWith(selectedAnalyticsPeriod: period));
   }
 
   void setAnalyticsDate(DateTime date) {
+    if (isClosed) return;
     emit(state.copyWith(analyticsSelectedDate: date));
+  }
+
+  // Refresh method to manually trigger update
+  Future<void> refreshExpenses() async {
+    await loadExpenses();
   }
 
   Color getCategoryColor(String category) {
@@ -240,8 +282,8 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         .fold(0.0, (sum, item) => sum + item.amount);
   }
 
-  double _calculateTotalBalance(List<ExpenseModel> expenses, double budget) {
-    double balance = budget;
+  double _calculateTotalBalance(List<ExpenseModel> expenses) {
+    double balance = 0.0;
     for (var expense in expenses) {
       if (expense.isIncome) {
         balance += expense.amount;
@@ -255,6 +297,25 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   ExpenseState _applyFilters(ExpenseState state) {
     var filtered = List<ExpenseModel>.from(state.allExpenses);
 
+    // Apply category filter
+    if (state.selectedCategory != null) {
+      filtered = filtered
+          .where((e) => e.category == state.selectedCategory)
+          .toList();
+    } else {
+      switch (state.categoryFilter) {
+        case ExpenseFilter.income:
+          filtered = filtered.where((e) => e.isIncome).toList();
+          break;
+        case ExpenseFilter.expense:
+          filtered = filtered.where((e) => !e.isIncome).toList();
+          break;
+        default:
+          break;
+      }
+    }
+
+    // Apply search query
     if (state.searchQuery.isNotEmpty) {
       final query = state.searchQuery.toLowerCase();
       filtered = filtered.where((expense) {
@@ -263,12 +324,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       }).toList();
     }
 
-    if (state.categoryFilter == ExpenseFilter.income) {
-      filtered = filtered.where((e) => e.isIncome).toList();
-    } else if (state.categoryFilter == ExpenseFilter.expense) {
-      filtered = filtered.where((e) => !e.isIncome).toList();
-    }
-
+    // Apply date range filter
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -280,9 +336,34 @@ class ExpenseCubit extends Cubit<ExpenseState> {
             )
             .toList();
         break;
+      case DateRangeFilter.yesterday:
+        final yesterday = today.subtract(const Duration(days: 1));
+        filtered = filtered
+            .where(
+              (e) =>
+                  DateTime(e.date.year, e.date.month, e.date.day) == yesterday,
+            )
+            .toList();
+        break;
       case DateRangeFilter.week:
         final weekAgo = today.subtract(const Duration(days: 7));
         filtered = filtered.where((e) => e.date.isAfter(weekAgo)).toList();
+        break;
+      case DateRangeFilter.month:
+        final monthAgo = today.subtract(const Duration(days: 30));
+        filtered = filtered.where((e) => e.date.isAfter(monthAgo)).toList();
+        break;
+      case DateRangeFilter.custom:
+        if (state.customStartDate != null) {
+          filtered = filtered
+              .where((e) => e.date.isAfter(state.customStartDate!))
+              .toList();
+        }
+        if (state.customEndDate != null) {
+          filtered = filtered
+              .where((e) => e.date.isBefore(state.customEndDate!))
+              .toList();
+        }
         break;
       default:
         break;

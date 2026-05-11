@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/profile_cubit.dart';
@@ -36,10 +37,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   late DateTime _selectedDate;
   bool _isIncome = false;
 
-  // List to hold items
   List<ReceiptItem> _items = [];
 
-  // Categories
   final List<String> _categories = [
     'Food',
     'Beverages',
@@ -54,13 +53,13 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     'Other',
   ];
 
-  // Controllers for adding new items
   final TextEditingController _newItemNameController = TextEditingController();
   final TextEditingController _newItemPriceController = TextEditingController();
   String _newItemCategory = 'Food';
 
-  // Image file for receipt
   File? _receiptImageFile;
+
+  String? get _currentUserId => Supabase.instance.client.auth.currentUser?.id;
 
   @override
   void initState() {
@@ -71,12 +70,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     _vendorController = TextEditingController();
     _selectedDate = DateTime.now();
 
-    // Initialize with data
     if (widget.receipt != null) {
       print("🟢 Received receipt: ${widget.receipt!.merchantName}");
       print("🟢 Items from receipt: ${widget.receipt!.items?.length ?? 0}");
 
-      // Load receipt image if available
       if (widget.receipt!.imagePath != null &&
           widget.receipt!.imagePath!.isNotEmpty) {
         try {
@@ -342,7 +339,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   Widget build(BuildContext context) {
     final bool isEditing = widget.isEditing || widget.expenseToEdit != null;
 
-    // First, ensure ProfileCubit is provided
     return MultiBlocProvider(
       providers: [BlocProvider.value(value: context.read<ProfileCubit>())],
       child: BlocBuilder<ProfileCubit, ProfileState>(
@@ -372,12 +368,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-
-                    // Receipt Image Section
                     _buildReceiptImageSection(isDarkMode),
                     const SizedBox(height: 20),
-
-                    // EXPENSE DETAILS
                     Container(
                       padding: const EdgeInsets.symmetric(vertical: 6),
                       child: Text(
@@ -392,26 +384,18 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                       ),
                     ),
                     const SizedBox(height: 6),
-
-                    // Total Amount (Read-only as it's calculated from items)
                     _buildReadOnlyField(
                       'Total Amount',
                       _amountController,
                       isDarkMode,
                     ),
                     const SizedBox(height: 10),
-
-                    // Date Field (Editable)
                     _buildDateField(isDarkMode),
                     const SizedBox(height: 10),
-
-                    // Vendor Field (Editable)
                     _buildEditableField('Vendor', _vendorController, (value) {
                       context.read<AddExpenseCubit>().updateTitle(value);
                     }, isDarkMode),
                     const SizedBox(height: 20),
-
-                    // ITEMS SECTION HEADER
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -438,8 +422,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                       ],
                     ),
                     const SizedBox(height: 10),
-
-                    // Items List (Editable)
                     if (_items.isEmpty)
                       Center(
                         child: Padding(
@@ -462,10 +444,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                           return _buildEditableItem(index, isDarkMode);
                         },
                       ),
-
                     const SizedBox(height: 20),
-
-                    // Save Button
                     SizedBox(
                       width: double.infinity,
                       height: 48,
@@ -664,15 +643,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                 color: isDarkMode ? Colors.white60 : Colors.grey,
               ),
             ),
-          if (widget.receipt?.amount != null)
-            Text(
-              'RM ${widget.receipt!.amount.toStringAsFixed(2)}',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: accentGreen,
-              ),
-            ),
         ],
       ),
     );
@@ -707,7 +677,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                 Expanded(
                   child: Column(
                     children: [
-                      // Item Name
                       TextFormField(
                         initialValue: item.name,
                         style: TextStyle(
@@ -746,11 +715,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                         },
                       ),
                       const SizedBox(height: 8),
-
-                      // Price and Quantity Row
                       Row(
                         children: [
-                          // Price
                           Expanded(
                             child: TextFormField(
                               initialValue: item.price.toStringAsFixed(2),
@@ -798,8 +764,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                             ),
                           ),
                           const SizedBox(width: 8),
-
-                          // Quantity
                           Expanded(
                             child: TextFormField(
                               initialValue: item.quantity.toString(),
@@ -847,8 +811,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                         ],
                       ),
                       const SizedBox(height: 8),
-
-                      // Category Dropdown
                       DropdownButtonFormField<String>(
                         value: _categories.contains(item.category)
                             ? item.category
@@ -916,10 +878,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                           }
                         },
                       ),
-
                       const SizedBox(height: 4),
-
-                      // Item Total
                       Align(
                         alignment: Alignment.centerRight,
                         child: Container(
@@ -947,8 +906,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
               ],
             ),
           ),
-
-          // Delete Button
           if (_items.length > 1)
             Positioned(
               right: 0,
@@ -1101,8 +1058,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
     );
   }
 
-  void _saveExpense(BuildContext context) {
-    // Validate at least one valid item
+  void _saveExpense(BuildContext context) async {
     bool hasValidItem = false;
     for (var item in _items) {
       if (item.name.isNotEmpty && item.price > 0) {
@@ -1121,7 +1077,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       return;
     }
 
-    // Validate vendor
     if (_vendorController.text.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -1132,11 +1087,21 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       return;
     }
 
+    final userId = _currentUserId;
+    if (userId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('User not authenticated'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
     final String expenseId =
         widget.expenseToEdit?.id ??
         DateTime.now().millisecondsSinceEpoch.toString();
 
-    // Create expense model
     final expense = ExpenseModel(
       id: expenseId,
       title: _vendorController.text,
@@ -1145,19 +1110,18 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       date: _selectedDate,
       isIncome: _isIncome,
       note: '${_items.length} items',
+      userId: userId, // FIXED: Add user ID
     );
 
-    // Get cubits
     final expenseCubit = context.read<ExpenseCubit>();
     final addExpenseCubit = context.read<AddExpenseCubit>();
 
     if (widget.isEditing || widget.expenseToEdit != null) {
-      expenseCubit.updateExpense(expense);
+      await expenseCubit.updateExpense(expense);
     } else {
-      expenseCubit.addExpense(expense);
+      await expenseCubit.addExpense(expense);
     }
 
-    // Create receipt for recent uploads
     final receipt = ReceiptModel(
       id: expenseId,
       date: expense.date,
@@ -1166,41 +1130,43 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       merchantName: expense.title,
       items: _items,
       imagePath: widget.receipt?.imagePath,
+      userId: userId, // FIXED: Add user ID
+      processed: false,
     );
 
-    addExpenseCubit.addReceipt(receipt);
+    await addExpenseCubit.addReceipt(receipt);
 
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          widget.isEditing
-              ? 'Expense updated successfully'
-              : 'Expense saved successfully',
-        ),
-        backgroundColor: accentGreen,
-        duration: const Duration(seconds: 2),
-      ),
-    );
-
-    // Navigate back
-    if (widget.fromAddExpense) {
-      Future.delayed(const Duration(seconds: 1), () {
-        Navigator.pop(context, receipt);
-      });
-    } else {
-      Future.delayed(const Duration(seconds: 1), () {
-        Navigator.pushAndRemoveUntil(
-          context,
-          MaterialPageRoute(
-            builder: (context) => BlocProvider.value(
-              value: expenseCubit,
-              child: const DashboardScreen(),
-            ),
+    if (context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            widget.isEditing
+                ? 'Expense updated successfully'
+                : 'Expense saved successfully',
           ),
-          (route) => false,
-        );
-      });
+          backgroundColor: accentGreen,
+          duration: const Duration(seconds: 2),
+        ),
+      );
+
+      if (widget.fromAddExpense) {
+        Future.delayed(const Duration(seconds: 1), () {
+          Navigator.pop(context, receipt);
+        });
+      } else {
+        Future.delayed(const Duration(seconds: 1), () {
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(
+              builder: (context) => BlocProvider.value(
+                value: expenseCubit,
+                child: const DashboardScreen(),
+              ),
+            ),
+            (route) => false,
+          );
+        });
+      }
     }
   }
 

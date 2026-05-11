@@ -21,6 +21,8 @@ class ExpenseState extends Equatable {
   final DateTime? customStartDate;
   final DateTime? customEndDate;
   final String? selectedCategory;
+  final bool isLoading; // ADDED: loading state
+  final String? error; // ADDED: error state
 
   // Analytics properties
   final AnalyticsPeriod selectedAnalyticsPeriod;
@@ -40,6 +42,8 @@ class ExpenseState extends Equatable {
     this.customStartDate,
     this.customEndDate,
     this.selectedCategory,
+    this.isLoading = false, // ADDED
+    this.error, // ADDED
     this.selectedAnalyticsPeriod = AnalyticsPeriod.month,
     required this.analyticsSelectedDate,
   });
@@ -55,6 +59,8 @@ class ExpenseState extends Equatable {
       allExpenses: const [],
       filteredExpenses: const [],
       analyticsSelectedDate: now,
+      isLoading: false,
+      error: null,
     );
   }
 
@@ -98,12 +104,14 @@ class ExpenseState extends Equatable {
     return totals;
   }
 
+  // FIXED: Ensure this returns a list even when empty
   List<MapEntry<String, double>> get sortedCategoryTotals {
     final entries = categoryTotals.entries.toList();
     entries.sort((a, b) => b.value.compareTo(a.value));
     return entries;
   }
 
+  // FIXED: Ensure this returns a map even when empty
   Map<DateTime, double> get dailyTotals {
     final Map<DateTime, double> totals = {};
     final analyticsExpenses = getExpensesForAnalytics();
@@ -137,14 +145,41 @@ class ExpenseState extends Equatable {
 
     switch (selectedAnalyticsPeriod) {
       case AnalyticsPeriod.week:
-        final weekAgo = now.subtract(const Duration(days: 7));
-        return allExpenses.where((e) => e.date.isAfter(weekAgo)).toList();
+        final startOfWeek = DateTime(
+          now.year,
+          now.month,
+          now.day - now.weekday + 1,
+        );
+        return allExpenses
+            .where(
+              (e) =>
+                  e.date.isAfter(startOfWeek.subtract(const Duration(days: 1))),
+            )
+            .toList();
       case AnalyticsPeriod.month:
-        final monthAgo = now.subtract(const Duration(days: 30));
-        return allExpenses.where((e) => e.date.isAfter(monthAgo)).toList();
+        final startOfMonth = DateTime(now.year, now.month, 1);
+        final endOfMonth = DateTime(now.year, now.month + 1, 0);
+        return allExpenses
+            .where(
+              (e) =>
+                  e.date.isAfter(
+                    startOfMonth.subtract(const Duration(days: 1)),
+                  ) &&
+                  e.date.isBefore(endOfMonth.add(const Duration(days: 1))),
+            )
+            .toList();
       case AnalyticsPeriod.year:
-        final yearAgo = now.subtract(const Duration(days: 365));
-        return allExpenses.where((e) => e.date.isAfter(yearAgo)).toList();
+        final startOfYear = DateTime(now.year, 1, 1);
+        final endOfYear = DateTime(now.year, 12, 31);
+        return allExpenses
+            .where(
+              (e) =>
+                  e.date.isAfter(
+                    startOfYear.subtract(const Duration(days: 1)),
+                  ) &&
+                  e.date.isBefore(endOfYear.add(const Duration(days: 1))),
+            )
+            .toList();
     }
   }
 
@@ -202,7 +237,7 @@ class ExpenseState extends Equatable {
   }
 
   // Computed properties based on actual data
-  double get remaining => budget - totalSpending;
+  double get remaining => budget > 0 ? budget - totalSpending : 0;
   double get budgetProgress => budget > 0 ? totalSpending / budget : 0;
   int get totalExpensesCount => filteredExpenses.length;
 
@@ -246,6 +281,8 @@ class ExpenseState extends Equatable {
     DateTime? customStartDate,
     DateTime? customEndDate,
     String? selectedCategory,
+    bool? isLoading,
+    String? error,
     AnalyticsPeriod? selectedAnalyticsPeriod,
     DateTime? analyticsSelectedDate,
   }) {
@@ -263,6 +300,8 @@ class ExpenseState extends Equatable {
       customStartDate: customStartDate ?? this.customStartDate,
       customEndDate: customEndDate ?? this.customEndDate,
       selectedCategory: selectedCategory ?? this.selectedCategory,
+      isLoading: isLoading ?? this.isLoading,
+      error: error,
       selectedAnalyticsPeriod:
           selectedAnalyticsPeriod ?? this.selectedAnalyticsPeriod,
       analyticsSelectedDate:
@@ -285,6 +324,8 @@ class ExpenseState extends Equatable {
     customStartDate,
     customEndDate,
     selectedCategory,
+    isLoading,
+    error,
     selectedAnalyticsPeriod,
     analyticsSelectedDate,
   ];

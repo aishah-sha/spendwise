@@ -2,20 +2,22 @@
 class ExpenseModel {
   final String id;
   final String title;
-  final String category;
   final double amount;
+  final String category;
   final DateTime date;
   final bool isIncome;
   final String? note;
+  final String? userId; // ADD THIS
 
   ExpenseModel({
     required this.id,
     required this.title,
-    required this.category,
     required this.amount,
+    required this.category,
     required this.date,
     this.isIncome = false,
     this.note,
+    this.userId, // ADD THIS
   });
 
   // Convert to Supabase transaction format
@@ -29,6 +31,7 @@ class ExpenseModel {
       'title': title,
       'note': note,
       'date': date.toIso8601String(),
+      'user_id': userId, // ADD THIS
     };
   }
 

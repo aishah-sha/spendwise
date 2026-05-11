@@ -28,13 +28,12 @@ void main() async {
 
   try {
     // 2. Load environment variables
-    // We specify the filename to be explicit
     await dotenv.load(fileName: ".env");
 
     final supabaseUrl = dotenv.env['SUPABASE_URL'];
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
 
-    // 3. Safety Check: Stop the "Null check operator" crash before it happens
+    // 3. Safety Check
     if (supabaseUrl == null || supabaseAnonKey == null) {
       throw Exception(
         "Missing keys in .env file. Ensure SUPABASE_URL and SUPABASE_ANON_KEY are defined.",
@@ -46,7 +45,6 @@ void main() async {
 
     runApp(const MyApp());
   } catch (e) {
-    // 5. Fatal Error UI: Instead of a white screen/splash, show the user the error
     debugPrint("Initialization Error: $e");
     runApp(
       MaterialApp(
@@ -95,7 +93,6 @@ class MyApp extends StatelessWidget {
         BlocProvider<NotificationCubit>(
           create: (context) => NotificationCubit(),
         ),
-        // ProfileCubit loads profile immediately
         BlocProvider<ProfileCubit>(
           create: (context) => ProfileCubit()..loadProfile(),
         ),
@@ -118,8 +115,6 @@ class AppRoot extends StatelessWidget {
           title: 'SpendWise',
           debugShowCheckedModeBanner: false,
           themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-
-          // Light Theme
           theme: ThemeData(
             useMaterial3: true,
             fontFamily: 'Poppins',
@@ -141,8 +136,6 @@ class AppRoot extends StatelessWidget {
               ),
             ],
           ),
-
-          // Dark Theme
           darkTheme: ThemeData(
             useMaterial3: true,
             fontFamily: 'Poppins',
@@ -162,7 +155,6 @@ class AppRoot extends StatelessWidget {
               ),
             ],
           ),
-
           initialRoute: '/',
           routes: {
             '/': (context) => const AuthWrapper(),
@@ -181,36 +173,74 @@ class AppRoot extends StatelessWidget {
   }
 }
 
-class AuthWrapper extends StatelessWidget {
+class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
   @override
+  State<AuthWrapper> createState() => _AuthWrapperState();
+}
+
+class _AuthWrapperState extends State<AuthWrapper> {
+  bool? _hasSeenOnboarding;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkOnboardingStatus();
+  }
+
+  Future<void> _checkOnboardingStatus() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
+      setState(() {
+        _hasSeenOnboarding = hasSeenOnboarding;
+        _isLoading = false;
+      });
+    } catch (e) {
+      print('Error checking onboarding status: $e');
+      setState(() {
+        _hasSeenOnboarding = false;
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _setOnboardingSeen() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('has_seen_onboarding', true);
+    } catch (e) {
+      print('Error setting onboarding status: $e');
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(color: Color(0xFF32BA32)),
+        ),
+      );
+    }
+
     return BlocBuilder<auth.AuthCubit, auth.AuthState>(
       builder: (context, state) {
         // 1. User is Logged In
         if (state is auth.Authenticated) {
           // Load profile data when user is authenticated
-          // This ensures user data is loaded from Supabase after login
           final profileCubit = context.read<ProfileCubit>();
-
-          // Get the Supabase user
           final supabaseUser = state.user;
-
-          // If user is authenticated but profile hasn't been loaded with user data,
-          // we might need to update the profile with Supabase user data
           final currentState = profileCubit.state;
+
           if (currentState is ProfileLoaded) {
-            // FIXED: Using ?. operator for null safety on lines 205 and 206
             final userEmail = supabaseUser?.email;
             final userMetadata = supabaseUser?.userMetadata;
 
-            // Only update if we have an email and it's different
             if (userEmail != null && currentState.user.email != userEmail) {
-              // Safely get name from metadata or email
               String userName = currentState.user.fullName;
-
-              // Check if metadata exists and has name
               if (userMetadata != null) {
                 final nameFromMetadata = userMetadata['name'];
                 if (nameFromMetadata != null && nameFromMetadata is String) {
@@ -220,7 +250,6 @@ class AuthWrapper extends StatelessWidget {
                 userName = userEmail.split('@').first;
               }
 
-              // Update profile with Supabase user data
               final updatedUser = currentState.user.copyWith(
                 email: userEmail,
                 fullName: userName,
@@ -229,6 +258,7 @@ class AuthWrapper extends StatelessWidget {
             }
           }
 
+          // FIXED: User is logged in, go directly to dashboard
           return const DashboardScreen();
         }
 
@@ -241,8 +271,18 @@ class AuthWrapper extends StatelessWidget {
           );
         }
 
-        // 3. Fallback: If not logged in or any other state, start at Onboarding
-        return const OnboardingScreen();
+        // 3. User is NOT logged in - Check onboarding status
+        // If user has seen onboarding before, go to welcome/login screen
+        // If not, show onboarding screen first
+        if (_hasSeenOnboarding == true) {
+          return const WelcomeScreen();
+        } else {
+          // Mark onboarding as seen when navigating to it
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            _setOnboardingSeen();
+          });
+          return const OnboardingScreen();
+        }
       },
     );
   }

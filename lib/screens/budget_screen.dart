@@ -318,17 +318,12 @@ class BudgetView extends StatelessWidget {
                           const SizedBox(height: 20),
                           _buildCategoryHeader(isDarkMode),
                           const SizedBox(height: 12),
-                          ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minHeight: 100,
-                              maxHeight: screenHeight * 0.5,
-                            ),
-                            child: _buildCategoryList(
-                              budget,
-                              categorySpending,
-                              context,
-                              isDarkMode,
-                            ),
+                          // FIXED: Removed ConstrainedBox to allow full height scrolling
+                          _buildCategoryList(
+                            budget,
+                            categorySpending,
+                            context,
+                            isDarkMode,
                           ),
                           const SizedBox(height: 16),
                         ],
@@ -721,6 +716,7 @@ class BudgetView extends StatelessWidget {
     );
   }
 
+  // FIXED: Updated method with proper scrolling - removed ConstrainedBox
   Widget _buildCategoryList(
     Budget budget,
     Map<String, double> categorySpending,
@@ -802,9 +798,10 @@ class BudgetView extends StatelessWidget {
       );
     }
 
+    // FIXED: Using ListView with NeverScrollableScrollPhysics since parent SingleChildScrollView handles scrolling
     return ListView.builder(
       shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
+      physics: const NeverScrollableScrollPhysics(), // Parent handles scrolling
       itemCount: activeCategories.length,
       itemBuilder: (context, index) {
         final category = activeCategories[index];

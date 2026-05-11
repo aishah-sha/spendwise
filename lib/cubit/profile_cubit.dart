@@ -5,9 +5,11 @@ import 'dart:convert';
 import 'profile_state.dart';
 import '../models/user_model.dart';
 import '../services/supabase_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileCubit extends Cubit<ProfileState> {
   final SupabaseService _supabaseService = SupabaseService();
+  final SupabaseClient _supabase = Supabase.instance.client; // ← ADD THIS
   static const String _userStorageKey = 'user_data';
   bool _isLoading = false;
 
@@ -21,38 +23,117 @@ class ProfileCubit extends Cubit<ProfileState> {
     emit(ProfileLoading());
 
     try {
+      // Check if user is logged in
+      if (!_supabaseService.isUserLoggedIn) {
+        emit(ProfileUnauthenticated());
+        _isLoading = false;
+        return;
+      }
+
       final profileData = await _supabaseService.getUserProfile();
 
-      if (profileData != null) {
+      if (profileData != null && profileData.isNotEmpty) {
         final user = UserModel.fromJson(profileData);
-        // Save to local storage as cache only
+        print('✅ Profile loaded: ${user.fullName}');
         await _saveUser(user);
         emit(ProfileLoaded(user: user, isEditing: false));
       } else {
-        // No profile in Supabase, create default
-        final defaultUser = UserModel.defaultUser();
-        await _saveUser(defaultUser);
-        emit(ProfileLoaded(user: defaultUser, isEditing: false));
+        // No profile in Supabase - CREATE IT IMMEDIATELY
+        print('⚠️ No profile found, creating one...');
+        await _createMissingProfile();
       }
     } catch (e) {
+      print('Error loading profile: $e');
+
       // Try to load from local cache as fallback
       try {
-        final prefs = await SharedPreferences.getInstance();
-        final String? userJson = prefs.getString(_userStorageKey);
-        if (userJson != null && userJson.isNotEmpty) {
-          final Map<String, dynamic> decoded = json.decode(userJson);
-          final user = UserModel.fromJson(decoded);
-          emit(ProfileLoaded(user: user, isEditing: false));
+        final cachedUser = await _loadCachedUser();
+        if (cachedUser != null && cachedUser.id.isNotEmpty) {
+          emit(ProfileLoaded(user: cachedUser, isEditing: false));
         } else {
-          final defaultUser = UserModel.defaultUser();
-          emit(ProfileLoaded(user: defaultUser, isEditing: false));
+          // Create default but try to get user info from auth
+          await _createMissingProfile();
         }
       } catch (fallbackError) {
-        final defaultUser = UserModel.defaultUser();
-        emit(ProfileLoaded(user: defaultUser, isEditing: false));
+        print('Fallback error: $fallbackError');
+        await _createMissingProfile();
       }
     } finally {
       _isLoading = false;
+    }
+  }
+
+  // Helper to load cached user
+  Future<UserModel?> _loadCachedUser() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? userJson = prefs.getString(_userStorageKey);
+      if (userJson != null && userJson.isNotEmpty) {
+        final Map<String, dynamic> decoded = json.decode(userJson);
+        return UserModel.fromJson(decoded);
+      }
+    } catch (e) {
+      print('Error loading cached user: $e');
+    }
+    return null;
+  }
+
+  // Create missing profile
+  Future<void> _createMissingProfile() async {
+    try {
+      final user = _supabase.auth.currentUser; // ← Now works with _supabase
+      if (user != null) {
+        // Get name from various sources
+        String userName = 'User';
+
+        // Try to get from user metadata
+        if (user.userMetadata != null) {
+          userName =
+              user.userMetadata!['full_name'] ??
+              user.userMetadata!['name'] ??
+              user.userMetadata!['fullName'] ??
+              'User';
+        }
+
+        // If still default, try to get from email
+        if (userName == 'User' && user.email != null) {
+          userName = user.email!.split('@').first;
+        }
+
+        print('Creating profile for user: ${user.id} with name: $userName');
+
+        await _supabaseService.createUserProfile(
+          userId: user.id,
+          email: user.email ?? '',
+          name: userName,
+        );
+
+        // Reload profile after creation
+        final profileData = await _supabaseService.getUserProfile();
+        if (profileData != null) {
+          final newUser = UserModel.fromJson(profileData);
+          await _saveUser(newUser);
+          emit(ProfileLoaded(user: newUser, isEditing: false));
+          print('✅ Profile created and loaded successfully');
+        } else {
+          // Still no profile? Create default
+          final defaultUser = UserModel.defaultUser().copyWith(
+            id: user.id,
+            email: user.email ?? '',
+            fullName: userName,
+          );
+          await _saveUser(defaultUser);
+          emit(ProfileLoaded(user: defaultUser, isEditing: false));
+        }
+      } else {
+        // No user logged in
+        final defaultUser = UserModel.defaultUser();
+        emit(ProfileLoaded(user: defaultUser, isEditing: false));
+      }
+    } catch (e) {
+      print('Error creating missing profile: $e');
+      final defaultUser = UserModel.defaultUser();
+      emit(ProfileLoaded(user: defaultUser, isEditing: false));
     }
   }
 
@@ -80,6 +161,7 @@ class ProfileCubit extends Cubit<ProfileState> {
       );
       await _saveUser(user);
       emit(ProfileLoaded(user: user, isEditing: false));
+      emit(ProfileUpdateSuccess(message: 'Profile saved successfully'));
     } catch (e) {
       emit(ProfileError(message: 'Failed to save profile: ${e.toString()}'));
     }

@@ -21,7 +21,6 @@ import '../cubit/budget_cubit.dart' as budget_cubit;
 class AddExpenseScreen extends StatelessWidget {
   const AddExpenseScreen({super.key});
 
-  // Theme colors
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
   static const Color accentGreen = Color(0xFF32BA32);
@@ -29,7 +28,6 @@ class AddExpenseScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // FIXED: Use existing ProfileCubit, don't create a new one
     return BlocBuilder<ProfileCubit, ProfileState>(
       builder: (context, profileState) {
         bool isDarkMode = (profileState is ProfileLoaded)
@@ -64,33 +62,27 @@ class AddExpenseScreen extends StatelessWidget {
                         _showManualEntryDialog(context, state.scannedReceipt!);
                       }
 
-                      // Handle successful expense save - auto navigate back
                       if (state.expenseSavedSuccessfully) {
                         context.read<AddExpenseCubit>().resetSavedFlag();
-
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
+                          const SnackBar(
                             content: Text('Expense added successfully!'),
                             backgroundColor: accentGreen,
                             duration: Duration(seconds: 2),
                           ),
                         );
-
                         Navigator.pop(context);
                       }
 
-                      // Handle successful expense edit
                       if (state.expenseEditedSuccessfully) {
                         context.read<AddExpenseCubit>().resetEditedFlag();
-
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
+                          const SnackBar(
                             content: Text('Expense updated successfully!'),
                             backgroundColor: accentGreen,
                             duration: Duration(seconds: 2),
                           ),
                         );
-
                         Navigator.pop(context);
                       }
 
@@ -192,7 +184,6 @@ class AddExpenseScreen extends StatelessWidget {
           color: Colors.blue,
           isDarkMode: isDarkMode,
           onTap: () async {
-            print("🔴 SCAN RECEIPT TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
 
             final scannedReceipt = await Navigator.push<ReceiptModel?>(
@@ -207,8 +198,6 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               ),
             );
-
-            print("🔴 Returned from scanner with: $scannedReceipt");
 
             if (scannedReceipt != null) {
               final result = await Navigator.push(
@@ -238,7 +227,6 @@ class AddExpenseScreen extends StatelessWidget {
           color: Colors.purple,
           isDarkMode: isDarkMode,
           onTap: () async {
-            print("🟣 UPLOAD IMAGE TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
 
             await addExpenseCubit.uploadImage();
@@ -277,7 +265,6 @@ class AddExpenseScreen extends StatelessWidget {
           color: Colors.teal,
           isDarkMode: isDarkMode,
           onTap: () async {
-            print("🟢 MULTIPLE UPLOAD TAPPED");
             final addExpenseCubit = context.read<AddExpenseCubit>();
 
             await addExpenseCubit.uploadMultipleImages();
@@ -717,7 +704,6 @@ class AddExpenseScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // FIXED: Use existing instances
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
@@ -743,7 +729,6 @@ class AddExpenseScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // FIXED: Use existing instances
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -770,7 +755,6 @@ class AddExpenseScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // FIXED: Use existing instances
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -796,7 +780,6 @@ class AddExpenseScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // FIXED: Use existing ProfileCubit
                 Navigator.push(
                   context,
                   MaterialPageRoute(

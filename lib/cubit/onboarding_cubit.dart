@@ -28,27 +28,35 @@ class OnboardingCubit extends Cubit<OnboardingState> {
   OnboardingCubit() : super(OnboardingInitial());
 
   void startOnboardingTimer() {
+    if (isClosed) return;
+
     emit(OnboardingLoading());
 
     // Simulate loading
     Future.delayed(const Duration(milliseconds: 500), () {
-      emit(
-        OnboardingLoaded(
-          appName: 'SpendWise',
-          tagline: 'Simplify your finances',
-        ),
-      );
+      if (!isClosed) {
+        emit(
+          OnboardingLoaded(
+            appName: 'SpendWise',
+            tagline: 'Simplify your finances',
+          ),
+        );
+      }
     });
 
     // Navigate after 3 seconds
     _timer = Timer(const Duration(seconds: 3), () {
-      emit(OnboardingNavigation(nextRoute: '/welcome'));
+      if (!isClosed) {
+        emit(OnboardingNavigation(nextRoute: '/welcome'));
+      }
     });
   }
 
   void skipOnboarding() {
     _timer?.cancel();
-    emit(OnboardingNavigation(nextRoute: '/welcome'));
+    if (!isClosed) {
+      emit(OnboardingNavigation(nextRoute: '/welcome'));
+    }
   }
 
   @override

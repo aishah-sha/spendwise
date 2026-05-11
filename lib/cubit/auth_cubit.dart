@@ -98,7 +98,7 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // SIGN UP with Email
+  // SIGN UP with Email - FIXED VERSION
   Future<void> signUpWithEmail(
     String email,
     String password,
@@ -111,12 +111,23 @@ class AuthCubit extends Cubit<AuthState> {
       final response = await _supabase.auth.signUp(
         email: email.trim(),
         password: password,
-        data: {'name': name},
+        data: {'full_name': name, 'name': name, 'email': email.trim()},
       );
 
       if (response.user != null) {
-        // Profile will be auto-created by database trigger
+        // ✅ CRITICAL FIX: Create profile in profiles table immediately
+        await _supabaseService.createUserProfile(
+          userId: response.user!.id,
+          email: email.trim(),
+          name: name,
+        );
+
+        print('✅ Profile created for user: ${response.user!.id}');
+        print('✅ User name: $name');
+
+        // Sign out so user can login (or auto-login)
         await _supabase.auth.signOut();
+
         if (!isClosed) {
           emit(AuthSuccess(message: 'Account created! Please login.'));
         }
@@ -126,13 +137,14 @@ class AuthCubit extends Cubit<AuthState> {
         }
       }
     } catch (e) {
+      print('Sign up error: $e');
       if (!isClosed) {
         emit(AuthFailure(error: _getErrorMessage(e)));
       }
     }
   }
 
-  // SIGN IN with Google - FIXED FOR ANDROID
+  // SIGN IN with Google - FIXED with profile creation
   Future<void> signInWithGoogle() async {
     if (isClosed) return;
 
@@ -151,7 +163,7 @@ class AuthCubit extends Cubit<AuthState> {
         return;
       }
 
-      // Get authentication details - this should now include idToken
+      // Get authentication details
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 
@@ -162,35 +174,35 @@ class AuthCubit extends Cubit<AuthState> {
         'ID Token: ${googleAuth.idToken != null ? "Got ID token" : "No ID token"}',
       );
 
-      // If no ID token, try using Firebase approach
-      if (googleAuth.idToken == null) {
-        print('No ID token received. Trying alternative method...');
-
-        // Alternative: Use access token to get user info
-        if (googleAuth.accessToken != null) {
-          // You can still proceed with access token only
-          print('Proceeding with access token only');
-        } else {
-          if (!isClosed) {
-            emit(
-              AuthFailure(
-                error:
-                    'Failed to get Google credentials. Please check your Google Sign-In configuration.',
-              ),
-            );
-          }
-          return;
-        }
-      }
-
       // Exchange for Supabase session
       final response = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
-        idToken: googleAuth.idToken ?? '', // Empty string if null
+        idToken: googleAuth.idToken ?? '',
         accessToken: googleAuth.accessToken,
       );
 
       print('Supabase sign in successful: ${response.user?.email}');
+
+      // ✅ CRITICAL FIX: Create profile if it doesn't exist
+      if (response.user != null) {
+        final existingProfile = await _supabaseService.getUserProfile();
+
+        if (existingProfile == null) {
+          // Create profile for Google user
+          await _supabaseService.createUserProfile(
+            userId: response.user!.id,
+            email: response.user!.email ?? googleUser.email,
+            name:
+                response.user!.userMetadata?['full_name'] ??
+                response.user!.userMetadata?['name'] ??
+                googleUser.displayName ??
+                googleUser.email.split('@').first,
+          );
+          print('✅ Profile created for Google user: ${response.user!.id}');
+        } else {
+          print('✅ Profile already exists for Google user');
+        }
+      }
 
       if (!isClosed) {
         emit(Authenticated(response.user));
