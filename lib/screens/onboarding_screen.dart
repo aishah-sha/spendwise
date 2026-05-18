@@ -4,26 +4,29 @@ import '../cubit/onboarding_cubit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingScreen extends StatelessWidget {
-  const OnboardingScreen({super.key});
+  final String? nextRoute;
+
+  const OnboardingScreen({super.key, this.nextRoute});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (context) => OnboardingCubit()..startOnboardingTimer(),
-      child: const OnboardingView(),
+      child: OnboardingView(nextRoute: nextRoute),
     );
   }
 }
 
 class OnboardingView extends StatelessWidget {
-  const OnboardingView({super.key});
+  final String? nextRoute;
 
-  // FIX: This is the ONLY place the flag is written.
-  // main.dart no longer writes it prematurely.
+  const OnboardingView({super.key, this.nextRoute});
+
   Future<void> _completeOnboarding(BuildContext context) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('has_seen_onboarding', true);
+      await prefs.setBool('is_onboarding_shown', true);
       debugPrint('Onboarding marked as completed');
     } catch (e) {
       debugPrint('Error saving onboarding status: $e');
@@ -35,17 +38,17 @@ class OnboardingView extends StatelessWidget {
     return BlocListener<OnboardingCubit, OnboardingState>(
       listener: (context, state) async {
         if (state is OnboardingNavigation) {
-          // Always save completion BEFORE navigating
           await _completeOnboarding(context);
 
           if (context.mounted) {
-            Navigator.pushReplacementNamed(context, state.nextRoute);
+            // Use custom nextRoute or fallback to state.nextRoute
+            final route = nextRoute ?? state.nextRoute;
+            Navigator.pushReplacementNamed(context, route);
           }
         }
       },
       child: BlocBuilder<OnboardingCubit, OnboardingState>(
         builder: (context, state) {
-          // Show loading indicator
           if (state is OnboardingLoading) {
             return const Scaffold(
               backgroundColor: Color(0xFFE8F7CB),
@@ -55,7 +58,6 @@ class OnboardingView extends StatelessWidget {
             );
           }
 
-          // Show loaded splash content
           if (state is OnboardingLoaded) {
             return Scaffold(
               body: Container(
@@ -66,7 +68,6 @@ class OnboardingView extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      // Animated Logo
                       TweenAnimationBuilder(
                         tween: Tween<double>(begin: 0, end: 1),
                         duration: const Duration(milliseconds: 800),
@@ -96,7 +97,6 @@ class OnboardingView extends StatelessWidget {
                       ),
                       const SizedBox(height: 30),
 
-                      // App Name with fade-in
                       TweenAnimationBuilder(
                         tween: Tween<double>(begin: 0, end: 1),
                         duration: const Duration(milliseconds: 800),
@@ -124,7 +124,6 @@ class OnboardingView extends StatelessWidget {
                       ),
                       const SizedBox(height: 15),
 
-                      // Tagline with fade-in
                       TweenAnimationBuilder(
                         tween: Tween<double>(begin: 0, end: 1),
                         duration: const Duration(milliseconds: 800),
@@ -151,7 +150,6 @@ class OnboardingView extends StatelessWidget {
                       ),
                       const SizedBox(height: 40),
 
-                      // Progress bar (3s duration matches cubit timer)
                       TweenAnimationBuilder(
                         tween: Tween<double>(begin: 0, end: 1),
                         duration: const Duration(seconds: 3),
@@ -187,7 +185,6 @@ class OnboardingView extends StatelessWidget {
 
                       const SizedBox(height: 30),
 
-                      // Skip button
                       TextButton(
                         onPressed: () {
                           context.read<OnboardingCubit>().skipOnboarding();
@@ -210,7 +207,6 @@ class OnboardingView extends StatelessWidget {
             );
           }
 
-          // Initial/fallback state
           return const Scaffold(
             backgroundColor: Color(0xFFE8F7CB),
             body: Center(

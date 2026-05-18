@@ -25,7 +25,6 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // 1. Load configuration
     await dotenv.load(fileName: ".env");
 
     final supabaseUrl = dotenv.env['SUPABASE_URL'];
@@ -35,15 +34,21 @@ void main() async {
       throw Exception("Missing Supabase credentials in .env file");
     }
 
-    // 2. Initialize database connection
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
-    // 3. Fetch persistence storage key BEFORE mounting layout trees
     final prefs = await SharedPreferences.getInstance();
     final bool hasSeenOnboarding =
         prefs.getBool('has_seen_onboarding') ?? false;
+    final bool showOnboardingEveryLaunch =
+        prefs.getBool('show_onboarding_every_launch') ??
+        true; // Track if onboarding should show on every launch
 
-    runApp(MyApp(hasSeenOnboarding: hasSeenOnboarding));
+    runApp(
+      MyApp(
+        hasSeenOnboarding: hasSeenOnboarding,
+        showOnboardingEveryLaunch: showOnboardingEveryLaunch,
+      ),
+    );
   } catch (e) {
     debugPrint("Initialization error: $e");
     runApp(
@@ -56,8 +61,13 @@ void main() async {
 
 class MyApp extends StatelessWidget {
   final bool hasSeenOnboarding;
+  final bool showOnboardingEveryLaunch;
 
-  const MyApp({super.key, required this.hasSeenOnboarding});
+  const MyApp({
+    super.key,
+    required this.hasSeenOnboarding,
+    required this.showOnboardingEveryLaunch,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -78,6 +88,12 @@ class MyApp extends StatelessWidget {
           primarySwatch: Colors.green,
           scaffoldBackgroundColor: const Color(0xFFE8F7CB),
           useMaterial3: true,
+          pageTransitionsTheme: const PageTransitionsTheme(
+            builders: {
+              TargetPlatform.android: FadeUpwardsPageTransitionsBuilder(),
+              TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
+            },
+          ),
           extensions: const <ThemeExtension<dynamic>>[
             CustomColors(
               bgColor: Color(0xFFE8F7CB),
@@ -98,8 +114,10 @@ class MyApp extends StatelessWidget {
           '/profile': (context) => const ProfileScreen(),
           '/notification': (context) => const NotificationScreen(),
         },
-        // Direct entry target routes to the checking Gateway widget
-        home: AppHomeGateway(hasSeenOnboarding: hasSeenOnboarding),
+        home: AppHomeGateway(
+          hasSeenOnboarding: hasSeenOnboarding,
+          showOnboardingEveryLaunch: showOnboardingEveryLaunch,
+        ),
       ),
     );
   }
@@ -107,17 +125,55 @@ class MyApp extends StatelessWidget {
 
 class AppHomeGateway extends StatelessWidget {
   final bool hasSeenOnboarding;
+  final bool showOnboardingEveryLaunch;
 
-  const AppHomeGateway({super.key, required this.hasSeenOnboarding});
+  const AppHomeGateway({
+    super.key,
+    required this.hasSeenOnboarding,
+    required this.showOnboardingEveryLaunch,
+  });
 
   @override
   Widget build(BuildContext context) {
-    // IF onboarding hasn't run yet, prioritize running it immediately
-    if (!hasSeenOnboarding) {
-      return const OnboardingScreen();
+    // Check if we need to show onboarding
+    final shouldShowOnboarding =
+        !hasSeenOnboarding && showOnboardingEveryLaunch;
+
+    if (shouldShowOnboarding) {
+      // Show onboarding before any authentication check
+      return OnboardingScreen(nextRoute: '/auth_gateway');
     }
 
-    // IF onboarding is already completed, check active authentication state
+    // After onboarding, check authentication state
+    return BlocBuilder<AuthCubit, AuthState>(
+      builder: (context, state) {
+        if (state is AuthInitial || state is AuthLoading) {
+          return const Scaffold(
+            backgroundColor: Color(0xFFE8F7CB),
+            body: Center(
+              child: CircularProgressIndicator(color: Color(0xFF32BA32)),
+            ),
+          );
+        }
+
+        if (state is Authenticated) {
+          // Show onboarding before dashboard for authenticated users
+          return OnboardingScreen(nextRoute: '/dashboard');
+        } else {
+          // Show onboarding before welcome screen for unauthenticated users
+          return OnboardingScreen(nextRoute: '/welcome');
+        }
+      },
+    );
+  }
+}
+
+// Add a temporary gateway route handler
+class AuthGatewayScreen extends StatelessWidget {
+  const AuthGatewayScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, state) {
         if (state is AuthInitial || state is AuthLoading) {

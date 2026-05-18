@@ -16,7 +16,17 @@ class ProfileCubit extends Cubit<ProfileState> {
   // Cache the last loaded user
   UserModel? _cachedUser;
 
-  ProfileCubit() : super(ProfileInitial());
+  ProfileCubit() : super(ProfileInitial()) {
+    // AUTO-LOAD PROFILE WHEN CUBIT IS CREATED
+    _autoLoadProfile();
+  }
+
+  // Auto-load profile when cubit is created
+  Future<void> _autoLoadProfile() async {
+    // Small delay to ensure auth is ready
+    await Future.delayed(const Duration(milliseconds: 100));
+    loadProfile(forceRefresh: false);
+  }
 
   // Fast profile load - shows cached data immediately
   Future<void> loadProfile({bool forceRefresh = false}) async {
@@ -377,5 +387,10 @@ class ProfileCubit extends Cubit<ProfileState> {
         );
       }
     }
+  }
+
+  // Helper method to force refresh profile (useful after login)
+  Future<void> forceRefreshProfile() async {
+    await loadProfile(forceRefresh: true);
   }
 }

@@ -13,7 +13,9 @@ import 'package:spendwise/main.dart';
 void main() {
   testWidgets('Counter increments smoke test', (WidgetTester tester) async {
     // FIXED: Passed the required hasSeenOnboarding parameter to MyApp
-    await tester.pumpWidget(const MyApp(hasSeenOnboarding: false));
+    await tester.pumpWidget(
+      const MyApp(hasSeenOnboarding: false, showOnboardingEveryLaunch: true),
+    );
 
     // Verify that our counter starts at 0.
     expect(find.text('0'), findsOneWidget);
