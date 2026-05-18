@@ -4,7 +4,7 @@ import 'package:spendwise/screens/profile_screen.dart' show ProfileScreen;
 import 'dashboard_screen.dart';
 
 class LogoutScreen extends StatelessWidget {
-  const LogoutScreen({Key? key}) : super(key: key);
+  const LogoutScreen({super.key});
 
   @override
   Widget build(BuildContext context) {

@@ -10,7 +10,7 @@ class BudgetStorageService {
     if (userId == null) {
       throw Exception('User not logged in');
     }
-    return 'saved_budget_${userId}';
+    return 'saved_budget_$userId';
   }
 
   // Save budget to SharedPreferences (user-specific)

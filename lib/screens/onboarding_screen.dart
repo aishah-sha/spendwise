@@ -4,7 +4,7 @@ import '../cubit/onboarding_cubit.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OnboardingScreen extends StatelessWidget {
-  const OnboardingScreen({Key? key}) : super(key: key);
+  const OnboardingScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -16,15 +16,17 @@ class OnboardingScreen extends StatelessWidget {
 }
 
 class OnboardingView extends StatelessWidget {
-  const OnboardingView({Key? key}) : super(key: key);
+  const OnboardingView({super.key});
 
+  // FIX: This is the ONLY place the flag is written.
+  // main.dart no longer writes it prematurely.
   Future<void> _completeOnboarding(BuildContext context) async {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('has_seen_onboarding', true);
-      print('Onboarding marked as completed');
+      debugPrint('Onboarding marked as completed');
     } catch (e) {
-      print('Error saving onboarding status: $e');
+      debugPrint('Error saving onboarding status: $e');
     }
   }
 
@@ -33,10 +35,9 @@ class OnboardingView extends StatelessWidget {
     return BlocListener<OnboardingCubit, OnboardingState>(
       listener: (context, state) async {
         if (state is OnboardingNavigation) {
-          // Save onboarding completion status
+          // Always save completion BEFORE navigating
           await _completeOnboarding(context);
 
-          // Navigate to welcome screen when onboarding completes
           if (context.mounted) {
             Navigator.pushReplacementNamed(context, state.nextRoute);
           }
@@ -47,13 +48,14 @@ class OnboardingView extends StatelessWidget {
           // Show loading indicator
           if (state is OnboardingLoading) {
             return const Scaffold(
+              backgroundColor: Color(0xFFE8F7CB),
               body: Center(
                 child: CircularProgressIndicator(color: Color(0xFF32BA32)),
               ),
             );
           }
 
-          // Show loaded content
+          // Show loaded splash content
           if (state is OnboardingLoaded) {
             return Scaffold(
               body: Container(
@@ -94,7 +96,7 @@ class OnboardingView extends StatelessWidget {
                       ),
                       const SizedBox(height: 30),
 
-                      // App Name with fade-in animation
+                      // App Name with fade-in
                       TweenAnimationBuilder(
                         tween: Tween<double>(begin: 0, end: 1),
                         duration: const Duration(milliseconds: 800),
@@ -122,7 +124,7 @@ class OnboardingView extends StatelessWidget {
                       ),
                       const SizedBox(height: 15),
 
-                      // Tagline with fade-in animation
+                      // Tagline with fade-in
                       TweenAnimationBuilder(
                         tween: Tween<double>(begin: 0, end: 1),
                         duration: const Duration(milliseconds: 800),
@@ -149,42 +151,38 @@ class OnboardingView extends StatelessWidget {
                       ),
                       const SizedBox(height: 40),
 
-                      // Progress indicator with percentage text
-                      Column(
-                        children: [
-                          TweenAnimationBuilder(
-                            tween: Tween<double>(begin: 0, end: 1),
-                            duration: const Duration(seconds: 3),
-                            builder: (context, double value, child) {
-                              return Column(
-                                children: [
-                                  SizedBox(
-                                    width: 250,
-                                    child: LinearProgressIndicator(
-                                      value: value,
-                                      backgroundColor: Colors.white,
-                                      valueColor:
-                                          const AlwaysStoppedAnimation<Color>(
-                                            Color(0xFF32BA32),
-                                          ),
-                                      borderRadius: BorderRadius.circular(10),
-                                      minHeight: 8,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  Text(
-                                    '${(value * 100).toInt()}%',
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w600,
-                                      color: Color(0xFF32BA32),
-                                    ),
-                                  ),
-                                ],
-                              );
-                            },
-                          ),
-                        ],
+                      // Progress bar (3s duration matches cubit timer)
+                      TweenAnimationBuilder(
+                        tween: Tween<double>(begin: 0, end: 1),
+                        duration: const Duration(seconds: 3),
+                        builder: (context, double value, child) {
+                          return Column(
+                            children: [
+                              SizedBox(
+                                width: 250,
+                                child: LinearProgressIndicator(
+                                  value: value,
+                                  backgroundColor: Colors.white,
+                                  valueColor:
+                                      const AlwaysStoppedAnimation<Color>(
+                                        Color(0xFF32BA32),
+                                      ),
+                                  borderRadius: BorderRadius.circular(10),
+                                  minHeight: 8,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '${(value * 100).toInt()}%',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: Color(0xFF32BA32),
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
 
                       const SizedBox(height: 30),
@@ -212,8 +210,9 @@ class OnboardingView extends StatelessWidget {
             );
           }
 
-          // Initial state - show loading
+          // Initial/fallback state
           return const Scaffold(
+            backgroundColor: Color(0xFFE8F7CB),
             body: Center(
               child: CircularProgressIndicator(color: Color(0xFF32BA32)),
             ),

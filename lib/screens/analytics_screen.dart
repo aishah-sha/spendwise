@@ -821,7 +821,7 @@ class AnalyticsScreen extends StatelessWidget {
                 ],
               ),
             );
-          }).toList(),
+          }),
           if (categories.length > 5)
             Padding(
               padding: const EdgeInsets.only(top: 8),

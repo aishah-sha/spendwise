@@ -12,7 +12,6 @@ import '../cubit/add_expense_cubit.dart';
 import 'analytics_screen.dart';
 import 'budget_screen.dart';
 import 'dashboard_screen.dart';
-import 'notification_screen.dart';
 import 'profile_screen.dart';
 
 class ExpenseHistoryScreen extends StatelessWidget {

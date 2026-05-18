@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_picker/image_picker.dart';
 
 // Cubits
 import '../cubit/budget_cubit.dart';
@@ -21,7 +23,7 @@ import 'notification_screen.dart';
 import 'welcome_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
-  const ProfileScreen({Key? key}) : super(key: key);
+  const ProfileScreen({super.key});
 
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
@@ -31,7 +33,11 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Don't create new ProfileCubit - use existing one from parent
+    // Load profile when screen first builds
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ProfileCubit>().loadProfile();
+    });
+
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
         if (state is Unauthenticated) {
@@ -382,21 +388,35 @@ class _ProfileContent extends StatelessWidget {
   Widget _buildProfileHeader(BuildContext context, ProfileLoaded state) {
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: isDarkMode ? Colors.grey[800] : Colors.white,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isDarkMode
-                  ? Colors.grey[600]!
-                  : ProfileScreen.fabBorderColor,
-              width: 2,
+        GestureDetector(
+          onTap: () => _showImagePickerOptions(context, state),
+          child: Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey[800] : Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isDarkMode
+                    ? Colors.grey[600]!
+                    : ProfileScreen.fabBorderColor,
+                width: 2,
+              ),
             ),
-          ),
-          child: CircleAvatar(
-            radius: 56,
-            backgroundImage: NetworkImage(state.user.profileImageUrl),
+            child: CircleAvatar(
+              radius: 56,
+              backgroundImage: _getProfileImage(state.user.profileImageUrl),
+              child: Container(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.black.withOpacity(0.3),
+                ),
+                child: const Icon(
+                  Icons.camera_alt,
+                  color: Colors.white,
+                  size: 30,
+                ),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -435,6 +455,175 @@ class _ProfileContent extends StatelessWidget {
     );
   }
 
+  ImageProvider _getProfileImage(String imageUrl) {
+    if (imageUrl.startsWith('http')) {
+      return NetworkImage(imageUrl);
+    } else if (imageUrl.startsWith('file://') || imageUrl.startsWith('/')) {
+      return FileImage(File(imageUrl));
+    }
+    return const AssetImage('assets/default_avatar.png');
+  }
+
+  Future<void> _showImagePickerOptions(
+    BuildContext context,
+    ProfileLoaded state,
+  ) async {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey[900] : Colors.white,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const SizedBox(height: 12),
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 20),
+              ListTile(
+                leading: const Icon(
+                  Icons.photo_library,
+                  color: ProfileScreen.accentGreen,
+                ),
+                title: const Text('Choose from Gallery'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.gallery, context, state);
+                },
+              ),
+              ListTile(
+                leading: const Icon(
+                  Icons.camera_alt,
+                  color: ProfileScreen.accentGreen,
+                ),
+                title: const Text('Take a Photo'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _pickImage(ImageSource.camera, context, state);
+                },
+              ),
+              if (state.user.profileImageUrl.isNotEmpty &&
+                  !state.user.profileImageUrl.contains('default_avatar'))
+                ListTile(
+                  leading: const Icon(
+                    Icons.delete_outline,
+                    color: Colors.redAccent,
+                  ),
+                  title: const Text('Remove Photo'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showRemoveConfirmation(context, state);
+                  },
+                ),
+              const SizedBox(height: 12),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickImage(
+    ImageSource source,
+    BuildContext context,
+    ProfileLoaded state,
+  ) async {
+    try {
+      final ImagePicker picker = ImagePicker();
+      final XFile? image = await picker.pickImage(
+        source: source,
+        maxWidth: 512,
+        maxHeight: 512,
+        imageQuality: 85,
+      );
+
+      if (image != null) {
+        // Convert to File and save
+        final File imageFile = File(image.path);
+
+        // Show loading indicator
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Uploading image...'),
+            duration: Duration(milliseconds: 500),
+          ),
+        );
+
+        // Here you would typically upload to your server/Supabase Storage
+        // For now, we'll save locally and update the profile
+        final String imagePath = imageFile.path;
+
+        // Update profile with new image path/URL
+        context.read<ProfileCubit>().updateProfileImage(imagePath);
+
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Profile photo updated!'),
+              backgroundColor: ProfileScreen.accentGreen,
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error picking image: ${e.toString()}'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    }
+  }
+
+  void _showRemoveConfirmation(BuildContext context, ProfileLoaded state) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove Photo'),
+        content: const Text(
+          'Are you sure you want to remove your profile photo?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Set to default avatar
+              context.read<ProfileCubit>().updateProfileImage('');
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Profile photo removed'),
+                  backgroundColor: ProfileScreen.accentGreen,
+                  duration: Duration(seconds: 1),
+                ),
+              );
+            },
+            child: const Text(
+              'Remove',
+              style: TextStyle(color: Colors.redAccent),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildSwitchTile({
     required IconData icon,
     required String title,
@@ -458,7 +647,7 @@ class _ProfileContent extends StatelessWidget {
         ),
       ),
       value: value,
-      activeColor: ProfileScreen.accentGreen,
+      activeThumbColor: ProfileScreen.accentGreen,
       onChanged: onChanged,
     );
   }
@@ -739,19 +928,17 @@ class _ProfileContent extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 50,
-                    backgroundImage: NetworkImage(state.user.profileImageUrl),
+                    backgroundImage: _getProfileImage(
+                      state.user.profileImageUrl,
+                    ),
                   ),
                   Positioned(
                     bottom: 0,
                     right: 0,
                     child: GestureDetector(
                       onTap: () {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('Image picker coming soon!'),
-                            duration: Duration(seconds: 1),
-                          ),
-                        );
+                        Navigator.pop(context);
+                        _showImagePickerOptions(context, state);
                       },
                       child: Container(
                         padding: const EdgeInsets.all(8),
@@ -1000,9 +1187,6 @@ class _ProfileContent extends StatelessWidget {
 
                 // Call sign out
                 await context.read<AuthCubit>().signOut();
-
-                // REMOVE or COMMENT OUT this line:
-                // context.read<ProfileCubit>().clearLocalProfileData();
 
                 // Force navigation to welcome screen
                 if (context.mounted) {

@@ -2,11 +2,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
+import 'package:uuid/uuid.dart'; // ADD THIS
 import '../models/expense_model.dart';
 import '../models/receipt_model.dart';
 import '../services/supabase_service.dart';
 
-// State class
+// State class (same as before - no changes needed)
 class AddExpenseState {
   final List<ReceiptModel> recentUploads;
   final List<ReceiptModel> multipleReceipts;
@@ -21,7 +22,7 @@ class AddExpenseState {
   final String title;
   final double amount;
   final String category;
-  final DateTime date; // This should be DateTime, not List
+  final DateTime date;
   final bool isIncome;
   final String note;
 
@@ -37,10 +38,10 @@ class AddExpenseState {
     this.title = '',
     this.amount = 0.0,
     this.category = 'Food',
-    DateTime? date, // Change to DateTime? with default
+    DateTime? date,
     this.isIncome = false,
     this.note = '',
-  }) : date = date ?? DateTime.now(); // Initialize with DateTime.now() if null
+  }) : date = date ?? DateTime.now();
 
   AddExpenseState copyWith({
     List<ReceiptModel>? recentUploads,
@@ -83,6 +84,7 @@ class AddExpenseState {
 class AddExpenseCubit extends Cubit<AddExpenseState> {
   final SupabaseService _supabaseService = SupabaseService();
   final ImagePicker _imagePicker = ImagePicker();
+  final Uuid _uuid = const Uuid(); // ADD THIS
 
   String? get _currentUserId => Supabase.instance.client.auth.currentUser?.id;
 
@@ -117,6 +119,18 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
     } catch (e) {
       print('Error loading recent uploads: $e');
     }
+  }
+
+  // Set loading state dynamically from UI layers
+  void setLoading(bool isLoading) {
+    emit(state.copyWith(isLoading: isLoading));
+  }
+
+  // Prepend a receipt directly onto the active state list
+  void addToRecentUploads(ReceiptModel receipt) {
+    final updatedList = List<ReceiptModel>.from(state.recentUploads)
+      ..insert(0, receipt);
+    emit(state.copyWith(recentUploads: updatedList));
   }
 
   // Update title for editing
@@ -219,8 +233,9 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
           .from('receipts')
           .getPublicUrl(filePath);
 
+      // FIXED: Use UUID instead of timestamp
       final receipt = ReceiptModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: _uuid.v4(), // ✅ CHANGED
         date: DateTime.now(),
         amount: 0.0,
         receiptType: 'image',
@@ -285,8 +300,9 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
             .from('receipts')
             .getPublicUrl(filePath);
 
+        // FIXED: Use UUID instead of timestamp
         final receipt = ReceiptModel(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          id: _uuid.v4(), // ✅ CHANGED
           date: DateTime.now(),
           amount: 0.0,
           receiptType: 'image',
@@ -359,8 +375,9 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         return;
       }
 
+      // FIXED: Use UUID for expense ID too
       final expense = ExpenseModel(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: _uuid.v4(), // ✅ CHANGED
         title: title,
         amount: amount,
         category: category,

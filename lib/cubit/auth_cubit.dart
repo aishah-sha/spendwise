@@ -43,23 +43,31 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   void _setupGoogleSignIn() {
-    // Configure Google Sign-In to request ID token
     _googleSignIn = GoogleSignIn(
       scopes: ['email', 'profile'],
-      // For Android, you need to add your web client ID
-      // Get this from Google Cloud Console > Credentials > Web Client ID
       serverClientId:
           '265157656052-8qn65l77ps423er6srsgqrpsm2j7ku4c.apps.googleusercontent.com',
     );
   }
 
   Future<void> _initialize() async {
-    // Listen to auth state changes
-    _supabase.auth.onAuthStateChange.listen((data) {
+    // Listen to auth state changes dynamically
+    _supabase.auth.onAuthStateChange.listen((data) async {
       if (!isClosed) {
         final session = data.session;
+
+        // Check if onboarding was completed before emitting authentication routes
+        final prefs = await SharedPreferences.getInstance();
+        final bool hasSeenOnboarding =
+            prefs.getBool('has_seen_onboarding') ?? false;
+
         if (session != null) {
-          emit(Authenticated(session.user));
+          if (hasSeenOnboarding) {
+            emit(Authenticated(session.user));
+          } else {
+            // Keep state as unauthenticated so main gateway falls back to onboarding route
+            emit(Unauthenticated());
+          }
         } else {
           emit(Unauthenticated());
         }
@@ -68,10 +76,15 @@ class AuthCubit extends Cubit<AuthState> {
     checkAuthStatus();
   }
 
-  void checkAuthStatus() {
+  void checkAuthStatus() async {
     if (isClosed) return;
+
+    final prefs = await SharedPreferences.getInstance();
+    final bool hasSeenOnboarding =
+        prefs.getBool('has_seen_onboarding') ?? false;
     final user = _supabase.auth.currentUser;
-    if (user != null) {
+
+    if (user != null && hasSeenOnboarding) {
       emit(Authenticated(user));
     } else {
       emit(Unauthenticated());
@@ -98,7 +111,7 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // SIGN UP with Email - FIXED VERSION
+  // SIGN UP with Email
   Future<void> signUpWithEmail(
     String email,
     String password,
@@ -115,7 +128,6 @@ class AuthCubit extends Cubit<AuthState> {
       );
 
       if (response.user != null) {
-        // ✅ CRITICAL FIX: Create profile in profiles table immediately
         await _supabaseService.createUserProfile(
           userId: response.user!.id,
           email: email.trim(),
@@ -123,9 +135,6 @@ class AuthCubit extends Cubit<AuthState> {
         );
 
         print('✅ Profile created for user: ${response.user!.id}');
-        print('✅ User name: $name');
-
-        // Sign out so user can login (or auto-login)
         await _supabase.auth.signOut();
 
         if (!isClosed) {
@@ -144,16 +153,13 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // SIGN IN with Google - FIXED with profile creation
+  // SIGN IN with Google
   Future<void> signInWithGoogle() async {
     if (isClosed) return;
 
     emit(AuthLoading());
     try {
-      // First, sign out from any previous Google account
       await _googleSignIn.signOut();
-
-      // Trigger Google Sign-In with requested scopes
       final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
 
       if (googleUser == null) {
@@ -163,32 +169,19 @@ class AuthCubit extends Cubit<AuthState> {
         return;
       }
 
-      // Get authentication details
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 
-      print(
-        'Access Token: ${googleAuth.accessToken != null ? "Got token" : "No token"}',
-      );
-      print(
-        'ID Token: ${googleAuth.idToken != null ? "Got ID token" : "No ID token"}',
-      );
-
-      // Exchange for Supabase session
       final response = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
         idToken: googleAuth.idToken ?? '',
         accessToken: googleAuth.accessToken,
       );
 
-      print('Supabase sign in successful: ${response.user?.email}');
-
-      // ✅ CRITICAL FIX: Create profile if it doesn't exist
       if (response.user != null) {
         final existingProfile = await _supabaseService.getUserProfile();
 
         if (existingProfile == null) {
-          // Create profile for Google user
           await _supabaseService.createUserProfile(
             userId: response.user!.id,
             email: response.user!.email ?? googleUser.email,
@@ -198,9 +191,6 @@ class AuthCubit extends Cubit<AuthState> {
                 googleUser.displayName ??
                 googleUser.email.split('@').first,
           );
-          print('✅ Profile created for Google user: ${response.user!.id}');
-        } else {
-          print('✅ Profile already exists for Google user');
         }
       }
 
@@ -215,22 +205,19 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // SIGN OUT - Also sign out from Google and clear local data
+  // SIGN OUT
   Future<void> signOut() async {
     if (isClosed) return;
 
     emit(AuthLoading());
     try {
-      // Clear local SharedPreferences data for this user
       final currentUserId = _supabase.auth.currentUser?.id;
       if (currentUserId != null) {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('saved_budget_$currentUserId');
-        await prefs.remove('user_data'); // Clear profile cache
-        print('Cleared user data for: $currentUserId');
+        await prefs.remove('user_data');
       }
 
-      // Sign out from Google as well
       await _googleSignIn.signOut();
       await _supabase.auth.signOut();
       if (!isClosed) {
@@ -277,10 +264,5 @@ class AuthCubit extends Cubit<AuthState> {
       return 'Network error. Please check your internet connection.';
     }
     return 'An error occurred. Please try again.';
-  }
-
-  @override
-  Future<void> close() {
-    return super.close();
   }
 }

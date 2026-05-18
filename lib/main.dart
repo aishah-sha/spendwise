@@ -1,294 +1,145 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 // Screens
 import 'package:spendwise/screens/signup_screen.dart';
 import 'package:spendwise/screens/welcome_screen.dart';
-import 'screens/onboarding_screen.dart';
-import 'screens/dashboard_screen.dart';
-import 'screens/add_budget_screen.dart';
-import 'screens/profile_screen.dart';
-import 'screens/notification_screen.dart';
-import 'screens/login_screen.dart';
+import 'package:spendwise/screens/onboarding_screen.dart';
+import 'package:spendwise/screens/dashboard_screen.dart';
+import 'package:spendwise/screens/add_budget_screen.dart';
+import 'package:spendwise/screens/profile_screen.dart';
+import 'package:spendwise/screens/notification_screen.dart';
+import 'package:spendwise/screens/login_screen.dart';
 
 // Cubits
 import 'cubit/expense_cubit.dart';
 import 'cubit/budget_cubit.dart';
 import 'cubit/profile_cubit.dart';
-import 'cubit/profile_state.dart';
 import 'cubit/notification_cubit.dart';
-import 'cubit/auth_cubit.dart' as auth;
+import 'cubit/auth_cubit.dart';
 
 void main() async {
-  // 1. Ensure Flutter is ready
   WidgetsFlutterBinding.ensureInitialized();
 
   try {
-    // 2. Load environment variables
+    // 1. Load configuration
     await dotenv.load(fileName: ".env");
 
     final supabaseUrl = dotenv.env['SUPABASE_URL'];
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
 
-    // 3. Safety Check
     if (supabaseUrl == null || supabaseAnonKey == null) {
-      throw Exception(
-        "Missing keys in .env file. Ensure SUPABASE_URL and SUPABASE_ANON_KEY are defined.",
-      );
+      throw Exception("Missing Supabase credentials in .env file");
     }
 
-    // 4. Initialize Supabase
+    // 2. Initialize database connection
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
-    runApp(const MyApp());
+    // 3. Fetch persistence storage key BEFORE mounting layout trees
+    final prefs = await SharedPreferences.getInstance();
+    final bool hasSeenOnboarding =
+        prefs.getBool('has_seen_onboarding') ?? false;
+
+    runApp(MyApp(hasSeenOnboarding: hasSeenOnboarding));
   } catch (e) {
-    debugPrint("Initialization Error: $e");
+    debugPrint("Initialization error: $e");
     runApp(
-      MaterialApp(
-        home: Scaffold(
-          backgroundColor: const Color(0xFFE8F7CB),
-          body: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.error_outline, color: Colors.red, size: 60),
-                  const SizedBox(height: 16),
-                  const Text(
-                    "Setup Error",
-                    style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    e.toString(),
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(color: Colors.black87),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+      const MaterialApp(
+        home: Scaffold(body: Center(child: Text("App Initialization Failed"))),
       ),
     );
   }
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool hasSeenOnboarding;
+
+  const MyApp({super.key, required this.hasSeenOnboarding});
 
   @override
   Widget build(BuildContext context) {
     return MultiBlocProvider(
       providers: [
-        BlocProvider<auth.AuthCubit>(
-          create: (context) => auth.AuthCubit()..checkAuthStatus(),
-        ),
+        BlocProvider<AuthCubit>(create: (context) => AuthCubit()),
         BlocProvider<ExpenseCubit>(create: (context) => ExpenseCubit()),
         BlocProvider<BudgetCubit>(create: (context) => BudgetCubit()),
+        BlocProvider<ProfileCubit>(create: (context) => ProfileCubit()),
         BlocProvider<NotificationCubit>(
           create: (context) => NotificationCubit(),
         ),
-        BlocProvider<ProfileCubit>(
-          create: (context) => ProfileCubit()..loadProfile(),
-        ),
       ],
-      child: const AppRoot(),
-    );
-  }
-}
-
-class AppRoot extends StatelessWidget {
-  const AppRoot({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocSelector<ProfileCubit, ProfileState, bool>(
-      selector: (state) =>
-          state is ProfileLoaded ? state.user.isDarkMode : false,
-      builder: (context, isDarkMode) {
-        return MaterialApp(
-          title: 'SpendWise',
-          debugShowCheckedModeBanner: false,
-          themeMode: isDarkMode ? ThemeMode.dark : ThemeMode.light,
-          theme: ThemeData(
-            useMaterial3: true,
-            fontFamily: 'Poppins',
-            brightness: Brightness.light,
-            scaffoldBackgroundColor: const Color(0xFFE8F7CB),
-            colorScheme: ColorScheme.fromSeed(seedColor: Colors.green),
-            appBarTheme: const AppBarTheme(
-              backgroundColor: Color(0xFFC5D997),
-              foregroundColor: Colors.black,
-              centerTitle: true,
+      child: MaterialApp(
+        title: 'SpendWise',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          primarySwatch: Colors.green,
+          scaffoldBackgroundColor: const Color(0xFFE8F7CB),
+          useMaterial3: true,
+          extensions: const <ThemeExtension<dynamic>>[
+            CustomColors(
+              bgColor: Color(0xFFE8F7CB),
+              headerColor: Color(0xFFC5D997),
+              accentGreen: Color(0xFF32BA32),
+              darkText: Color(0xFF000000),
+              fabBorderColor: Color(0xFFC5D997),
             ),
-            extensions: const [
-              CustomColors(
-                bgColor: Color(0xFFE8F7CB),
-                headerColor: Color(0xFFC5D997),
-                accentGreen: Color(0xFF32BA32),
-                darkText: Color(0xFF000000),
-                fabBorderColor: Color(0xFFD4E5B0),
-              ),
-            ],
-          ),
-          darkTheme: ThemeData(
-            useMaterial3: true,
-            fontFamily: 'Poppins',
-            brightness: Brightness.dark,
-            scaffoldBackgroundColor: Colors.black,
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.green,
-              brightness: Brightness.dark,
-            ),
-            extensions: const [
-              CustomColors(
-                bgColor: Colors.black,
-                headerColor: Color(0xFF1A1A1A),
-                accentGreen: Color(0xFF32BA32),
-                darkText: Colors.white,
-                fabBorderColor: Color(0xFF2A2A2A),
-              ),
-            ],
-          ),
-          initialRoute: '/',
-          routes: {
-            '/': (context) => const AuthWrapper(),
-            '/onboarding': (context) => const OnboardingScreen(),
-            '/welcome': (context) => const WelcomeScreen(),
-            '/login': (context) => const LoginScreen(),
-            '/signup': (context) => const SignUpScreen(),
-            '/dashboard': (context) => const DashboardScreen(),
-            '/add_budget': (context) => const AddBudgetScreen(),
-            '/profile': (context) => const ProfileScreen(),
-            '/notifications': (context) => const NotificationScreen(),
-          },
-        );
-      },
-    );
-  }
-}
-
-class AuthWrapper extends StatefulWidget {
-  const AuthWrapper({super.key});
-
-  @override
-  State<AuthWrapper> createState() => _AuthWrapperState();
-}
-
-class _AuthWrapperState extends State<AuthWrapper> {
-  bool? _hasSeenOnboarding;
-  bool _isLoading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _checkOnboardingStatus();
-  }
-
-  Future<void> _checkOnboardingStatus() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final hasSeenOnboarding = prefs.getBool('has_seen_onboarding') ?? false;
-      setState(() {
-        _hasSeenOnboarding = hasSeenOnboarding;
-        _isLoading = false;
-      });
-    } catch (e) {
-      print('Error checking onboarding status: $e');
-      setState(() {
-        _hasSeenOnboarding = false;
-        _isLoading = false;
-      });
-    }
-  }
-
-  Future<void> _setOnboardingSeen() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('has_seen_onboarding', true);
-    } catch (e) {
-      print('Error setting onboarding status: $e');
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(color: Color(0xFF32BA32)),
+          ],
         ),
-      );
+        routes: {
+          '/onboarding': (context) => const OnboardingScreen(),
+          '/welcome': (context) => const WelcomeScreen(),
+          '/login': (context) => const LoginScreen(),
+          '/signup': (context) => const SignUpScreen(),
+          '/dashboard': (context) => const DashboardScreen(),
+          '/add_budget': (context) => const AddBudgetScreen(),
+          '/profile': (context) => const ProfileScreen(),
+          '/notification': (context) => const NotificationScreen(),
+        },
+        // Direct entry target routes to the checking Gateway widget
+        home: AppHomeGateway(hasSeenOnboarding: hasSeenOnboarding),
+      ),
+    );
+  }
+}
+
+class AppHomeGateway extends StatelessWidget {
+  final bool hasSeenOnboarding;
+
+  const AppHomeGateway({super.key, required this.hasSeenOnboarding});
+
+  @override
+  Widget build(BuildContext context) {
+    // IF onboarding hasn't run yet, prioritize running it immediately
+    if (!hasSeenOnboarding) {
+      return const OnboardingScreen();
     }
 
-    return BlocBuilder<auth.AuthCubit, auth.AuthState>(
+    // IF onboarding is already completed, check active authentication state
+    return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, state) {
-        // 1. User is Logged In
-        if (state is auth.Authenticated) {
-          // Load profile data when user is authenticated
-          final profileCubit = context.read<ProfileCubit>();
-          final supabaseUser = state.user;
-          final currentState = profileCubit.state;
-
-          if (currentState is ProfileLoaded) {
-            final userEmail = supabaseUser?.email;
-            final userMetadata = supabaseUser?.userMetadata;
-
-            if (userEmail != null && currentState.user.email != userEmail) {
-              String userName = currentState.user.fullName;
-              if (userMetadata != null) {
-                final nameFromMetadata = userMetadata['name'];
-                if (nameFromMetadata != null && nameFromMetadata is String) {
-                  userName = nameFromMetadata;
-                }
-              } else if (userEmail != null) {
-                userName = userEmail.split('@').first;
-              }
-
-              final updatedUser = currentState.user.copyWith(
-                email: userEmail,
-                fullName: userName,
-              );
-              profileCubit.saveUser(updatedUser);
-            }
-          }
-
-          // FIXED: User is logged in, go directly to dashboard
-          return const DashboardScreen();
-        }
-
-        // 2. We are checking the session
-        if (state is auth.AuthLoading) {
+        if (state is AuthInitial || state is AuthLoading) {
           return const Scaffold(
+            backgroundColor: Color(0xFFE8F7CB),
             body: Center(
               child: CircularProgressIndicator(color: Color(0xFF32BA32)),
             ),
           );
         }
 
-        // 3. User is NOT logged in - Check onboarding status
-        // If user has seen onboarding before, go to welcome/login screen
-        // If not, show onboarding screen first
-        if (_hasSeenOnboarding == true) {
-          return const WelcomeScreen();
+        if (state is Authenticated) {
+          return const DashboardScreen();
         } else {
-          // Mark onboarding as seen when navigating to it
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            _setOnboardingSeen();
-          });
-          return const OnboardingScreen();
+          return const WelcomeScreen();
         }
       },
     );
   }
 }
 
-// Theme Extension Class
+// Custom Theme Design Class Extension
 class CustomColors extends ThemeExtension<CustomColors> {
   final Color bgColor;
   final Color headerColor;

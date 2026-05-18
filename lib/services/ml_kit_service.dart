@@ -68,7 +68,7 @@ class MLKitService {
     // Collect all text from recognized blocks
     for (TextBlock block in recognizedText.blocks) {
       for (TextLine line in block.lines) {
-        fullText += line.text + '\n';
+        fullText += '${line.text}\n';
         lines.add(line.text);
       }
     }

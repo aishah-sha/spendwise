@@ -8,7 +8,7 @@ import '../services/supabase_service.dart';
 class ExpenseCubit extends Cubit<ExpenseState> {
   final SupabaseService _supabaseService = SupabaseService();
   StreamSubscription? _expensesSubscription;
-  bool _isInitialized = false;
+  final bool _isInitialized = false;
 
   ExpenseCubit() : super(ExpenseState.initial()) {
     _listenToExpenses();
@@ -241,6 +241,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       case 'stationery':
         return Colors.purple;
       case 'clothes':
+      case 'clothing':
         return Colors.orange;
       case 'beverages':
         return Colors.green;
@@ -250,6 +251,21 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         return Colors.blue;
       case 'supplies':
         return Colors.brown;
+      case 'pet food':
+        return Colors.deepOrange;
+      case 'household':
+        return Colors.cyan;
+      case 'baking':
+        return Colors.amber;
+      case 'cooking ingredients':
+        return Colors.deepPurple;
+      case 'snacks & desserts':
+        return Colors.pink;
+      case 'health':
+        return Colors.teal;
+      case 'transport':
+        return Colors.indigo;
+      case 'others':
       default:
         return Colors.grey;
     }
@@ -262,6 +278,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       case 'stationery':
         return Icons.edit;
       case 'clothes':
+      case 'clothing':
         return Icons.shopping_bag;
       case 'beverages':
         return Icons.local_drink;
@@ -271,6 +288,21 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         return Icons.shopping_cart;
       case 'supplies':
         return Icons.inventory;
+      case 'pet food':
+        return Icons.pets;
+      case 'household':
+        return Icons.cleaning_services;
+      case 'baking':
+        return Icons.cake;
+      case 'cooking ingredients':
+        return Icons.soup_kitchen;
+      case 'snacks & desserts':
+        return Icons.cookie;
+      case 'health':
+        return Icons.medical_services;
+      case 'transport':
+        return Icons.directions_car;
+      case 'others':
       default:
         return Icons.more_horiz;
     }

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/profile_cubit.dart';
@@ -35,7 +36,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
   late TextEditingController _amountController;
   late TextEditingController _vendorController;
   late DateTime _selectedDate;
-  bool _isIncome = false;
+  final bool _isIncome = false;
 
   List<ReceiptItem> _items = [];
 
@@ -202,7 +203,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
             ),
             const SizedBox(height: 8),
             DropdownButtonFormField<String>(
-              value: _newItemCategory,
+              initialValue: _newItemCategory,
               dropdownColor: isDarkMode ? Colors.grey[850] : Colors.white,
               decoration: InputDecoration(
                 labelText: "Category",
@@ -308,7 +309,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
         insetPadding: const EdgeInsets.all(10),
         child: Stack(
           children: [
-            Container(
+            SizedBox(
               width: double.infinity,
               height: double.infinity,
               child: InteractiveViewer(
@@ -812,7 +813,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                       ),
                       const SizedBox(height: 8),
                       DropdownButtonFormField<String>(
-                        value: _categories.contains(item.category)
+                        initialValue: _categories.contains(item.category)
                             ? item.category
                             : _categories.first,
                         dropdownColor: isDarkMode
@@ -1024,9 +1025,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
                     surface: isDarkMode ? Colors.grey[850]! : Colors.white,
                     onSurface: isDarkMode ? Colors.white : Colors.black,
                   ),
-                  dialogBackgroundColor: isDarkMode
-                      ? Colors.grey[850]
-                      : Colors.white,
+                  dialogTheme: DialogThemeData(
+                    backgroundColor: isDarkMode
+                        ? Colors.grey[850]
+                        : Colors.white,
+                  ),
                 ),
                 child: child!,
               );
@@ -1098,9 +1101,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       return;
     }
 
-    final String expenseId =
-        widget.expenseToEdit?.id ??
-        DateTime.now().millisecondsSinceEpoch.toString();
+    // ✅ FIXED: Use UUID for expense ID
+    final String expenseId = widget.expenseToEdit?.id ?? const Uuid().v4();
 
     final expense = ExpenseModel(
       id: expenseId,
@@ -1110,7 +1112,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       date: _selectedDate,
       isIncome: _isIncome,
       note: '${_items.length} items',
-      userId: userId, // FIXED: Add user ID
+      userId: userId,
     );
 
     final expenseCubit = context.read<ExpenseCubit>();
@@ -1122,15 +1124,16 @@ class _ManualEntryScreenState extends State<ManualEntryScreen> {
       await expenseCubit.addExpense(expense);
     }
 
+    // ✅ FIXED: Use the same UUID for receipt
     final receipt = ReceiptModel(
-      id: expenseId,
+      id: expenseId, // Use same UUID as expense
       date: expense.date,
       amount: expense.amount,
       receiptType: 'manual',
       merchantName: expense.title,
       items: _items,
       imagePath: widget.receipt?.imagePath,
-      userId: userId, // FIXED: Add user ID
+      userId: userId,
       processed: false,
     );
 

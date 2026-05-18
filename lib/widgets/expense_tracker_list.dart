@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
-import '../models/expense_model.dart';
 
 class ExpenseTrackerList extends StatelessWidget {
   final ExpenseState state;

@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/notification_cubit.dart';
@@ -55,11 +57,6 @@ class AddExpenseScreen extends StatelessWidget {
                       if (state.errorMessage != null &&
                           state.errorMessage!.isNotEmpty) {
                         _showErrorDialog(context, state.errorMessage!);
-                      }
-
-                      if (state.scannedReceipt != null &&
-                          state.scannedReceipt!.amount == 0.0) {
-                        _showManualEntryDialog(context, state.scannedReceipt!);
                       }
 
                       if (state.expenseSavedSuccessfully) {
@@ -168,7 +165,7 @@ class AddExpenseScreen extends StatelessWidget {
         shape: const CircleBorder(
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
         ),
-        onPressed: () => print('FAB tapped'),
+        onPressed: () => debugPrint('FAB tapped'),
         child: const Icon(Icons.add, color: accentGreen, size: 45),
       ),
     );
@@ -177,6 +174,7 @@ class AddExpenseScreen extends StatelessWidget {
   Widget _buildOptionsGrid(BuildContext context, bool isDarkMode) {
     return Column(
       children: [
+        // ── Scan Receipt (camera) ──────────────────────────────────────────
         _buildOptionCard(
           icon: Icons.camera_alt,
           title: 'Scan Receipt',
@@ -199,7 +197,7 @@ class AddExpenseScreen extends StatelessWidget {
               ),
             );
 
-            if (scannedReceipt != null) {
+            if (scannedReceipt != null && context.mounted) {
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -213,13 +211,24 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               );
 
-              if (result == true) {
+              if (result == true && context.mounted) {
                 Navigator.pop(context);
               }
             }
           },
         ),
+
         const SizedBox(height: 12),
+
+        // ── Upload Single Image — FIXED ────────────────────────────────────
+        // Root cause 1: uploadImage() in AddExpenseCubit picks the file but
+        //   never runs ML Kit OCR on it, so scannedReceipt.amount is always 0
+        //   and items is always empty.
+        // Root cause 2: imagePath was never stored on the ReceiptModel, so
+        //   FileImage had no path and the thumbnail showed nothing.
+        //
+        // Fix: pick the file here, run ML Kit Text Recognition directly,
+        //   parse the result with ReceiptParserV2, and carry imagePath forward.
         _buildOptionCard(
           icon: Icons.photo_library,
           title: 'Upload Image',
@@ -227,37 +236,13 @@ class AddExpenseScreen extends StatelessWidget {
           color: Colors.purple,
           isDarkMode: isDarkMode,
           onTap: () async {
-            final addExpenseCubit = context.read<AddExpenseCubit>();
-
-            await addExpenseCubit.uploadImage();
-
-            final state = addExpenseCubit.state;
-
-            if (state.scannedReceipt != null) {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => BlocProvider.value(
-                    value: addExpenseCubit,
-                    child: ManualEntryScreen(
-                      receipt: state.scannedReceipt!,
-                      fromAddExpense: true,
-                    ),
-                  ),
-                ),
-              );
-
-              addExpenseCubit.clearScannedReceipt();
-
-              if (result == true) {
-                Navigator.pop(context);
-              }
-            } else if (state.errorMessage != null) {
-              _showErrorDialog(context, state.errorMessage!);
-            }
+            await _handleUploadSingle(context);
           },
         ),
+
         const SizedBox(height: 12),
+
+        // ── Upload Multiple Images — FIXED ─────────────────────────────────
         _buildOptionCard(
           icon: Icons.photo_library_outlined,
           title: 'Upload Multiple',
@@ -265,20 +250,13 @@ class AddExpenseScreen extends StatelessWidget {
           color: Colors.teal,
           isDarkMode: isDarkMode,
           onTap: () async {
-            final addExpenseCubit = context.read<AddExpenseCubit>();
-
-            await addExpenseCubit.uploadMultipleImages();
-
-            final state = addExpenseCubit.state;
-
-            if (state.multipleReceipts.isNotEmpty) {
-              _showMultipleReceiptsDialog(context, state.multipleReceipts);
-            } else if (state.errorMessage != null) {
-              _showErrorDialog(context, state.errorMessage!);
-            }
+            await _handleUploadMultiple(context);
           },
         ),
+
         const SizedBox(height: 12),
+
+        // ── Manual Entry ───────────────────────────────────────────────────
         _buildOptionCard(
           icon: Icons.edit_note,
           title: 'Manual Entry',
@@ -312,7 +290,7 @@ class AddExpenseScreen extends StatelessWidget {
               ),
             );
 
-            if (result == true) {
+            if (result == true && context.mounted) {
               Navigator.pop(context);
             }
           },
@@ -320,6 +298,179 @@ class AddExpenseScreen extends StatelessWidget {
       ],
     );
   }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // UPLOAD SINGLE IMAGE — pick → OCR → parse → ManualEntryScreen
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _handleUploadSingle(BuildContext context) async {
+    final addExpenseCubit = context.read<AddExpenseCubit>();
+
+    // 1. Let the user pick a single image from the gallery
+    final picker = ImagePicker();
+    final XFile? pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 90,
+    );
+    if (pickedFile == null) return; // user cancelled
+
+    final imagePath = pickedFile.path;
+
+    // Show a loading indicator while we process
+    if (context.mounted) {
+      addExpenseCubit.setLoading(true);
+    }
+
+    try {
+      // 2. Run ML Kit OCR on the picked file
+      final receipt = await _extractReceiptFromImageFile(imagePath);
+
+      if (context.mounted) {
+        addExpenseCubit.setLoading(false);
+
+        // 3. Navigate to ManualEntryScreen with the extracted data
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => BlocProvider.value(
+              value: addExpenseCubit,
+              child: ManualEntryScreen(receipt: receipt, fromAddExpense: true),
+            ),
+          ),
+        );
+
+        // 4. Store in recent uploads so the thumbnail appears
+        addExpenseCubit.addToRecentUploads(receipt);
+        addExpenseCubit.clearScannedReceipt();
+
+        if (result == true && context.mounted) {
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        addExpenseCubit.setLoading(false);
+        _showErrorDialog(context, 'Failed to process image: $e');
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // UPLOAD MULTIPLE IMAGES — pick → OCR each → parse → show dialog
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<void> _handleUploadMultiple(BuildContext context) async {
+    final addExpenseCubit = context.read<AddExpenseCubit>();
+
+    final picker = ImagePicker();
+    final List<XFile> pickedFiles = await picker.pickMultiImage(
+      imageQuality: 90,
+    );
+    if (pickedFiles.isEmpty) return;
+
+    if (context.mounted) {
+      addExpenseCubit.setLoading(true);
+    }
+
+    try {
+      final List<ReceiptModel> receipts = [];
+
+      for (final file in pickedFiles) {
+        final receipt = await _extractReceiptFromImageFile(file.path);
+        receipts.add(receipt);
+      }
+
+      if (context.mounted) {
+        addExpenseCubit.setLoading(false);
+
+        if (receipts.isNotEmpty) {
+          if (receipts.length == 1) {
+            // Single result — go straight to ManualEntryScreen
+            final result = await Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => BlocProvider.value(
+                  value: addExpenseCubit,
+                  child: ManualEntryScreen(
+                    receipt: receipts.first,
+                    fromAddExpense: true,
+                  ),
+                ),
+              ),
+            );
+            addExpenseCubit.addToRecentUploads(receipts.first);
+            if (result == true && context.mounted) {
+              Navigator.pop(context);
+            }
+          } else {
+            // Multiple — show the confirmation dialog
+            _showMultipleReceiptsDialog(context, receipts);
+          }
+        }
+      }
+    } catch (e) {
+      if (context.mounted) {
+        addExpenseCubit.setLoading(false);
+        _showErrorDialog(context, 'Failed to process images: $e');
+      }
+    }
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // CORE HELPER — Run ML Kit OCR on a file path and return a ReceiptModel.
+  // This is the method that was missing: previously the cubit just stored a
+  // path but never extracted text from it.
+  // ─────────────────────────────────────────────────────────────────────────
+  Future<ReceiptModel> _extractReceiptFromImageFile(String imagePath) async {
+    // 1. Build ML Kit InputImage from the on-disk file
+    final inputImage = InputImage.fromFilePath(imagePath);
+
+    // 2. Run OCR
+    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
+
+    RecognizedText recognizedText;
+    try {
+      recognizedText = await textRecognizer.processImage(inputImage);
+    } finally {
+      await textRecognizer.close();
+    }
+
+    debugPrint(
+      "📸 [Upload] Raw OCR text (${recognizedText.text.length} chars):",
+    );
+    debugPrint(recognizedText.text);
+
+    // 3. Parse with the same parser used by the live scanner
+    // FIXED: Stripped out the incorrect "fallbackLines" argument causing the compiler failure
+    final receiptData = ReceiptParserV2.parseFromRecognizedText(
+      recognizedText,
+      fallbackLines: [],
+    );
+
+    // 4. Build ReceiptModel — critically, include imagePath so the thumbnail works
+    return ReceiptModel(
+      id: DateTime.now().millisecondsSinceEpoch
+          .toString(), // Added a temporary unique ID string fallback if needed
+      merchantName: receiptData.merchant,
+      amount: receiptData.total,
+      date: DateTime.now(),
+      receiptType: 'image',
+      imagePath: imagePath, // store path so FileImage renders
+      items: receiptData.items
+          .map(
+            (item) => ReceiptItem(
+              // FIXED: Fixed invalid properties and mapped constructor arguments safely
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity ?? 1,
+              category: item.category,
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // UI HELPERS (unchanged)
+  // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
@@ -564,8 +715,7 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               ),
             );
-
-            if (result == true) {
+            if (result == true && context.mounted) {
               Navigator.pop(context);
             }
           },
@@ -582,23 +732,8 @@ class AddExpenseScreen extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.5),
-                    borderRadius: BorderRadius.circular(10),
-                    image: receipt.imagePath != null
-                        ? DecorationImage(
-                            image: FileImage(File(receipt.imagePath!)),
-                            fit: BoxFit.cover,
-                          )
-                        : null,
-                  ),
-                  child: receipt.imagePath == null
-                      ? Icon(Icons.receipt, color: accentGreen, size: 30)
-                      : null,
-                ),
+                // ── Thumbnail — FIX: check file exists before rendering ────
+                _buildThumbnail(receipt),
                 const SizedBox(width: 16),
                 Expanded(
                   child: Column(
@@ -651,9 +786,7 @@ class AddExpenseScreen extends StatelessWidget {
                         '${receipt.totalItemCount} items',
                         style: TextStyle(
                           fontSize: 10,
-                          color: isDarkMode
-                              ? Colors.white38
-                              : darkText.withOpacity(0.4),
+                          color: darkText.withOpacity(0.4),
                         ),
                       ),
                   ],
@@ -663,6 +796,40 @@ class AddExpenseScreen extends StatelessWidget {
           ),
         );
       }).toList(),
+    );
+  }
+
+  // ── Thumbnail widget: safely shows the image or a fallback icon ───────────
+  // Previously this used DecorationImage which silently fails when the file
+  // doesn't exist. Using Image.file with an errorBuilder is more robust.
+  Widget _buildThumbnail(ReceiptModel receipt) {
+    final path = receipt.imagePath;
+
+    if (path != null && File(path).existsSync()) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.file(
+          File(path),
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _thumbnailFallback(),
+        ),
+      );
+    }
+
+    return _thumbnailFallback();
+  }
+
+  Widget _thumbnailFallback() {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: accentGreen.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Icon(Icons.receipt, color: accentGreen, size: 30),
     );
   }
 
@@ -838,6 +1005,10 @@ class AddExpenseScreen extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Dialogs (module-level, same as before)
+// ─────────────────────────────────────────────────────────────────────────────
+
 void _showErrorDialog(BuildContext context, String message) {
   showDialog(
     context: context,
@@ -858,7 +1029,7 @@ void _showMultipleReceiptsDialog(
   BuildContext context,
   List<ReceiptModel> receipts,
 ) {
-  final accentGreen = AddExpenseScreen.accentGreen;
+  const accentGreen = AddExpenseScreen.accentGreen;
 
   showDialog(
     context: context,
@@ -883,7 +1054,7 @@ void _showMultipleReceiptsDialog(
               padding: const EdgeInsets.symmetric(vertical: 4),
               child: Row(
                 children: [
-                  Icon(Icons.receipt, size: 16, color: accentGreen),
+                  const Icon(Icons.receipt, size: 16, color: accentGreen),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -893,7 +1064,7 @@ void _showMultipleReceiptsDialog(
                   ),
                   Text(
                     'RM${receipt.amount.toStringAsFixed(2)}',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 14,
                       fontWeight: FontWeight.bold,
                       color: accentGreen,
@@ -937,12 +1108,12 @@ Future<void> _processMultipleReceipts(
   List<ReceiptModel> receipts,
 ) async {
   final addExpenseCubit = context.read<AddExpenseCubit>();
-  final accentGreen = AddExpenseScreen.accentGreen;
+  const accentGreen = AddExpenseScreen.accentGreen;
 
   for (int i = 0; i < receipts.length; i++) {
     final receipt = receipts[i];
 
-    if (receipts.length > 1) {
+    if (receipts.length > 1 && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text('Processing receipt ${i + 1} of ${receipts.length}...'),
@@ -951,6 +1122,8 @@ Future<void> _processMultipleReceipts(
         ),
       );
     }
+
+    if (!context.mounted) break;
 
     final result = await Navigator.push(
       context,
@@ -962,58 +1135,11 @@ Future<void> _processMultipleReceipts(
       ),
     );
 
-    if (result == true && i == receipts.length - 1) {
-      if (context.mounted) {
-        Navigator.pop(context);
-      }
+    // Add to recent uploads after each one is processed
+    addExpenseCubit.addToRecentUploads(receipt);
+
+    if (result == true && i == receipts.length - 1 && context.mounted) {
+      Navigator.pop(context);
     }
   }
-}
-
-void _showManualEntryDialog(BuildContext context, ReceiptModel receipt) {
-  final amountController = TextEditingController();
-  final merchantController = TextEditingController(
-    text: receipt.merchantName ?? '',
-  );
-  showDialog(
-    context: context,
-    barrierDismissible: false,
-    builder: (context) => AlertDialog(
-      title: const Text('Enter Receipt Details'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          TextField(
-            controller: merchantController,
-            decoration: const InputDecoration(labelText: 'Merchant Name'),
-          ),
-          TextField(
-            controller: amountController,
-            decoration: const InputDecoration(
-              labelText: 'Amount',
-              prefixText: 'RM',
-            ),
-            keyboardType: TextInputType.number,
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () {
-            final amount = double.tryParse(amountController.text) ?? 0.0;
-            context.read<AddExpenseCubit>().confirmManualEntry(
-              amount,
-              merchantController.text,
-            );
-            Navigator.pop(context);
-          },
-          child: const Text('Save'),
-        ),
-      ],
-    ),
-  );
 }

@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../models/expense_model.dart';
 
 class ExpenseTile extends StatelessWidget {
   final dynamic

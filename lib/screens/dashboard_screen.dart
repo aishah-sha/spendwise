@@ -12,12 +12,10 @@ import 'add_expense_screen.dart';
 import 'budget_screen.dart';
 import 'expense_history_screen.dart';
 import 'analytics_screen.dart';
-import '../cubit/auth_cubit.dart';
 
 // Import budget cubit
 import '../cubit/budget_cubit.dart';
 import '../cubit/budget_cubit.dart' as budget_cubit;
-import 'notification_screen.dart';
 import 'profile_screen.dart';
 
 class DashboardScreen extends StatelessWidget {
@@ -264,37 +262,42 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  // FIXED: Added explicit BlocBuilder to handle state subscription cleanly
   Widget _buildWelcomeSection(BuildContext context, bool isDarkMode) {
-    final profileState = context.watch<ProfileCubit>().state;
+    return BlocBuilder<ProfileCubit, ProfileState>(
+      builder: (context, state) {
+        String userName = 'User';
 
-    String userName = 'User';
+        if (state is ProfileLoaded) {
+          if (state.user.fullName.trim().isNotEmpty) {
+            userName = state.user.fullName.split(' ').first;
+          }
+        } else if (state is ProfileLoading) {
+          userName = 'Loading...';
+        }
 
-    if (profileState is ProfileLoaded) {
-      userName = profileState.user.fullName.split(' ').first;
-    } else if (profileState is ProfileLoading) {
-      userName = 'Loading...';
-    }
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Welcome, $userName!',
-          style: TextStyle(
-            fontSize: 25,
-            fontWeight: FontWeight.bold,
-            fontFamily: 'Poppins',
-            color: isDarkMode ? Colors.white : darkText,
-          ),
-        ),
-        Text(
-          DateFormat('dd MMMM yyyy').format(DateTime.now()),
-          style: TextStyle(
-            fontSize: 16,
-            color: isDarkMode ? Colors.white60 : darkText.withOpacity(0.6),
-          ),
-        ),
-      ],
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Welcome, $userName!',
+              style: TextStyle(
+                fontSize: 25,
+                fontWeight: FontWeight.bold,
+                fontFamily: 'Poppins',
+                color: isDarkMode ? Colors.white : darkText,
+              ),
+            ),
+            Text(
+              DateFormat('dd MMMM yyyy').format(DateTime.now()),
+              style: TextStyle(
+                fontSize: 16,
+                color: isDarkMode ? Colors.white60 : darkText.withOpacity(0.6),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -629,7 +632,7 @@ class DashboardScreen extends StatelessWidget {
               context.read<BudgetCubit>().loadBudget(forceRefresh: true);
             });
           },
-          child: Text(
+          child: const Text(
             'See All',
             style: TextStyle(color: accentGreen, fontWeight: FontWeight.w600),
           ),
@@ -750,7 +753,7 @@ class DashboardScreen extends StatelessWidget {
                 children: [
                   Text(
                     '-RM${expense.amount.toStringAsFixed(2)}',
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: Colors.red,

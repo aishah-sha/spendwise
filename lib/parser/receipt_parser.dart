@@ -1,551 +1,362 @@
-import 'dart:math';
 import '../models/receipt_model.dart';
 import 'package:flutter/foundation.dart';
 
 class ReceiptParser {
+  // Matches a decimal amount: optional RM/MYR prefix, digits, dot, 2 digits
+  static final _priceRe = RegExp(
+    r'(?:RM|MYR)?\s*(\d{1,6}\.\d{2})\b',
+    caseSensitive: false,
+  );
+
+  // Lines to skip entirely — these are never items
+  static final _skipLineRe = RegExp(
+    r'\b(CASH|CHANGE|TUNAI|BAKI|TENDER|PAYMENT|CARD|CREDIT|DEBIT|'
+    r'CASHIER|KASIR|OPERATOR|RECEIPT|INVOICE|TABLE|ORDER|SERVER|STAFF|'
+    r'DATE|TIME|TARIKH|MASA|TEL|PHONE|FAX|EMAIL|WEBSITE|'
+    r'TRANSACTION|REF|REFERENCE|MEMBER|POINT|POINTS|'
+    r'DISCOUNT|DISKAUN|ROUNDING|TAX|GST|SST|SERVICE\s*CHARGE|'
+    r'ITEM\s*COUNT|TOTAL\s*ITEM|TOTAL\s*QTY|'
+    r'SUBTOTAL|SUB\s*TOTAL|THANK\s*YOU|TERIMA\s*KASIH|'
+    r'JALAN|LOT\s*\d|UNIT\s*\d|SDN\s*BHD|NO\.\s*\d)\b',
+    caseSensitive: false,
+  );
+
+  // Total-label lines — tells us the next/same-line amount is the grand total
+  static final _totalLabelRe = RegExp(
+    r'\b(GRAND\s*TOTAL|TOTAL\s*AMOUNT|NET\s*TOTAL|TOTAL|JUMLAH|AMAUN)\b',
+    caseSensitive: false,
+  );
+
+  // Lines that look like only a decimal number (amount on its own line)
+  static final _amountOnlyRe = RegExp(
+    r'^\s*(?:RM|MYR)?\s*\d{1,6}\.\d{2}\s*$',
+    caseSensitive: false,
+  );
+
+  // Strip leading quantity markers on receipts like "1x ", "2X ", "x "
+  static final _qtyPrefixRe = RegExp(r'^\s*\d*[xXlL×]\s+');
+
   static ReceiptData parse(List<String> lines) {
-    debugPrint("=== RECEIPT PARSER - LOOKING FOR 'TOTAL' ===");
+    debugPrint("=== RECEIPT PARSER V2 ===");
     for (int i = 0; i < lines.length; i++) {
       debugPrint("Line $i: '${lines[i]}'");
     }
 
-    String merchant = _extractMerchant(lines);
-    List<ReceiptItemOld> items = []; // Changed to ReceiptItemOld
-    List<double> itemPrices = [];
-    List<String> productNames = [];
-    double total = 0.0;
-
-    // Keywords that indicate NON-item lines (to COMPLETELY IGNORE)
-    final ignorePatterns = [
-      // Payment related
-      "CASH",
-      "CHANGE",
-      "TUNAI",
-      "BAKI",
-      "AMOUNT DUE",
-      "PAYMENT",
-      "TENDER",
-      "CA",
-      "CARD",
-      "CREDIT",
-      "DEBIT",
-
-      // Receipt headers
-      "INVOICE",
-      "NO",
-      "BILL",
-      "RECEIPT",
-      "ORDER",
-      "TABLE",
-      "SERVER",
-      "STAFF",
-
-      // Cashier info
-      "CASHIER",
-      "KASIR",
-      "OPERATOR",
-      "SALES PERSON",
-      "ASSISTANT",
-
-      // Date/Time
-      "DATE",
-      "TIME",
-      "TARIKH",
-      "MASA",
-
-      // Store info
-      "TEL",
-      "TELP",
-      "PHONE",
-      "FAX",
-      "EMAIL",
-      "WEBSITE",
-      "JALAN",
-      "PAHANG",
-      "PI",
-      "NO.",
-      "LOT",
-      "UNIT",
-
-      // Transaction details
-      "TRANSACTION",
-      "REF",
-      "REFERENCE",
-      "ID",
-      "MEMBER",
-      "POINT",
-      "POINTS",
-
-      // Summary lines (except TOTAL)
-      "SUB TOTAL",
-      "SUBTOTAL",
-      "DISCOUNT",
-      "ROUNDING",
-      "TAX",
-      "GST",
-      "SST",
-      "SERVICE",
-      "ITEM COUNT",
-      "TOTAL ITEM",
-      "TOTAL QTY",
-
-      // Others
-      "Page",
-      "Kuala",
-      "Selangor",
-      "Sdn Bhd",
-      "Bhd",
-    ];
-
-    // First pass: Identify product names and their prices
-    for (int i = 0; i < lines.length; i++) {
-      String line = lines[i].trim();
-      if (line.isEmpty) continue;
-
-      // SPECIAL CASE: If line contains "Total" or "TOTAL", handle it separately for total amount
-      if (line.contains("Total") || line.contains("TOTAL")) {
-        debugPrint("💰 Found potential TOTAL line: $line");
-        // We'll handle total separately in _extractTotal
-        continue;
-      }
-
-      // Check if line should be IGNORED completely
-      bool shouldIgnore = false;
-      String upperLine = line.toUpperCase();
-
-      for (var pattern in ignorePatterns) {
-        if (upperLine.contains(pattern)) {
-          shouldIgnore = true;
-          debugPrint("🚫 Ignoring line (contains '$pattern'): $line");
-          break;
-        }
-      }
-
-      if (shouldIgnore) continue;
-
-      // Skip lines that start with numbers (barcode lines)
-      if (line.contains(RegExp(r'^\d'))) {
-        // Check if this line contains price information (has numbers with decimal)
-        if (line.contains(RegExp(r'\d+\.\d+'))) {
-          // Extract the last number in the line (this is usually the total price)
-          final matches = RegExp(r'(\d+\.\d+)').allMatches(line);
-          if (matches.isNotEmpty) {
-            // Get the last match (last number in the line)
-            final lastMatch = matches.last;
-            double itemPrice = double.parse(lastMatch.group(1)!);
-
-            // Only add if price is reasonable (between RM0.50 and RM1000)
-            if (itemPrice > 0.5 && itemPrice < 1000) {
-              itemPrices.add(itemPrice);
-              debugPrint("💰 Found price: RM$itemPrice from line: $line");
-            }
-          }
-        }
-        continue; // Skip barcode lines after extracting price
-      }
-
-      // Check if this line is a product name (contains letters)
-      if (_isProductName(line) && line.contains(RegExp(r'[A-Za-z]'))) {
-        // Clean up the product name
-        String cleanName = _cleanProductName(line);
-        productNames.add(cleanName);
-        debugPrint("📝 Found product: $cleanName");
-      }
-    }
-
-    debugPrint(
-      "Found ${productNames.length} products and ${itemPrices.length} prices",
-    );
-
-    // Match products with their prices (they should be in sequence)
-    // If we have more prices than products, use as many as we have products
-    int minCount = min(productNames.length, itemPrices.length);
-
-    for (int i = 0; i < minCount; i++) {
-      String productName = productNames[i];
-      double itemPrice = itemPrices[i];
-
-      items.add(
-        _createReceiptItemOld(productName, itemPrice),
-      ); // Changed method name
-      debugPrint("✅ Added: $productName = RM$itemPrice");
-    }
-
-    // If we have more products than prices, add remaining products with price 0
-    if (productNames.length > itemPrices.length) {
-      for (int i = itemPrices.length; i < productNames.length; i++) {
-        items.add(
-          _createReceiptItemOld(productNames[i], 0.0),
-        ); // Changed method name
-        debugPrint("⚠️ Added product without price: ${productNames[i]}");
-      }
-    }
-
-    // Look for total in the lines - SPECIFICALLY looking for "Total" word
-    total = _extractTotalFromWord(lines);
-
-    // If still no total found with "Total" word, try other methods as fallback
-    if (total == 0) {
-      debugPrint("⚠️ No 'Total' word found, trying fallback methods...");
-      total = _extractTotalFallback(lines, items);
-    }
+    final merchant = _extractMerchant(lines);
+    final total = _extractTotal(lines);
+    final items = _extractItems(lines, total);
 
     debugPrint("=== FINAL RESULT ===");
     debugPrint("Merchant: $merchant");
-    debugPrint("Total items found: ${items.length}");
-    for (var item in items) {
-      debugPrint("  - ${item.name}: RM${item.price}");
+    debugPrint("Total: RM$total");
+    debugPrint("Items (${items.length}):");
+    for (final item in items) {
+      debugPrint("  - ${item.name} [${item.category}]: RM${item.price}");
     }
-    debugPrint("Total amount: RM$total");
 
     return ReceiptData(merchant: merchant, total: total, items: items);
   }
 
-  // NEW METHOD: Specifically look for lines containing "Total" word
-  static double _extractTotalFromWord(List<String> lines) {
-    // Patterns that specifically contain the word "Total" (case insensitive)
-    final totalPatterns = [
-      r'TOTAL\s*:?\s*(\d+\.\d+)',
-      r'TOTAL\s+(\d+\.\d+)',
-      r'TOTAL\s*RM\s*(\d+\.\d+)',
-      r'TOTAL\s*:\s*RM\s*(\d+\.\d+)',
-      r'^TOTAL\s+(\d+\.\d+)',
-      r'TOTAL\s+AMOUNT\s*:?\s*(\d+\.\d+)',
-      r'GRAND\s+TOTAL\s*:?\s*(\d+\.\d+)',
-    ];
+  // ─────────────────────────────────────────────────────────────────────────
+  // TOTAL EXTRACTION
+  // ─────────────────────────────────────────────────────────────────────────
+  static double _extractTotal(List<String> lines) {
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (!_totalLabelRe.hasMatch(line)) continue;
 
-    // First, look for lines that contain the word "Total" or "TOTAL"
-    for (String line in lines) {
-      String upperLine = line.toUpperCase();
+      debugPrint("🔍 Total label found on line $i: $line");
 
-      // Check if line contains "TOTAL" word
-      if (upperLine.contains("TOTAL")) {
-        debugPrint("🔍 Found line with 'TOTAL': $line");
+      // Same-line price?
+      final sameLinePrice = _lastPrice(line);
+      if (sameLinePrice != null && sameLinePrice > 0) {
+        debugPrint("💰 Total (same line): $sameLinePrice");
+        return sameLinePrice;
+      }
 
-        // Try each pattern to extract the number
-        for (var pattern in totalPatterns) {
-          final totalMatch = RegExp(
-            pattern,
-            caseSensitive: false,
-          ).firstMatch(line);
-          if (totalMatch != null) {
-            double total = double.parse(totalMatch.group(1)!);
-            debugPrint("💰 Found total from 'TOTAL' word: $total");
-            return total;
-          }
+      // Next non-empty line price?
+      for (int j = i + 1; j < lines.length && j <= i + 2; j++) {
+        final next = lines[j].trim();
+        if (next.isEmpty) continue;
+        final nextPrice = _lastPrice(next);
+        if (nextPrice != null && nextPrice > 0) {
+          debugPrint("💰 Total (next line): $nextPrice");
+          return nextPrice;
         }
-
-        // If patterns didn't match, try to find any number in the line
-        final numberMatch = RegExp(r'(\d+\.\d+)').firstMatch(line);
-        if (numberMatch != null) {
-          double total = double.parse(numberMatch.group(1)!);
-          debugPrint("💰 Found total from line with 'TOTAL' word: $total");
-          return total;
-        }
+        break;
       }
     }
 
-    return 0.0;
-  }
-
-  // Fallback method if "Total" word not found
-  static double _extractTotalFallback(
-    List<String> lines,
-    List<ReceiptItemOld> items, // Changed to ReceiptItemOld
-  ) {
-    // Look for numbers in the last few lines (but ignore CASH, CHANGE lines)
-    List<double> possibleTotals = [];
-
-    for (int i = lines.length - 1; i >= lines.length - 10 && i >= 0; i--) {
-      String line = lines[i].toUpperCase();
-
-      // Skip lines that contain payment keywords
-      if (line.contains("CASH") ||
-          line.contains("CHANGE") ||
-          line.contains("TUNAI") ||
-          line.contains("BAKI") ||
-          line.contains("PAYMENT") ||
-          line.contains("TENDER")) {
-        debugPrint("🚫 Skipping payment line for total: ${lines[i]}");
-        continue;
-      }
-
-      final matches = RegExp(r'(\d+\.\d+)').allMatches(lines[i]);
-      for (var match in matches) {
-        double num = double.parse(match.group(1)!);
-        // Total is usually > 10
-        if (num > 10 && num < 10000) {
-          possibleTotals.add(num);
-          debugPrint(
-            "💰 Found possible total number: $num from line: ${lines[i]}",
-          );
-        }
+    // Fallback: largest price in the bottom third of the receipt,
+    // skipping lines that look like cash-paid / change amounts.
+    debugPrint("⚠️ No total label found, using fallback.");
+    final startIdx = (lines.length * 2 / 3).floor();
+    double largest = 0.0;
+    for (int i = startIdx; i < lines.length; i++) {
+      final line = lines[i];
+      if (_skipLineRe.hasMatch(line.toUpperCase())) continue;
+      final prices = _allPrices(line);
+      for (final p in prices) {
+        if (p > largest) largest = p;
       }
     }
 
-    if (possibleTotals.isNotEmpty) {
-      possibleTotals.sort();
-      double largest = possibleTotals.last;
-      debugPrint("💰 Using largest number as total (fallback): $largest");
+    if (largest > 0) {
+      debugPrint("💰 Total fallback: $largest");
       return largest;
     }
 
-    // Last resort: sum all item prices
-    if (items.isNotEmpty) {
-      double sum = items.fold(0, (sum, item) => sum + item.price);
-      debugPrint("💰 Using sum of items as total: $sum");
-      return sum;
-    }
-
     return 0.0;
   }
 
-  static String _extractMerchant(List<String> lines) {
-    // Common merchant indicators
-    final merchantPatterns = [
-      "MART",
-      "STORE",
-      "SHOP",
-      "SUPER",
-      "MINI",
-      "TF",
-      "VALUE",
-      "MARKET",
-      "GROCER",
-      "RESTAURANT",
-      "CAFE",
-      "KEDAI",
-      "PASAR",
-    ];
+  // ─────────────────────────────────────────────────────────────────────────
+  // ITEM EXTRACTION
+  // ─────────────────────────────────────────────────────────────────────────
+  static List<ReceiptItemOld> _extractItems(List<String> lines, double total) {
+    final items = <ReceiptItemOld>[];
+    final usedIndices = <int>{};
 
-    // Skip these when looking for merchant
-    final ignoreMerchantPatterns = [
-      "CASHIER",
-      "INVOICE",
-      "RECEIPT",
-      "TEL",
-      "DATE",
-      "TIME",
-    ];
+    // Pass A: same-line items
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty) continue;
+      if (_skipLineRe.hasMatch(line.toUpperCase())) continue;
+      if (_totalLabelRe.hasMatch(line)) continue;
 
-    for (String line in lines) {
-      String upperLine = line.toUpperCase();
+      // Must contain at least one letter (so it's not a pure amount line)
+      if (!line.contains(RegExp(r'[A-Za-z]'))) continue;
 
-      // Skip if line contains ignore patterns
-      bool shouldIgnore = false;
-      for (var pattern in ignoreMerchantPatterns) {
-        if (upperLine.contains(pattern)) {
-          shouldIgnore = true;
+      final price = _lastPrice(line);
+      if (price == null || price <= 0) continue;
+      if (total > 0 && price >= total) continue; // skip subtotals / the total
+
+      final description = _cleanName(line);
+      if (description.length < 2) continue;
+
+      items.add(_makeItem(description, price));
+      usedIndices.add(i);
+      debugPrint("✅ [A] $description: RM$price");
+    }
+
+    // Pass B: split items — name line followed by an amount-only line
+    if (items.length < 2) {
+      for (int i = 0; i < lines.length - 1; i++) {
+        if (usedIndices.contains(i)) continue;
+
+        final nameLine = lines[i].trim();
+        if (nameLine.isEmpty) continue;
+        if (!nameLine.contains(RegExp(r'[A-Za-z]'))) continue;
+        if (_skipLineRe.hasMatch(nameLine.toUpperCase())) continue;
+        if (_totalLabelRe.hasMatch(nameLine)) continue;
+
+        // Check next non-empty line for an amount-only value
+        for (int j = i + 1; j < lines.length && j <= i + 2; j++) {
+          if (usedIndices.contains(j)) continue;
+          final priceLine = lines[j].trim();
+          if (priceLine.isEmpty) continue;
+
+          if (_amountOnlyRe.hasMatch(priceLine)) {
+            final price = _lastPrice(priceLine);
+            if (price != null && price > 0 && (total == 0 || price < total)) {
+              final description = _cleanName(nameLine);
+              if (description.length >= 2) {
+                items.add(_makeItem(description, price));
+                usedIndices.add(i);
+                usedIndices.add(j);
+                debugPrint("✅ [B] $description: RM$price");
+              }
+            }
+            break;
+          }
           break;
         }
       }
-      if (shouldIgnore) continue;
+    }
 
-      for (var pattern in merchantPatterns) {
-        if (upperLine.contains(pattern)) {
-          // Clean up merchant name
-          String merchant = line.trim();
-          // Remove common noise
-          merchant = merchant
-              .replaceAll(RegExp(r'Sdn Bhd|\(|\)|\d+'), '')
-              .trim();
-          if (merchant.isNotEmpty && merchant.length > 3) {
-            debugPrint("🏪 Found merchant: $merchant");
-            return merchant;
-          }
-        }
+    return items;
+  }
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // MERCHANT EXTRACTION
+  // ─────────────────────────────────────────────────────────────────────────
+  static String _extractMerchant(List<String> lines) {
+    final searchLimit = lines.length < 10 ? lines.length : 10;
+
+    for (int i = 0; i < searchLimit; i++) {
+      final line = lines[i].trim();
+      if (line.isEmpty) continue;
+      if (!line.contains(RegExp(r'[A-Za-z]'))) continue;
+      if (_skipLineRe.hasMatch(line.toUpperCase())) continue;
+      if (_totalLabelRe.hasMatch(line)) continue;
+
+      final digitRatio =
+          line.replaceAll(RegExp(r'[^0-9]'), '').length /
+          line.replaceAll(' ', '').length;
+      if (digitRatio > 0.5) continue;
+      if (line.replaceAll(RegExp(r'\s'), '').length < 3) continue;
+
+      // Deep clean Malaysian corporate suffixes and registration brackets
+      String merchant = line
+          .replaceAll(
+            RegExp(r'\(?\d{6,}\)?'),
+            '',
+          ) // Long SSM or registration IDs
+          .replaceAll(
+            RegExp(r'\b(SDN\s*BHD|BHD|S\/B)\b', caseSensitive: false),
+            '',
+          )
+          .replaceAll(
+            RegExp(r'\(?[\d\-]{5,}\-[A-Z]\)?'),
+            '',
+          ) // (123456-X) formats
+          .replaceAll(RegExp(r'\s{2,}'), ' ')
+          .trim();
+
+      if (merchant.length > 2) {
+        // Enforce readable casing formatting
+        return merchant
+            .split(' ')
+            .map((w) {
+              return w.isEmpty
+                  ? w
+                  : '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}';
+            })
+            .join(' ');
       }
     }
+
     return "Unknown Store";
   }
 
-  // Create ReceiptItemOld instead of ReceiptItem
-  static ReceiptItemOld _createReceiptItemOld(String name, double price) {
+  // ─────────────────────────────────────────────────────────────────────────
+  // HELPERS & GRANULAR LOCAL CATEGORIZATION
+  // ─────────────────────────────────────────────────────────────────────────
+  static double? _lastPrice(String line) {
+    final matches = _priceRe.allMatches(line);
+    if (matches.isEmpty) return null;
+    return double.tryParse(matches.last.group(1)!);
+  }
+
+  static List<double> _allPrices(String line) {
+    return _priceRe
+        .allMatches(line)
+        .map((m) => double.tryParse(m.group(1)!) ?? 0.0)
+        .where((v) => v > 0)
+        .toList();
+  }
+
+  static String _cleanName(String line) {
+    String name = line
+        .replaceAll(
+          RegExp(r'(?:RM|MYR)?\s*\d{1,6}\.\d{2}\s*$', caseSensitive: false),
+          '',
+        )
+        .replaceAll(RegExp(r'\s{2,}'), ' ')
+        .trim();
+
+    // Strip leading receipt inline multiplier syntax (e.g., "2x Item")
+    return name.replaceAll(_qtyPrefixRe, '').trim();
+  }
+
+  static ReceiptItemOld _makeItem(String name, double price) {
+    // Normalizes "MEE KUNING CAP REBORD" -> "Mee Kuning Cap Rebord"
+    final formattedName = name
+        .toLowerCase()
+        .split(' ')
+        .map((w) {
+          return w.isEmpty ? w : '${w[0].toUpperCase()}${w.substring(1)}';
+        })
+        .join(' ');
+
     return ReceiptItemOld(
-      name: name,
+      name: formattedName,
       price: price,
-      category: _categorizeItem(name),
+      category: categorize(name),
       quantity: 1,
       unitPrice: price,
     );
   }
 
-  static String _cleanProductName(String line) {
-    // Remove any trailing numbers that might be prices
-    String cleaned = line.replaceAll(RegExp(r'\s+\d+\.\d+\s*$'), '');
-    // Remove multiple spaces
-    cleaned = cleaned.replaceAll(RegExp(r'\s+'), ' ');
-    return cleaned.trim();
-  }
+  static String categorize(String name) {
+    final lower = name.toLowerCase();
 
-  static bool _isProductName(String line) {
-    String upper = line.toUpperCase();
-
-    // Skip if line is too short
-    if (line.length < 4) return false;
-
-    // Must contain letters
-    if (!line.contains(RegExp(r'[A-Za-z]'))) return false;
-
-    // Expanded list of known products
-    final knownProducts = [
-      "CRISPO",
-      "MINYAK SAPI",
-      "DAIA",
-      "POWDER",
-      "SOFTENING",
-      "EVA",
-      "HONEY",
-      "GOODMAID",
-      "HAND WASH",
-      "MERIAH",
-      "ALMOND",
-      "TF RECYCLE BAG",
-      "WHISKAS",
-      "ROSE",
-      "FLOUR",
-      "WINDMILL",
-      "GHEEBLEND",
-      "BUTTERCUP",
-      "DAIRY SPREAD",
-      "SUSU",
-      "TELUR",
-      "AYAM",
-      "IKAN",
-      "ROTI",
-      "BERAS",
-      "GULA",
-      "GARAM",
-      "MINYAK MASAK",
-      "DETERGEN",
-      "SYAMPU",
-      "UBAT GIGI",
-      "SABUN",
-      "COCA COLA",
-      "PEPSI",
-      "MILO",
-      "NESCAFE",
-      "TEH",
-      "KOPI",
-      "AIR",
-      "JUS",
-    ];
-
-    // Check if line contains any known product
-    for (var product in knownProducts) {
-      if (upper.contains(product)) {
-        return true;
-      }
+    // 1. PET FOOD & SUPPLIES
+    if (RegExp(
+      r'cat|dog|pet|whiskas|makanan kucing|makanan anjing|kibble|pedigree|friskies|purina|royal canin',
+    ).hasMatch(lower)) {
+      return 'Pet Food';
     }
 
-    // Check for product indicators (units of measurement)
-    if (line.contains(
-      RegExp(
-        r'\d+(?:\.\d+)?\s*(?:G|KG|ML|L|PCS|PC|BTL|PKT|BKS|GRAM)',
-        caseSensitive: false,
-      ),
-    )) {
-      return true;
+    // 2. HOUSEHOLD & PERSONAL HYGIENE
+    if (RegExp(
+      r'daia|softener|hand\s*wash|recycle\s*bag|detergen|sabun|syampu|shampoo|ubat\s*gigi|toothpaste|pencuci|cleaner|'
+      r'soap|dishwash|floor\s*clean|febreze|dettol|dynamo|attack|rinso|harpic|breez|clorox|glo|colgate|sensodyne|darlie|'
+      r'pad|tuala\s*wanita|sanitary|kotex|whisper|laurier|sofy|libresse|'
+      r'tissue|tisu|wet\s*tissue|wet\s*wipes|facial\s*tisu|pocket\s*tisu|pop\s*up\s*tisu|kleenex|vinda|scott|premier|cutie|royal\s*gold|paseo',
+    ).hasMatch(lower)) {
+      return 'Household';
     }
 
-    // Check for product indicators
-    if (line.contains("G ") ||
-        line.contains("G-") ||
-        line.contains("G,") ||
-        line.contains("KG") ||
-        line.contains("ML") ||
-        line.contains("GR") ||
-        line.contains("PCS") ||
-        line.contains("PC") ||
-        line.contains("BTL") ||
-        line.contains("PKT") ||
-        line.contains("&") ||
-        line.contains("(") ||
-        line.contains(")")) {
-      return true;
+    // 3. MALAYSIAN BEVERAGES
+    if (RegExp(
+      r'milo|nescafe|teh|kopi|coffee|tea|mineral|jus|soda|minuman|coca|pepsi|cola|juice|water|drink|beverage|100plus|100\s*plus|'
+      r'isotonic|vitagen|yakult|ribena|f&n|pokka|spritzer|season|heaven\s*&\s*earth|yeo|marigold|chrysanthemum|susu\s*kotak|'
+      r'dutch\s*lady|fernleaf|goodday|milklab|sirap|ros|bandung|cincau|soya|vico|horlicks|neslo',
+    ).hasMatch(lower)) {
+      return 'Beverages';
     }
 
-    return false;
-  }
-
-  static String _categorizeItem(String name) {
-    String lower = name.toLowerCase();
-
-    // Pet Food & Supplies
-    if (lower.contains("whiskas") ||
-        lower.contains("cat") ||
-        lower.contains("dog") ||
-        lower.contains("pet") ||
-        lower.contains("makanan kucing") ||
-        lower.contains("makanan anjing")) {
-      return "Pet Food";
+    // 4. BAKING SUPPLIES & BAKERY
+    if (RegExp(
+      r'tepung\s*gandum|tepung\s*kek|tepung\s*jagung|tepung\s*beras|tepung\s*pulut|flour|baking\s*powder|baking\s*soda|'
+      r'soda\s*bikarbonat|yeast|yis|mauripan|cucur|jemput\s*jemput|fritter|tepung\s*wangi|tepung\s*gorang|'
+      r'gardenia|massimo|roti|loaf|classic\s*white|bonanza|somerset|wholemeal|twiggies|muffins|waffles|delicia|toastem|quick\s*bites|'
+      r'butter|mentega|anchor|scb|buttercup|marjerin|margarine|planta|ghee|minyak\s*sapi|vanilla|esen|cocoa\s*powder|serbuk\s*koko|'
+      r'icing\s*sugar|gula\s*aising|whipping\s*cream|whip\s*cream|cheese\s*cream|cream\s*cheese|tatura|philadelphia|mozzarella|cheddar|choc\s*chip',
+    ).hasMatch(lower)) {
+      return 'Baking';
     }
 
-    // Household & Cleaning
-    if (lower.contains("daia") ||
-        lower.contains("powder") ||
-        lower.contains("softergent") ||
-        lower.contains("hand wash") ||
-        lower.contains("recycle bag") ||
-        lower.contains("detergen") ||
-        lower.contains("sabun") ||
-        lower.contains("syampu") ||
-        lower.contains("ubat gigi") ||
-        lower.contains("pencuci") ||
-        lower.contains("cleaner") ||
-        lower.contains("soap") ||
-        lower.contains("wash")) {
-      return "Household";
+    // 5. COOKING PRODUCTS / FRESH INGREDIENTS
+    if (RegExp(
+      r'minyak|cooking\s*oil|seri\s*murni|buruh|saji|vesawit|knife\s*oil|naturel|mazola|carotino|'
+      r'kicap|sos|sauce|chili\s*paste|cili\s*giling|sambal|belacan|kaya|'
+      r'maggi|indo\s*mee|indomie|mee|pasta|noodle|bihun|bee\s*hoon|beehoon|kuey\s*teow|kway\s*teow|kuetiau|'
+      r'mee\s*kuning|yellow\s*mee|suun|glass\s*noodle|yee\s*mee|cin\s*mee|pan\s*mee|instant\s*mee|'
+      r'spaghetti|fettuccine|linguine|angel\s*hair|macaroni|penne|pasta\s*sauce|prego|kimball|bolognese|carbonara|'
+      r'sardine|sardin|tuna|tinned|tin|adabi|baba|brahim|faiza|alagappa|mak\s*nyonya|perencah|pes\s*segera|paste|serbuk\s*kari|curry\s*powder|'
+      r'rempah|kurma|sup|soto|rendang|bunga\s*cengkih|clove|kayu\s*manis|cinnamon|bunga\s*lawang|star\s*anise|buah\s*pelaga|cardamom|'
+      r'jintan|cummin|fennel|ketumbar|coriander|lada|pepper|kunyit|turmeric|halba|fenugreek|kas-kas|asam\s*jawa|tamarind|asam\s*keping|'
+      r'kerisik|gula\s*melaka|palm\s*sugar|telur|egg|gred\s*[a-f]|grade\s*[a-f]|omega|nutriplus|ltkm|ql\s*eggs|eco\s*egg|'
+      r'ayam|chicken|daging|beef|kambing|mutton|ikan|fish|udang|prawn|sotong|squid|bawang|onion|garlic|halia|ginger|cili|chili|serai|lemongrass|'
+      r'daun\s*bawang|spring\s*onion|daun\s*sup|celery\s*leaf|cilantro|pudina|mint|sayur|vegetable|kobis|sawi|bayam|carrot|kentang|potato|tomato|'
+      r'garam|salt|gula|sugar|ajinomoto|msg|perasa|kiub|cube|santan|coconut\s*milk',
+    ).hasMatch(lower)) {
+      return 'Cooking Ingredients';
     }
 
-    // Groceries & Food Items
-    if (lower.contains("crispo") ||
-        lower.contains("minyak") ||
-        lower.contains("sapi") ||
-        lower.contains("honey") ||
-        lower.contains("almond") ||
-        lower.contains("rose") ||
-        lower.contains("flour") ||
-        lower.contains("ghee") ||
-        lower.contains("butter") ||
-        lower.contains("dairy") ||
-        lower.contains("spread") ||
-        lower.contains("eva") ||
-        lower.contains("goodmaid") ||
-        lower.contains("meriah") ||
-        lower.contains("windmill") ||
-        lower.contains("buttercup") ||
-        lower.contains("susu") ||
-        lower.contains("telur") ||
-        lower.contains("ayam") ||
-        lower.contains("ikan") ||
-        lower.contains("roti") ||
-        lower.contains("beras") ||
-        lower.contains("gula") ||
-        lower.contains("garam") ||
-        lower.contains("tepung") ||
-        lower.contains("bawang") ||
-        lower.contains("cili") ||
-        lower.contains("sayur") ||
-        lower.contains("buah")) {
-      return "Groceries";
+    // 6. SNACKS, BISCUITS & READY-TO-EAT DESSERTS
+    if (RegExp(
+      r'cracker|snack|biscuit|biskut|munchys|hup\s*seng|lexus|oreo|tiger|cooki|cake|kek|chocolate|coklat|candy|gula\s*gula|'
+      r'keropok|lekor|kuih|dodol|chips|lays|pringles|mister\s*potato|potato\s*chip|mamee|twisties|super\s*ring|ice\s*cream|aiskrim|nestle|walls|yogurt',
+    ).hasMatch(lower)) {
+      return 'Snacks & Desserts';
     }
 
-    // Beverages
-    if (lower.contains("milo") ||
-        lower.contains("nescafe") ||
-        lower.contains("teh") ||
-        lower.contains("kopi") ||
-        lower.contains("air") ||
-        lower.contains("jus") ||
-        lower.contains("soda") ||
-        lower.contains("minuman") ||
-        lower.contains("coca") ||
-        lower.contains("pepsi") ||
-        lower.contains("cola")) {
-      return "Beverages";
+    // 7. HEALTH & PHARMACY
+    if (RegExp(
+      r'ubat|medicine|vitamin|supplement|panadol|pharmacy|farmasi|mask|sanitizer|antiseptic|bandage|plaster|hurix|gaviscon|eno|strepsils|vicks',
+    ).hasMatch(lower)) {
+      return 'Health';
     }
 
-    return "Others";
+    // 8. TRANSPORT & FUEL
+    if (RegExp(
+      r'parking|petrol|toll|transport|grab|bus|mrt|ktm|touch\s*n\s*go|tng|petron|shell|caltex|petronas|bhp\s*fuel',
+    ).hasMatch(lower)) {
+      return 'Transport';
+    }
+
+    return 'Others';
   }
 }

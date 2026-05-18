@@ -9,24 +9,76 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ProfileCubit extends Cubit<ProfileState> {
   final SupabaseService _supabaseService = SupabaseService();
-  final SupabaseClient _supabase = Supabase.instance.client; // ← ADD THIS
+  final SupabaseClient _supabase = Supabase.instance.client;
   static const String _userStorageKey = 'user_data';
   bool _isLoading = false;
 
+  // Cache the last loaded user
+  UserModel? _cachedUser;
+
   ProfileCubit() : super(ProfileInitial());
 
-  // Load profile from Supabase (not local storage)
-  Future<void> loadProfile() async {
+  // Fast profile load - shows cached data immediately
+  Future<void> loadProfile({bool forceRefresh = false}) async {
     if (_isLoading) return;
     _isLoading = true;
 
+    // Step 1: Show cached data IMMEDIATELY (if available)
+    if (!forceRefresh && _cachedUser != null) {
+      emit(ProfileLoaded(user: _cachedUser!, isEditing: false));
+      _isLoading = false;
+      // Continue to refresh in background
+      _refreshProfileInBackground();
+      return;
+    }
+
+    // Step 2: Try to load from cache quickly
+    final cachedUser = await _loadCachedUser();
+    if (cachedUser != null && !forceRefresh) {
+      _cachedUser = cachedUser;
+      emit(ProfileLoaded(user: cachedUser, isEditing: false));
+      _isLoading = false;
+      // Refresh in background
+      _refreshProfileInBackground();
+      return;
+    }
+
+    // Step 3: No cache, load from network
+    await _loadProfileFromNetwork();
+    _isLoading = false;
+  }
+
+  // Background refresh - doesn't block UI
+  Future<void> _refreshProfileInBackground() async {
+    try {
+      if (!_supabaseService.isUserLoggedIn) {
+        return;
+      }
+
+      final profileData = await _supabaseService.getUserProfile();
+      if (profileData != null && profileData.isNotEmpty) {
+        final user = UserModel.fromJson(profileData);
+        if (_cachedUser != user) {
+          _cachedUser = user;
+          await _saveUser(user);
+          // Only update UI if still relevant
+          if (state is ProfileLoaded) {
+            emit(ProfileLoaded(user: user, isEditing: false));
+          }
+        }
+      }
+    } catch (e) {
+      print('Background refresh failed: $e');
+    }
+  }
+
+  // Network load with single attempt
+  Future<void> _loadProfileFromNetwork() async {
     emit(ProfileLoading());
 
     try {
-      // Check if user is logged in
       if (!_supabaseService.isUserLoggedIn) {
         emit(ProfileUnauthenticated());
-        _isLoading = false;
         return;
       }
 
@@ -34,59 +86,27 @@ class ProfileCubit extends Cubit<ProfileState> {
 
       if (profileData != null && profileData.isNotEmpty) {
         final user = UserModel.fromJson(profileData);
-        print('✅ Profile loaded: ${user.fullName}');
+        _cachedUser = user;
         await _saveUser(user);
         emit(ProfileLoaded(user: user, isEditing: false));
+        print('✅ Profile loaded: ${user.fullName}');
       } else {
-        // No profile in Supabase - CREATE IT IMMEDIATELY
-        print('⚠️ No profile found, creating one...');
         await _createMissingProfile();
       }
     } catch (e) {
       print('Error loading profile: $e');
-
-      // Try to load from local cache as fallback
-      try {
-        final cachedUser = await _loadCachedUser();
-        if (cachedUser != null && cachedUser.id.isNotEmpty) {
-          emit(ProfileLoaded(user: cachedUser, isEditing: false));
-        } else {
-          // Create default but try to get user info from auth
-          await _createMissingProfile();
-        }
-      } catch (fallbackError) {
-        print('Fallback error: $fallbackError');
-        await _createMissingProfile();
-      }
-    } finally {
-      _isLoading = false;
+      await _createMissingProfile();
     }
   }
 
-  // Helper to load cached user
-  Future<UserModel?> _loadCachedUser() async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? userJson = prefs.getString(_userStorageKey);
-      if (userJson != null && userJson.isNotEmpty) {
-        final Map<String, dynamic> decoded = json.decode(userJson);
-        return UserModel.fromJson(decoded);
-      }
-    } catch (e) {
-      print('Error loading cached user: $e');
-    }
-    return null;
-  }
-
-  // Create missing profile
+  // Optimized missing profile creation
   Future<void> _createMissingProfile() async {
     try {
-      final user = _supabase.auth.currentUser; // ← Now works with _supabase
+      final user = _supabase.auth.currentUser;
       if (user != null) {
-        // Get name from various sources
+        // Get name efficiently
         String userName = 'User';
 
-        // Try to get from user metadata
         if (user.userMetadata != null) {
           userName =
               user.userMetadata!['full_name'] ??
@@ -95,12 +115,11 @@ class ProfileCubit extends Cubit<ProfileState> {
               'User';
         }
 
-        // If still default, try to get from email
         if (userName == 'User' && user.email != null) {
           userName = user.email!.split('@').first;
         }
 
-        print('Creating profile for user: ${user.id} with name: $userName');
+        print('Creating profile for user: ${user.id}');
 
         await _supabaseService.createUserProfile(
           userId: user.id,
@@ -108,46 +127,62 @@ class ProfileCubit extends Cubit<ProfileState> {
           name: userName,
         );
 
-        // Reload profile after creation
+        // Single reload after creation
         final profileData = await _supabaseService.getUserProfile();
         if (profileData != null) {
           final newUser = UserModel.fromJson(profileData);
+          _cachedUser = newUser;
           await _saveUser(newUser);
           emit(ProfileLoaded(user: newUser, isEditing: false));
-          print('✅ Profile created and loaded successfully');
         } else {
-          // Still no profile? Create default
           final defaultUser = UserModel.defaultUser().copyWith(
             id: user.id,
             email: user.email ?? '',
             fullName: userName,
           );
+          _cachedUser = defaultUser;
           await _saveUser(defaultUser);
           emit(ProfileLoaded(user: defaultUser, isEditing: false));
         }
       } else {
-        // No user logged in
         final defaultUser = UserModel.defaultUser();
+        _cachedUser = defaultUser;
         emit(ProfileLoaded(user: defaultUser, isEditing: false));
       }
     } catch (e) {
-      print('Error creating missing profile: $e');
+      print('Error creating profile: $e');
       final defaultUser = UserModel.defaultUser();
+      _cachedUser = defaultUser;
       emit(ProfileLoaded(user: defaultUser, isEditing: false));
     }
   }
 
-  // Save user to local SharedPreferences (cache only)
+  // Fast cache load - synchronous where possible
+  Future<UserModel?> _loadCachedUser() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String? userJson = prefs.getString(_userStorageKey);
+      if (userJson != null && userJson.isNotEmpty) {
+        return UserModel.fromJson(json.decode(userJson));
+      }
+    } catch (e) {
+      print('Error loading cached user: $e');
+    }
+    return null;
+  }
+
+  // Save user (non-blocking)
   Future<void> _saveUser(UserModel user) async {
+    _cachedUser = user;
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userStorageKey, json.encode(user.toJson()));
     } catch (e) {
-      // Silent fail - not critical
+      // Silent fail
     }
   }
 
-  // Public method to save user to Supabase
+  // All update methods remain the same but with cache update
   Future<void> saveUser(UserModel user) async {
     try {
       await _supabaseService.updateUserProfile(
@@ -159,6 +194,7 @@ class ProfileCubit extends Cubit<ProfileState> {
         smallExpensesLimit: user.smallExpensesLimit,
         profileImageUrl: user.profileImageUrl,
       );
+      _cachedUser = user;
       await _saveUser(user);
       emit(ProfileLoaded(user: user, isEditing: false));
       emit(ProfileUpdateSuccess(message: 'Profile saved successfully'));
@@ -173,9 +209,9 @@ class ProfileCubit extends Cubit<ProfileState> {
       final updatedUser = currentState.user.copyWith(
         pushNotificationsEnabled: !currentState.user.pushNotificationsEnabled,
       );
+      _cachedUser = updatedUser;
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       _saveUser(updatedUser);
-      // Update in Supabase
       _supabaseService.updateUserProfile(
         pushNotificationsEnabled: updatedUser.pushNotificationsEnabled,
       );
@@ -188,9 +224,9 @@ class ProfileCubit extends Cubit<ProfileState> {
       final updatedUser = currentState.user.copyWith(
         isDarkMode: !currentState.user.isDarkMode,
       );
+      _cachedUser = updatedUser;
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       _saveUser(updatedUser);
-      // Update in Supabase
       _supabaseService.updateUserProfile(isDarkMode: updatedUser.isDarkMode);
     }
   }
@@ -201,9 +237,9 @@ class ProfileCubit extends Cubit<ProfileState> {
       final updatedUser = currentState.user.copyWith(
         biometricEnabled: !currentState.user.biometricEnabled,
       );
+      _cachedUser = updatedUser;
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       _saveUser(updatedUser);
-      // Update in Supabase
       _supabaseService.updateUserProfile(
         biometricEnabled: updatedUser.biometricEnabled,
       );
@@ -226,10 +262,10 @@ class ProfileCubit extends Cubit<ProfileState> {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;
       final updatedUser = currentState.user.copyWith(currency: currency);
+      _cachedUser = updatedUser;
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileUpdateSuccess(message: 'Currency updated to $currency'));
       _saveUser(updatedUser);
-      // Update in Supabase
       _supabaseService.updateUserProfile(currency: currency);
     }
   }
@@ -238,6 +274,7 @@ class ProfileCubit extends Cubit<ProfileState> {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;
       final updatedUser = currentState.user.copyWith(smallExpensesLimit: limit);
+      _cachedUser = updatedUser;
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(
         ProfileUpdateSuccess(
@@ -246,7 +283,6 @@ class ProfileCubit extends Cubit<ProfileState> {
         ),
       );
       _saveUser(updatedUser);
-      // Update in Supabase
       _supabaseService.updateUserProfile(smallExpensesLimit: limit);
     }
   }
@@ -255,10 +291,10 @@ class ProfileCubit extends Cubit<ProfileState> {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;
       final updatedUser = currentState.user.copyWith(profileImageUrl: imageUrl);
+      _cachedUser = updatedUser;
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileImageUpdated(imageUrl: imageUrl));
       _saveUser(updatedUser);
-      // Update in Supabase
       _supabaseService.updateUserProfile(profileImageUrl: imageUrl);
     }
   }
@@ -271,10 +307,10 @@ class ProfileCubit extends Cubit<ProfileState> {
         return;
       }
       final updatedUser = currentState.user.copyWith(fullName: fullName.trim());
+      _cachedUser = updatedUser;
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileUpdateSuccess(message: 'Full name updated successfully'));
       _saveUser(updatedUser);
-      // Update in Supabase
       _supabaseService.updateUserProfile(fullName: fullName.trim());
     }
   }
@@ -287,11 +323,10 @@ class ProfileCubit extends Cubit<ProfileState> {
         return;
       }
       final updatedUser = currentState.user.copyWith(email: email.trim());
+      _cachedUser = updatedUser;
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileUpdateSuccess(message: 'Email updated successfully'));
       _saveUser(updatedUser);
-      // Note: Email update through Supabase requires special handling
-      // This might require re-authentication
     }
   }
 
@@ -299,21 +334,16 @@ class ProfileCubit extends Cubit<ProfileState> {
     emit(ProfilePasswordChanged());
   }
 
-  // Fast clear local profile data - no unnecessary delays
   void clearLocalProfileData() {
-    // Fire and forget - don't await
+    _cachedUser = null;
     SharedPreferences.getInstance()
-        .then((prefs) {
-          prefs.remove(_userStorageKey);
-        })
-        .catchError((e) {
-          // Silent fail - not critical
-        });
+        .then((prefs) => prefs.remove(_userStorageKey))
+        .catchError((e) {});
   }
 
-  // Reset to default profile (for testing)
   Future<void> resetToDefault() async {
     final defaultUser = UserModel.defaultUser();
+    _cachedUser = defaultUser;
     await _saveUser(defaultUser);
     emit(ProfileLoaded(user: defaultUser, isEditing: false));
     emit(ProfileUpdateSuccess(message: 'Profile reset to default'));

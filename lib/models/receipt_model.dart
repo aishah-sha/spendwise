@@ -34,6 +34,7 @@ class ReceiptData {
     required this.merchant,
     required this.total,
     required this.items,
+    DateTime? date,
   });
 
   ReceiptModel toReceiptModel({String? id, String? userId}) {

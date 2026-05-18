@@ -32,7 +32,7 @@ class OnboardingCubit extends Cubit<OnboardingState> {
 
     emit(OnboardingLoading());
 
-    // Simulate loading
+    // Show splash content after brief loading
     Future.delayed(const Duration(milliseconds: 500), () {
       if (!isClosed) {
         emit(
@@ -44,8 +44,8 @@ class OnboardingCubit extends Cubit<OnboardingState> {
       }
     });
 
-    // Navigate after 3 seconds
-    _timer = Timer(const Duration(seconds: 3), () {
+    // Auto-navigate to welcome after 3.5s (500ms load + 3s progress bar)
+    _timer = Timer(const Duration(milliseconds: 3500), () {
       if (!isClosed) {
         emit(OnboardingNavigation(nextRoute: '/welcome'));
       }

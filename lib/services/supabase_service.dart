@@ -94,12 +94,15 @@ class SupabaseService {
       if (pushNotificationsEnabled != null) {
         updates['push_notifications_enabled'] = pushNotificationsEnabled;
       }
-      if (biometricEnabled != null)
+      if (biometricEnabled != null) {
         updates['biometric_enabled'] = biometricEnabled;
-      if (smallExpensesLimit != null)
+      }
+      if (smallExpensesLimit != null) {
         updates['small_expenses_limit'] = smallExpensesLimit;
-      if (profileImageUrl != null)
+      }
+      if (profileImageUrl != null) {
         updates['profile_image_url'] = profileImageUrl;
+      }
       updates['updated_at'] = DateTime.now().toIso8601String();
 
       await _supabase
@@ -174,7 +177,7 @@ class SupabaseService {
         await updateTotalSpent(amount, isAdding: true);
       }
 
-      return result as Map<String, dynamic>;
+      return result;
     } catch (e) {
       print('Error adding transaction: $e');
       rethrow;
