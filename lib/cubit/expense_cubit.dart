@@ -234,77 +234,92 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     await loadExpenses();
   }
 
-  Color getCategoryColor(String category) {
-    switch (category.toLowerCase()) {
-      case 'rent':
-        return Colors.blue;
-      case 'stationery':
-        return Colors.purple;
-      case 'clothes':
-      case 'clothing':
-        return Colors.orange;
-      case 'beverages':
-        return Colors.green;
-      case 'food':
-        return Colors.red;
-      case 'groceries':
-        return Colors.blue;
-      case 'supplies':
-        return Colors.brown;
-      case 'pet food':
-        return Colors.deepOrange;
-      case 'household':
-        return Colors.cyan;
-      case 'baking':
-        return Colors.amber;
-      case 'cooking ingredients':
-        return Colors.deepPurple;
-      case 'snacks & desserts':
-        return Colors.pink;
-      case 'health':
-        return Colors.teal;
-      case 'transport':
-        return Colors.indigo;
-      case 'others':
+  IconData getCategoryIcon(String category) {
+    switch (category) {
+      // Food & Dining
+      case 'Food':
+        return Icons.restaurant_outlined;
+      case 'Beverages':
+        return Icons.local_cafe_outlined;
+      case 'Snacks & Desserts':
+        return Icons.icecream_outlined;
+
+      // Shopping & Groceries
+      case 'Groceries':
+        return Icons.shopping_cart_outlined;
+      case 'Shopping':
+        return Icons.shopping_bag_outlined;
+      case 'Clothes':
+        return Icons.checkroom_outlined;
+
+      // Home & Living
+      case 'Household':
+        return Icons.home_outlined;
+      case 'Baking':
+        return Icons.cake_outlined;
+      case 'Cooking Ingredients':
+        return Icons.kitchen_outlined;
+
+      // Transportation
+      case 'Transport':
+        return Icons.directions_car_outlined;
+
+      // Entertainment
+      case 'Entertainment':
+        return Icons.movie_outlined;
+
+      // Health & Pets
+      case 'Health':
+        return Icons.favorite_outlined;
+      case 'Pet Food':
+        return Icons.pets_outlined;
+
+      // Education & Office
+      case 'Stationery':
+        return Icons.edit_outlined;
+
+      // Default
+      case 'Others':
+        return Icons.category_outlined;
       default:
-        return Colors.grey;
+        return Icons.label_outlined;
     }
   }
 
-  IconData getCategoryIcon(String category) {
-    switch (category.toLowerCase()) {
-      case 'rent':
-        return Icons.home;
-      case 'stationery':
-        return Icons.edit;
-      case 'clothes':
-      case 'clothing':
-        return Icons.shopping_bag;
-      case 'beverages':
-        return Icons.local_drink;
-      case 'food':
-        return Icons.fastfood;
-      case 'groceries':
-        return Icons.shopping_cart;
-      case 'supplies':
-        return Icons.inventory;
-      case 'pet food':
-        return Icons.pets;
-      case 'household':
-        return Icons.cleaning_services;
-      case 'baking':
-        return Icons.cake;
-      case 'cooking ingredients':
-        return Icons.soup_kitchen;
-      case 'snacks & desserts':
-        return Icons.cookie;
-      case 'health':
-        return Icons.medical_services;
-      case 'transport':
-        return Icons.directions_car;
-      case 'others':
+  Color getCategoryColor(String categoryName) {
+    switch (categoryName) {
+      case 'Groceries':
+        return const Color(0xFF4CAF50); // Green
+      case 'Food':
+        return const Color(0xFFFF9800); // Orange
+      case 'Beverages':
+        return const Color(0xFF2196F3); // Blue
+      case 'Clothes':
+        return const Color(0xFF9C27B0); // Purple
+      case 'Stationery':
+        return const Color(0xFF607D8B); // Blue Grey
+      case 'Transport':
+        return const Color(0xFF00BCD4); // Cyan
+      case 'Entertainment':
+        return const Color(0xFFE91E63); // Pink
+      case 'Shopping':
+        return const Color(0xFFFF5722); // Deep Orange
+      case 'Household':
+        return const Color(0xFF8BC34A); // Light Green
+      case 'Pet Food':
+        return const Color(0xFF795548); // Brown
+      case 'Health':
+        return const Color(0xFFF44336); // Red
+      case 'Snacks & Desserts':
+        return const Color(0xFFFF6B6B); // Light Red
+      case 'Cooking Ingredients':
+        return const Color(0xFFFFA726); // Orange Light
+      case 'Baking':
+        return const Color(0xFFFFB74D); // Amber
+      case 'Others':
+        return const Color(0xFF9E9E9E); // Grey
       default:
-        return Icons.more_horiz;
+        return const Color(0xFF32BA32); // Default Green
     }
   }
 

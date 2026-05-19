@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 // Cubits
 import '../cubit/budget_cubit.dart';
@@ -19,7 +20,6 @@ import 'budget_screen.dart';
 import 'dashboard_screen.dart';
 import 'expense_history_screen.dart';
 import 'add_expense_screen.dart';
-import 'notification_screen.dart';
 import 'welcome_screen.dart';
 
 class ProfileScreen extends StatelessWidget {
@@ -33,7 +33,6 @@ class ProfileScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Load profile when screen first builds
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<ProfileCubit>().loadProfile();
     });
@@ -41,7 +40,6 @@ class ProfileScreen extends StatelessWidget {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
         if (state is Unauthenticated) {
-          // Navigate to welcome screen when logged out
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const WelcomeScreen()),
             (route) => false,
@@ -301,6 +299,32 @@ class _ProfileContent extends StatelessWidget {
 
   const _ProfileContent({required this.isDarkMode});
 
+  ImageProvider _getProfileImage(String imageUrl) {
+    if (imageUrl.isEmpty) {
+      return const NetworkImage(
+        'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y',
+      );
+    }
+
+    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+      return NetworkImage(imageUrl);
+    }
+
+    try {
+      String cleanPath = imageUrl.replaceFirst('file://', '');
+      final file = File(cleanPath);
+      if (file.existsSync()) {
+        return FileImage(file);
+      }
+    } catch (e) {
+      print('Error loading image: $e');
+    }
+
+    return const NetworkImage(
+      'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y',
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<ProfileCubit, ProfileState>(
@@ -402,20 +426,31 @@ class _ProfileContent extends StatelessWidget {
                 width: 2,
               ),
             ),
-            child: CircleAvatar(
-              radius: 56,
-              backgroundImage: _getProfileImage(state.user.profileImageUrl),
-              child: Container(
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.black.withOpacity(0.3),
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                CircleAvatar(
+                  radius: 56,
+                  backgroundColor: Colors.grey[300],
+                  backgroundImage: state.user.profileImageUrl.isNotEmpty
+                      ? _getProfileImage(state.user.profileImageUrl)
+                      : null,
+                  child: state.user.profileImageUrl.isEmpty
+                      ? Icon(Icons.person, size: 56, color: Colors.grey[600])
+                      : null,
                 ),
-                child: const Icon(
-                  Icons.camera_alt,
-                  color: Colors.white,
-                  size: 30,
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.black.withOpacity(0.3),
+                  ),
+                  child: const Icon(
+                    Icons.camera_alt,
+                    color: Colors.white,
+                    size: 30,
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
         ),
@@ -453,15 +488,6 @@ class _ProfileContent extends StatelessWidget {
         ),
       ],
     );
-  }
-
-  ImageProvider _getProfileImage(String imageUrl) {
-    if (imageUrl.startsWith('http')) {
-      return NetworkImage(imageUrl);
-    } else if (imageUrl.startsWith('file://') || imageUrl.startsWith('/')) {
-      return FileImage(File(imageUrl));
-    }
-    return const AssetImage('assets/default_avatar.png');
   }
 
   Future<void> _showImagePickerOptions(
@@ -512,8 +538,7 @@ class _ProfileContent extends StatelessWidget {
                   _pickImage(ImageSource.camera, context, state);
                 },
               ),
-              if (state.user.profileImageUrl.isNotEmpty &&
-                  !state.user.profileImageUrl.contains('default_avatar'))
+              if (state.user.profileImageUrl.isNotEmpty)
                 ListTile(
                   leading: const Icon(
                     Icons.delete_outline,
@@ -548,30 +573,34 @@ class _ProfileContent extends StatelessWidget {
       );
 
       if (image != null) {
-        // Convert to File and save
-        final File imageFile = File(image.path);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Saving profile photo...'),
+              duration: Duration(seconds: 1),
+            ),
+          );
+        }
 
-        // Show loading indicator
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Uploading image...'),
-            duration: Duration(milliseconds: 500),
-          ),
+        final Directory appDocDir = await getApplicationDocumentsDirectory();
+        final String fileName =
+            'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+        final String permanentPath = '${appDocDir.path}/$fileName';
+
+        final File tempFile = File(image.path);
+        final File permanentFile = await tempFile.copy(permanentPath);
+
+        await context.read<ProfileCubit>().updateProfileImage(
+          permanentFile.path,
         );
-
-        // Here you would typically upload to your server/Supabase Storage
-        // For now, we'll save locally and update the profile
-        final String imagePath = imageFile.path;
-
-        // Update profile with new image path/URL
-        context.read<ProfileCubit>().updateProfileImage(imagePath);
+        await context.read<ProfileCubit>().loadProfile(forceRefresh: true);
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
               content: Text('Profile photo updated!'),
               backgroundColor: ProfileScreen.accentGreen,
-              duration: Duration(seconds: 1),
+              duration: Duration(seconds: 2),
             ),
           );
         }
@@ -580,7 +609,7 @@ class _ProfileContent extends StatelessWidget {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error picking image: ${e.toString()}'),
+            content: Text('Error: ${e.toString()}'),
             backgroundColor: Colors.redAccent,
           ),
         );
@@ -602,17 +631,21 @@ class _ProfileContent extends StatelessWidget {
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
+            onPressed: () async {
               Navigator.pop(context);
-              // Set to default avatar
-              context.read<ProfileCubit>().updateProfileImage('');
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Profile photo removed'),
-                  backgroundColor: ProfileScreen.accentGreen,
-                  duration: Duration(seconds: 1),
-                ),
+              await context.read<ProfileCubit>().updateProfileImage('');
+              await context.read<ProfileCubit>().loadProfile(
+                forceRefresh: true,
               );
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Profile photo removed'),
+                    backgroundColor: ProfileScreen.accentGreen,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
             },
             child: const Text(
               'Remove',
@@ -928,9 +961,13 @@ class _ProfileContent extends StatelessWidget {
                 children: [
                   CircleAvatar(
                     radius: 50,
-                    backgroundImage: _getProfileImage(
-                      state.user.profileImageUrl,
-                    ),
+                    backgroundColor: Colors.grey[300],
+                    backgroundImage: state.user.profileImageUrl.isNotEmpty
+                        ? _getProfileImage(state.user.profileImageUrl)
+                        : null,
+                    child: state.user.profileImageUrl.isEmpty
+                        ? Icon(Icons.person, size: 50, color: Colors.grey[600])
+                        : null,
                   ),
                   Positioned(
                     bottom: 0,
@@ -1037,7 +1074,7 @@ class _ProfileContent extends StatelessWidget {
               ),
               const SizedBox(height: 30),
               ElevatedButton(
-                onPressed: () {
+                onPressed: () async {
                   if (nameController.text != state.user.fullName) {
                     context.read<ProfileCubit>().updateFullName(
                       nameController.text,
@@ -1048,7 +1085,10 @@ class _ProfileContent extends StatelessWidget {
                       emailController.text,
                     );
                   }
-                  Navigator.pop(context);
+                  await context.read<ProfileCubit>().loadProfile();
+                  if (context.mounted) {
+                    Navigator.pop(context);
+                  }
                 },
                 style: ElevatedButton.styleFrom(
                   backgroundColor: ProfileScreen.accentGreen,
@@ -1175,20 +1215,14 @@ class _ProfileContent extends StatelessWidget {
             ),
             TextButton(
               onPressed: () async {
-                Navigator.of(context).pop(); // Close dialog
-
-                // Show loading indicator
+                Navigator.of(context).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
                     content: Text('Logging out...'),
                     duration: Duration(milliseconds: 500),
                   ),
                 );
-
-                // Call sign out
                 await context.read<AuthCubit>().signOut();
-
-                // Force navigation to welcome screen
                 if (context.mounted) {
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(

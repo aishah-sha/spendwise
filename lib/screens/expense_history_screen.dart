@@ -789,8 +789,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
   ) {
     return Dismissible(
       key: Key(expense.id),
-      direction: DismissDirection
-          .endToStart, // Only allow swipe from right to left for delete
+      direction: DismissDirection.endToStart,
       background: Container(), // No background for left swipe
       secondaryBackground: Container(
         alignment: Alignment.centerRight,
@@ -803,37 +802,53 @@ class ExpenseHistoryScreen extends StatelessWidget {
       ),
       confirmDismiss: (direction) async {
         if (direction == DismissDirection.endToStart) {
-          final confirm = await _showDeleteConfirmation(context);
-          return confirm;
+          final confirmed = await _showDeleteConfirmation(context);
+          if (confirmed) {
+            // Perform deletion and return true only if successful
+            try {
+              // Update budget before deletion
+              _updateBudgetOnDelete(context, expense);
+
+              // Delete the expense
+              await context.read<ExpenseCubit>().deleteExpense(expense.id);
+
+              // Force refresh on dashboard by loading expenses again
+              await context.read<ExpenseCubit>().loadExpenses();
+
+              // Also refresh budget to update remaining amounts
+              context.read<budget_cubit.BudgetCubit>().loadBudget(
+                forceRefresh: true,
+              );
+
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Expense deleted successfully'),
+                    backgroundColor: Colors.green,
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              }
+              return true;
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Error deleting expense: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+              return false;
+            }
+          }
+          return false;
         }
         return false;
       },
-      onDismissed: (direction) async {
-        if (direction == DismissDirection.endToStart) {
-          // Update budget before deletion
-          _updateBudgetOnDelete(context, expense);
-
-          // Delete the expense
-          await context.read<ExpenseCubit>().deleteExpense(expense.id);
-
-          // Force refresh on dashboard by loading expenses again
-          await context.read<ExpenseCubit>().loadExpenses();
-
-          // Also refresh budget to update remaining amounts
-          context.read<budget_cubit.BudgetCubit>().loadBudget(
-            forceRefresh: true,
-          );
-
-          if (context.mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Expense deleted successfully'),
-                backgroundColor: Colors.green,
-                duration: Duration(seconds: 2),
-              ),
-            );
-          }
-        }
+      onDismissed: (direction) {
+        // The widget will be removed automatically when confirmDismiss returns true
+        // No need to do anything here
       },
       child: _buildExpenseItem(context, expense, isDarkMode),
     );

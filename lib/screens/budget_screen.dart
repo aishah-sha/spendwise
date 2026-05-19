@@ -504,8 +504,8 @@ class BudgetView extends StatelessWidget {
       statusTextColor = Colors.white;
     } else if (progress > 0) {
       statusText = 'Good';
-      progressColor = goodColor;
-      statusBgColor = goodColor;
+      progressColor = const Color.fromARGB(255, 0, 177, 172);
+      statusBgColor = const Color.fromARGB(255, 98, 227, 223);
       statusTextColor = Colors.white;
     } else {
       statusText = 'On Track';

@@ -1,4 +1,6 @@
 // models/user_model.dart
+import 'dart:io';
+
 class UserModel {
   final String id;
   final String email;
@@ -125,5 +127,82 @@ class UserModel {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
+  }
+
+  // Helper method to check if profile image is a network image
+  bool get hasNetworkImage {
+    return profileImageUrl.isNotEmpty &&
+        (profileImageUrl.startsWith('http://') ||
+            profileImageUrl.startsWith('https://'));
+  }
+
+  // Helper method to check if profile image is a local file
+  bool get hasLocalImage {
+    return profileImageUrl.isNotEmpty &&
+        (profileImageUrl.startsWith('/') ||
+            profileImageUrl.startsWith('file://') ||
+            profileImageUrl.contains('/storage/'));
+  }
+
+  // Helper method to check if profile image exists (for local files)
+  bool get hasValidLocalImage {
+    if (!hasLocalImage) return false;
+
+    try {
+      String cleanPath = profileImageUrl.replaceFirst('file://', '');
+      return File(cleanPath).existsSync();
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // Helper method to get clean file path (removes file:// prefix)
+  String get cleanImagePath {
+    if (profileImageUrl.isEmpty) return '';
+    return profileImageUrl.replaceFirst('file://', '');
+  }
+
+  // Helper method to check if user has any profile image
+  bool get hasProfileImage {
+    return profileImageUrl.isNotEmpty;
+  }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is UserModel &&
+        other.id == id &&
+        other.email == email &&
+        other.fullName == fullName &&
+        other.currency == currency &&
+        other.isDarkMode == isDarkMode &&
+        other.pushNotificationsEnabled == pushNotificationsEnabled &&
+        other.biometricEnabled == biometricEnabled &&
+        other.smallExpensesLimit == smallExpensesLimit &&
+        other.profileImageUrl == profileImageUrl &&
+        other.totalSpent == totalSpent &&
+        other.totalBudget == totalBudget;
+  }
+
+  @override
+  int get hashCode {
+    return Object.hash(
+      id,
+      email,
+      fullName,
+      currency,
+      isDarkMode,
+      pushNotificationsEnabled,
+      biometricEnabled,
+      smallExpensesLimit,
+      profileImageUrl,
+      totalSpent,
+      totalBudget,
+    );
+  }
+
+  @override
+  String toString() {
+    return 'UserModel(id: $id, email: $email, fullName: $fullName, currency: $currency, hasImage: ${hasProfileImage ? 'yes' : 'no'})';
   }
 }
