@@ -1,7 +1,7 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:convert';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/notification_model.dart';
+import '../services/notification_service.dart';
 
 class NotificationState {
   final List<NotificationModel> notifications;
@@ -25,112 +25,155 @@ class NotificationState {
 }
 
 class NotificationCubit extends Cubit<NotificationState> {
-  static const String _storageKey = 'notifications';
-  bool _isProcessing = false; // Prevent duplicate notifications
+  final _supabase = Supabase.instance.client;
+  bool _isProcessing = false;
 
   NotificationCubit() : super(NotificationState.initial()) {
     _loadNotifications();
   }
 
+  // ─── Load from Supabase ───────────────────────────────────────────────────
+
   Future<void> _loadNotifications() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? saved = prefs.getString(_storageKey);
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
 
-      if (saved != null) {
-        final List<dynamic> decoded = json.decode(saved);
-        final notifications =
-            decoded.map((item) => NotificationModel.fromJson(item)).toList()
-              ..sort((a, b) => b.timestamp.compareTo(a.timestamp));
+      final response = await _supabase
+          .from('notifications')
+          .select()
+          .eq('user_id', userId)
+          .order('created_at', ascending: false);
 
-        final unreadCount = notifications.where((n) => !n.isRead).length;
+      final notifications = (response as List)
+          .map((item) => NotificationModel.fromDatabaseJson(item))
+          .toList();
 
-        emit(
-          state.copyWith(
-            notifications: notifications,
-            unreadCount: unreadCount,
-          ),
-        );
-      }
+      final unreadCount = notifications.where((n) => !n.isRead).length;
+
+      emit(state.copyWith(
+        notifications: notifications,
+        unreadCount: unreadCount,
+      ));
     } catch (e) {
       print('Error loading notifications: $e');
     }
   }
 
-  Future<void> _saveNotifications() async {
+  // ─── Save one notification to Supabase ───────────────────────────────────
+  // user_id is added here so the model itself stays clean
+
+  Future<void> _saveToSupabase(NotificationModel notification) async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final encoded = state.notifications.map((n) => n.toJson()).toList();
-      await prefs.setString(_storageKey, json.encode(encoded));
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      final data = notification.toDatabaseJson();
+      data['user_id'] = userId;
+
+      await _supabase.from('notifications').insert(data);
     } catch (e) {
-      print('Error saving notifications: $e');
+      print('Error saving notification: $e');
     }
   }
 
+  // ─── Add notification + fire system banner ────────────────────────────────
+
   Future<void> addNotification(NotificationModel notification) async {
-    // Check if notification already exists to prevent duplicates
     final exists = state.notifications.any((n) => n.id == notification.id);
     if (exists) return;
 
     final updatedNotifications = [notification, ...state.notifications];
     final unreadCount = updatedNotifications.where((n) => !n.isRead).length;
 
-    emit(
-      state.copyWith(
-        notifications: updatedNotifications,
-        unreadCount: unreadCount,
-      ),
-    );
+    emit(state.copyWith(
+      notifications: updatedNotifications,
+      unreadCount: unreadCount,
+    ));
 
-    await _saveNotifications();
+    // 1. Persist to Supabase notifications table
+    await _saveToSupabase(notification);
+
+    // 2. Show system banner on the device
+    await NotificationService.instance.showNotification(
+      // UUID hashCode gives a stable int id for the plugin
+      id: notification.id.hashCode.abs() % 100000,
+      title: notification.title,
+      body: notification.message,
+    );
   }
+
+  // ─── Mark single notification as read ────────────────────────────────────
 
   Future<void> markAsRead(String notificationId) async {
     final updatedNotifications = state.notifications.map((n) {
-      if (n.id == notificationId) {
-        return n.copyWith(isRead: true);
-      }
+      if (n.id == notificationId) return n.copyWith(isRead: true);
       return n;
     }).toList();
 
     final unreadCount = updatedNotifications.where((n) => !n.isRead).length;
 
-    emit(
-      state.copyWith(
-        notifications: updatedNotifications,
-        unreadCount: unreadCount,
-      ),
-    );
+    emit(state.copyWith(
+      notifications: updatedNotifications,
+      unreadCount: unreadCount,
+    ));
 
-    await _saveNotifications();
+    try {
+      await _supabase
+          .from('notifications')
+          .update({'is_read': true})
+          .eq('id', notificationId);
+    } catch (e) {
+      print('Error marking as read: $e');
+    }
   }
 
+  // ─── Mark all as read ─────────────────────────────────────────────────────
+
   Future<void> markAllAsRead() async {
-    final updatedNotifications = state.notifications
-        .map((n) => n.copyWith(isRead: true))
-        .toList();
+    final updatedNotifications =
+        state.notifications.map((n) => n.copyWith(isRead: true)).toList();
 
     emit(state.copyWith(notifications: updatedNotifications, unreadCount: 0));
 
-    await _saveNotifications();
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      await _supabase
+          .from('notifications')
+          .update({'is_read': true})
+          .eq('user_id', userId)
+          .eq('is_read', false);
+    } catch (e) {
+      print('Error marking all as read: $e');
+    }
   }
 
+  // ─── Delete a single notification ─────────────────────────────────────────
+
   Future<void> deleteNotification(String notificationId) async {
-    final updatedNotifications = state.notifications
-        .where((n) => n.id != notificationId)
-        .toList();
+    final updatedNotifications =
+        state.notifications.where((n) => n.id != notificationId).toList();
 
     final unreadCount = updatedNotifications.where((n) => !n.isRead).length;
 
-    emit(
-      state.copyWith(
-        notifications: updatedNotifications,
-        unreadCount: unreadCount,
-      ),
-    );
+    emit(state.copyWith(
+      notifications: updatedNotifications,
+      unreadCount: unreadCount,
+    ));
 
-    await _saveNotifications();
+    try {
+      await _supabase
+          .from('notifications')
+          .delete()
+          .eq('id', notificationId);
+    } catch (e) {
+      print('Error deleting notification: $e');
+    }
   }
+
+  // ─── Delete multiple notifications ────────────────────────────────────────
 
   Future<void> deleteMultipleNotifications(List<String> notificationIds) async {
     final updatedNotifications = state.notifications
@@ -139,22 +182,42 @@ class NotificationCubit extends Cubit<NotificationState> {
 
     final unreadCount = updatedNotifications.where((n) => !n.isRead).length;
 
-    emit(
-      state.copyWith(
-        notifications: updatedNotifications,
-        unreadCount: unreadCount,
-      ),
-    );
+    emit(state.copyWith(
+      notifications: updatedNotifications,
+      unreadCount: unreadCount,
+    ));
 
-    await _saveNotifications();
+    try {
+      await _supabase
+          .from('notifications')
+          .delete()
+          .inFilter('id', notificationIds);
+    } catch (e) {
+      print('Error deleting multiple notifications: $e');
+    }
   }
+
+  // ─── Clear all notifications for this user ────────────────────────────────
 
   Future<void> clearNotifications() async {
     emit(NotificationState.initial());
-    await _saveNotifications();
+
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      await _supabase
+          .from('notifications')
+          .delete()
+          .eq('user_id', userId);
+    } catch (e) {
+      print('Error clearing notifications: $e');
+    }
   }
 
-  // FIXED: Made this an async function and properly await addNotification
+  // ─── Budget threshold check ───────────────────────────────────────────────
+  // Logic unchanged — only id generation updated to UUID
+
   Future<void> checkBudgetAndNotify({
     required double monthlyBudget,
     required double totalSpent,
@@ -163,12 +226,10 @@ class NotificationCubit extends Cubit<NotificationState> {
   }) async {
     final now = DateTime.now();
 
-    // Prevent duplicate processing
     if (_isProcessing) return;
     _isProcessing = true;
 
     try {
-      // Check monthly budget
       if (monthlyBudget > 0) {
         final spentPercentage = (totalSpent / monthlyBudget) * 100;
 
@@ -182,23 +243,20 @@ class NotificationCubit extends Cubit<NotificationState> {
           );
 
           if (!existingNear) {
-            // AWAIT is now correct since addNotification returns Future
-            await addNotification(
-              NotificationModel(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                title: '⚠️ Monthly Budget Near Limit',
-                message:
-                    'You have spent ${spentPercentage.toStringAsFixed(1)}% of your monthly budget. Only RM ${(monthlyBudget - totalSpent).toStringAsFixed(2)} remaining.',
-                timestamp: now,
-                type: NotificationType.monthlyBudgetNearLimit,
-                data: {
-                  'percentage': spentPercentage,
-                  'remaining': monthlyBudget - totalSpent,
-                  'totalSpent': totalSpent,
-                  'budget': monthlyBudget,
-                },
-              ),
-            );
+            await addNotification(NotificationModel(
+              // No id passed — auto-generates UUID
+              title: '⚠️ Monthly Budget Near Limit',
+              message:
+                  'You have spent ${spentPercentage.toStringAsFixed(1)}% of your monthly budget. Only RM ${(monthlyBudget - totalSpent).toStringAsFixed(2)} remaining.',
+              timestamp: now,
+              type: NotificationType.monthlyBudgetNearLimit,
+              data: {
+                'percentage': spentPercentage,
+                'remaining': monthlyBudget - totalSpent,
+                'totalSpent': totalSpent,
+                'budget': monthlyBudget,
+              },
+            ));
           }
         } else if (spentPercentage >= 100) {
           final existingExceeded = state.notifications.any(
@@ -211,26 +269,22 @@ class NotificationCubit extends Cubit<NotificationState> {
 
           if (!existingExceeded) {
             final overAmount = totalSpent - monthlyBudget;
-            await addNotification(
-              NotificationModel(
-                id: DateTime.now().millisecondsSinceEpoch.toString(),
-                title: '🚨 Monthly Budget Exceeded!',
-                message:
-                    'You have exceeded your monthly budget by RM ${overAmount.toStringAsFixed(2)}. Consider adjusting your spending.',
-                timestamp: now,
-                type: NotificationType.monthlyBudgetExceeded,
-                data: {
-                  'overAmount': overAmount,
-                  'totalSpent': totalSpent,
-                  'budget': monthlyBudget,
-                },
-              ),
-            );
+            await addNotification(NotificationModel(
+              title: '🚨 Monthly Budget Exceeded!',
+              message:
+                  'You have exceeded your monthly budget by RM ${overAmount.toStringAsFixed(2)}. Consider adjusting your spending.',
+              timestamp: now,
+              type: NotificationType.monthlyBudgetExceeded,
+              data: {
+                'overAmount': overAmount,
+                'totalSpent': totalSpent,
+                'budget': monthlyBudget,
+              },
+            ));
           }
         }
       }
 
-      // Check category budgets
       for (final entry in categoryBudgets.entries) {
         final category = entry.key;
         final budget = entry.value;
@@ -250,23 +304,20 @@ class NotificationCubit extends Cubit<NotificationState> {
             );
 
             if (!existingNear) {
-              await addNotification(
-                NotificationModel(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  title: '⚠️ $category Budget Near Limit',
-                  message:
-                      'You have spent ${spentPercentage.toStringAsFixed(1)}% of your $category budget. Only RM ${(budget - spent).toStringAsFixed(2)} remaining.',
-                  timestamp: now,
-                  type: NotificationType.categoryBudgetNearLimit,
-                  data: {
-                    'category': category,
-                    'percentage': spentPercentage,
-                    'remaining': budget - spent,
-                    'spent': spent,
-                    'budget': budget,
-                  },
-                ),
-              );
+              await addNotification(NotificationModel(
+                title: '⚠️ $category Budget Near Limit',
+                message:
+                    'You have spent ${spentPercentage.toStringAsFixed(1)}% of your $category budget. Only RM ${(budget - spent).toStringAsFixed(2)} remaining.',
+                timestamp: now,
+                type: NotificationType.categoryBudgetNearLimit,
+                data: {
+                  'category': category,
+                  'percentage': spentPercentage,
+                  'remaining': budget - spent,
+                  'spent': spent,
+                  'budget': budget,
+                },
+              ));
             }
           } else if (spentPercentage >= 100) {
             final existingExceeded = state.notifications.any(
@@ -280,22 +331,19 @@ class NotificationCubit extends Cubit<NotificationState> {
 
             if (!existingExceeded) {
               final overAmount = spent - budget;
-              await addNotification(
-                NotificationModel(
-                  id: DateTime.now().millisecondsSinceEpoch.toString(),
-                  title: '🚨 $category Budget Exceeded!',
-                  message:
-                      'You have exceeded your $category budget by RM ${overAmount.toStringAsFixed(2)}.',
-                  timestamp: now,
-                  type: NotificationType.categoryBudgetExceeded,
-                  data: {
-                    'category': category,
-                    'overAmount': overAmount,
-                    'spent': spent,
-                    'budget': budget,
-                  },
-                ),
-              );
+              await addNotification(NotificationModel(
+                title: '🚨 $category Budget Exceeded!',
+                message:
+                    'You have exceeded your $category budget by RM ${overAmount.toStringAsFixed(2)}.',
+                timestamp: now,
+                type: NotificationType.categoryBudgetExceeded,
+                data: {
+                  'category': category,
+                  'overAmount': overAmount,
+                  'spent': spent,
+                  'budget': budget,
+                },
+              ));
             }
           }
         }

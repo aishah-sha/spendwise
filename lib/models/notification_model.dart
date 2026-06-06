@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 enum NotificationType {
   budgetExceeded,
   budgetNearLimit,
@@ -17,16 +19,19 @@ class NotificationModel {
   final Map<String, dynamic>? data;
 
   NotificationModel({
-    required this.id,
+    String? id, // optional — auto-generates a UUID if not provided
     required this.title,
     required this.message,
     required this.timestamp,
     required this.type,
     this.isRead = false,
     this.data,
-  });
+  }) : id = id ?? const Uuid().v4(); // generates UUID matching your table's UUID column
 
-  // Convert to Supabase notification format
+  // ─── Supabase (matches your exact table schema) ──────────────────────────
+  // Fields: id, user_id, title, message, type, is_read, created_at
+  // Note: user_id is added by the cubit (not stored in the model)
+
   Map<String, dynamic> toDatabaseJson() {
     return {
       'id': id,
@@ -38,7 +43,6 @@ class NotificationModel {
     };
   }
 
-  // Create from Supabase notification response
   factory NotificationModel.fromDatabaseJson(Map<String, dynamic> json) {
     return NotificationModel(
       id: json['id'] as String,
@@ -50,6 +54,8 @@ class NotificationModel {
       data: null,
     );
   }
+
+  // ─── Type helpers (match your table's CHECK constraint exactly) ──────────
 
   static String _typeToString(NotificationType type) {
     switch (type) {
@@ -96,28 +102,6 @@ class NotificationModel {
       type: type,
       isRead: isRead ?? this.isRead,
       data: data,
-    );
-  }
-
-  Map<String, dynamic> toJson() => {
-    'id': id,
-    'title': title,
-    'message': message,
-    'timestamp': timestamp.toIso8601String(),
-    'type': type.index,
-    'isRead': isRead,
-    'data': data,
-  };
-
-  factory NotificationModel.fromJson(Map<String, dynamic> json) {
-    return NotificationModel(
-      id: json['id'],
-      title: json['title'],
-      message: json['message'],
-      timestamp: DateTime.parse(json['timestamp']),
-      type: NotificationType.values[json['type']],
-      isRead: json['isRead'],
-      data: json['data'] as Map<String, dynamic>?,
     );
   }
 }
