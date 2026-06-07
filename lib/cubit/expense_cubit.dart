@@ -4,18 +4,22 @@ import 'package:bloc/bloc.dart';
 import '../models/expense_model.dart';
 import 'expense_state.dart';
 import '../services/supabase_service.dart';
+import 'budget_cubit.dart';
+import 'notification_cubit.dart';
 
 class ExpenseCubit extends Cubit<ExpenseState> {
   final SupabaseService _supabaseService = SupabaseService();
+  final BudgetCubit budgetCubit;
+  final NotificationCubit notificationCubit;
   StreamSubscription? _expensesSubscription;
-  final bool _isInitialized = false;
 
-  ExpenseCubit() : super(ExpenseState.initial()) {
+  // Accept dependency injections here to connect data pipelines
+  ExpenseCubit({required this.budgetCubit, required this.notificationCubit})
+    : super(ExpenseState.initial()) {
     _listenToExpenses();
   }
 
   void _listenToExpenses() {
-    // Cancel existing subscription if any
     _expensesSubscription?.cancel();
 
     _expensesSubscription = _supabaseService.getTransactions().listen(
@@ -43,7 +47,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     );
   }
 
-  // Helper method to update state with expenses
   void _updateStateWithExpenses(List<ExpenseModel> expenses) {
     if (isClosed) return;
 
@@ -63,13 +66,43 @@ class ExpenseCubit extends Cubit<ExpenseState> {
 
     if (!isClosed) {
       emit(newState);
+      // ─── CRITICAL FIX: Trigger budget threshold verification ───
+      _checkThresholds(totalSpending, expenses);
     }
   }
 
-  // Single loadExpenses method
+  /// Extracts structured data map variants and evaluates limits automatically
+  void _checkThresholds(double totalSpent, List<ExpenseModel> expenses) {
+    final budgetState = budgetCubit.state;
+    if (budgetState is BudgetLoaded) {
+      final budget = budgetState.budget;
+
+      // 1. Build category budgets lookup structure
+      final Map<String, double> categoryBudgets = {
+        for (var cat in budget.categories) cat.name: cat.amount,
+      };
+
+      // 2. Calculate category spent totals on-the-fly out of raw expenses
+      final Map<String, double> categorySpent = {};
+      for (final exp in expenses) {
+        if (!exp.isIncome) {
+          categorySpent[exp.category] =
+              (categorySpent[exp.category] ?? 0.0) + exp.amount;
+        }
+      }
+
+      // 3. Dispatch calculations to NotificationCubit threshold triggers
+      notificationCubit.checkBudgetAndNotify(
+        monthlyBudget: budget.monthlyLimit,
+        totalSpent: totalSpent,
+        categoryBudgets: categoryBudgets,
+        categorySpent: categorySpent,
+      );
+    }
+  }
+
   Future<void> loadExpenses() async {
     if (isClosed) return;
-
     emit(state.copyWith(isLoading: true, error: null));
 
     try {
@@ -108,8 +141,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         description: expense.title,
         date: expense.date,
       );
-      // The stream subscription will automatically update the state
-      // Force a refresh to ensure immediate update
       await loadExpenses();
     } catch (e) {
       print('Error adding expense: $e');
@@ -147,7 +178,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         'type': updatedExpense.isIncome ? 'income' : 'expense',
         'date': updatedExpense.date.toIso8601String(),
       });
-      // Force a refresh to ensure immediate update
       await loadExpenses();
     } catch (e) {
       print('Error updating expense: $e');
@@ -160,7 +190,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   Future<void> deleteExpense(String id) async {
     try {
       await _supabaseService.deleteTransaction(id);
-      // Force a refresh to ensure immediate update
       await loadExpenses();
     } catch (e) {
       print('Error deleting expense: $e');
@@ -229,56 +258,40 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     emit(state.copyWith(analyticsSelectedDate: date));
   }
 
-  // Refresh method to manually trigger update
   Future<void> refreshExpenses() async {
     await loadExpenses();
   }
 
   IconData getCategoryIcon(String category) {
     switch (category) {
-      // Food & Dining
       case 'Food':
         return Icons.restaurant_outlined;
       case 'Beverages':
         return Icons.local_cafe_outlined;
       case 'Snacks & Desserts':
         return Icons.icecream_outlined;
-
-      // Shopping & Groceries
       case 'Groceries':
         return Icons.shopping_cart_outlined;
       case 'Shopping':
         return Icons.shopping_bag_outlined;
       case 'Clothes':
         return Icons.checkroom_outlined;
-
-      // Home & Living
       case 'Household':
         return Icons.home_outlined;
       case 'Baking':
         return Icons.cake_outlined;
       case 'Cooking Ingredients':
         return Icons.kitchen_outlined;
-
-      // Transportation
       case 'Transport':
         return Icons.directions_car_outlined;
-
-      // Entertainment
       case 'Entertainment':
         return Icons.movie_outlined;
-
-      // Health & Pets
       case 'Health':
         return Icons.favorite_outlined;
       case 'Pet Food':
         return Icons.pets_outlined;
-
-      // Education & Office
       case 'Stationery':
         return Icons.edit_outlined;
-
-      // Default
       case 'Others':
         return Icons.category_outlined;
       default:
@@ -289,37 +302,37 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   Color getCategoryColor(String categoryName) {
     switch (categoryName) {
       case 'Groceries':
-        return const Color(0xFF4CAF50); // Green
+        return const Color(0xFF4CAF50);
       case 'Food':
-        return const Color(0xFFFF9800); // Orange
+        return const Color(0xFFFF9800);
       case 'Beverages':
-        return const Color(0xFF2196F3); // Blue
+        return const Color(0xFF2196F3);
       case 'Clothes':
-        return const Color(0xFF9C27B0); // Purple
+        return const Color(0xFF9C27B0);
       case 'Stationery':
-        return const Color(0xFF607D8B); // Blue Grey
+        return const Color(0xFF607D8B);
       case 'Transport':
-        return const Color(0xFF00BCD4); // Cyan
+        return const Color(0xFF00BCD4);
       case 'Entertainment':
-        return const Color(0xFFE91E63); // Pink
+        return const Color(0xFFE91E63);
       case 'Shopping':
-        return const Color(0xFFFF5722); // Deep Orange
+        return const Color(0xFFFF5722);
       case 'Household':
-        return const Color(0xFF8BC34A); // Light Green
+        return const Color(0xFF8BC34A);
       case 'Pet Food':
-        return const Color(0xFF795548); // Brown
+        return const Color(0xFF795548);
       case 'Health':
-        return const Color(0xFFF44336); // Red
+        return const Color(0xFFF44336);
       case 'Snacks & Desserts':
-        return const Color(0xFFFF6B6B); // Light Red
+        return const Color(0xFFFF6B6B);
       case 'Cooking Ingredients':
-        return const Color(0xFFFFA726); // Orange Light
+        return const Color(0xFFFFA726);
       case 'Baking':
-        return const Color(0xFFFFB74D); // Amber
+        return const Color(0xFFFFB74D);
       case 'Others':
-        return const Color(0xFF9E9E9E); // Grey
+        return const Color(0xFF9E9E9E);
       default:
-        return const Color(0xFF32BA32); // Default Green
+        return const Color(0xFF32BA32);
     }
   }
 
@@ -344,7 +357,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   ExpenseState _applyFilters(ExpenseState state) {
     var filtered = List<ExpenseModel>.from(state.allExpenses);
 
-    // Apply category filter
     if (state.selectedCategory != null) {
       filtered = filtered
           .where((e) => e.category == state.selectedCategory)
@@ -362,7 +374,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       }
     }
 
-    // Apply search query
     if (state.searchQuery.isNotEmpty) {
       final query = state.searchQuery.toLowerCase();
       filtered = filtered.where((expense) {
@@ -371,7 +382,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       }).toList();
     }
 
-    // Apply date range filter
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 

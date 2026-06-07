@@ -28,13 +28,21 @@ class NotificationService {
       iOS: iosSettings,
     );
 
-    // FIXED: Added the required 'settings:' named parameter
     await _plugin.initialize(
       settings: initSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
         // Handle notification tap here if needed
       },
     );
+
+    // ─── CRITICAL FIX: Explicit Runtime Permission Prompt for Android 13+ ───
+    final androidImplementation = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    if (androidImplementation != null) {
+      await androidImplementation.requestNotificationsPermission();
+    }
   }
 
   // ─── Show a system banner ─────────────────────────────────────────────────
@@ -50,6 +58,7 @@ class NotificationService {
       channelDescription: 'Alerts when you approach or exceed your budget',
       importance: Importance.max,
       priority: Priority.high,
+      playSound: true,
     );
 
     const iosDetails = DarwinNotificationDetails(
@@ -63,7 +72,6 @@ class NotificationService {
       iOS: iosDetails,
     );
 
-    // FIXED: Added named arguments for id, title, and body
     await _plugin.show(
       id: id,
       title: title,

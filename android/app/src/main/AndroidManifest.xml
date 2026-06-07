@@ -1,13 +1,12 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
-  
-  <!-- Permissions -->
-  <uses-permission android:name="android.permission.INTERNET"/>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.example.spendwise2003"> <uses-permission android:name="android.permission.INTERNET"/>
   <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
   <uses-permission android:name="android.permission.VIBRATE"/>
   <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
   <uses-permission android:name="android.permission.CAMERA" />
   <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
   <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" />
+  <uses-permission android:name="android.permission.WAKE_LOCK"/>
   
   <application
     android:label="spendwise"
@@ -24,21 +23,22 @@
       android:hardwareAccelerated="true"
       android:windowSoftInputMode="adjustResize">
       
+      <meta-data
+        android:name="io.flutter.embedding.android.NormalTheme"
+        android:resource="@style/NormalTheme" />
+
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>
         <category android:name="android.intent.category.LAUNCHER"/>
       </intent-filter>
       
-      <!-- Supabase OAuth redirect -->
-      <intent-filter>
-        <action android:name="android.intent.action.VIEW"/>
+      <intent-filter android:autoVerify="true"> <action android:name="android.intent.action.VIEW"/>
         <category android:name="android.intent.category.DEFAULT"/>
         <category android:name="android.intent.category.BROWSABLE"/>
-        <data android:scheme="io.supabase.flutter"/>
+        <data android:scheme="io.supabase.flutter" android:host="login-callback" />
       </intent-filter>
     </activity>
  
-    <!-- flutter_local_notifications: reschedule notifications after reboot -->
     <receiver
       android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
       android:exported="false">
@@ -50,17 +50,14 @@
       </intent-filter>
     </receiver>
  
-    <!-- flutter_local_notifications: show scheduled notifications -->
     <receiver
       android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
       android:exported="false"/>
     
-    <!-- Facebook SDK Configuration -->
     <meta-data
       android:name="com.facebook.sdk.ApplicationId"
       android:value="@string/facebook_app_id"/>
     
-    <!-- Facebook Activities -->
     <activity
       android:name="com.facebook.FacebookActivity"
       android:configChanges="keyboard|keyboardHidden|screenLayout|screenSize|orientation"
@@ -77,14 +74,12 @@
       </intent-filter>
     </activity>
     
-    <!-- Flutter embedding -->
     <meta-data
       android:name="flutterEmbedding"
       android:value="2"/>
  
   </application>
   
-  <!-- Required to query activities that can process text -->
   <queries>
     <intent>
       <action android:name="android.intent.action.PROCESS_TEXT"/>

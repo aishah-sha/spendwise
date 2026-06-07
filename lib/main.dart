@@ -3,6 +3,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart'; // Add Firebase Core
+import 'package:firebase_messaging/firebase_messaging.dart'; // Add Firebase Messaging
+
+// Services
+import 'package:spendwise/services/notification_service.dart';
 
 // Screens
 import 'package:spendwise/screens/signup_screen.dart';
@@ -21,6 +26,16 @@ import 'cubit/profile_cubit.dart';
 import 'cubit/notification_cubit.dart';
 import 'cubit/auth_cubit.dart';
 
+/// ─── CRITICAL FCM FIX: Background Push Notification Handler ───
+/// Must be a top-level function outside any class. It intercepts hardware signals
+/// even when the application is entirely shut down / swiped away.
+@pragma('vm:entry-point')
+Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Ensure background isolate context connects directly with Firebase Core hooks
+  await Firebase.initializeApp();
+  debugPrint("Handling background system message: ${message.messageId}");
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -36,12 +51,25 @@ void main() async {
 
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
+    // ─── CRITICAL FCM FIX: Initialize Native Firebase Layers ───
+    await Firebase.initializeApp();
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+
+    // Request permissions for System Banners / Alerts natively
+    await FirebaseMessaging.instance.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    // Initialize local notification plugin & request OS banner permissions
+    await NotificationService.instance.init();
+
     final prefs = await SharedPreferences.getInstance();
     final bool hasSeenOnboarding =
         prefs.getBool('has_seen_onboarding') ?? false;
     final bool showOnboardingEveryLaunch =
-        prefs.getBool('show_onboarding_every_launch') ??
-        true; // Track if onboarding should show on every launch
+        prefs.getBool('show_onboarding_every_launch') ?? true;
 
     runApp(
       MyApp(
@@ -74,12 +102,18 @@ class MyApp extends StatelessWidget {
     return MultiBlocProvider(
       providers: [
         BlocProvider<AuthCubit>(create: (context) => AuthCubit()),
-        BlocProvider<ExpenseCubit>(create: (context) => ExpenseCubit()),
-        BlocProvider<BudgetCubit>(create: (context) => BudgetCubit()),
-        BlocProvider<ProfileCubit>(create: (context) => ProfileCubit()),
         BlocProvider<NotificationCubit>(
           create: (context) => NotificationCubit(),
         ),
+        BlocProvider<BudgetCubit>(create: (context) => BudgetCubit()),
+        // Inject Cubits sequentially to let ExpenseCubit access data updates
+        BlocProvider<ExpenseCubit>(
+          create: (context) => ExpenseCubit(
+            budgetCubit: context.read<BudgetCubit>(),
+            notificationCubit: context.read<NotificationCubit>(),
+          ),
+        ),
+        BlocProvider<ProfileCubit>(create: (context) => ProfileCubit()),
       ],
       child: MaterialApp(
         title: 'SpendWise',
@@ -113,6 +147,8 @@ class MyApp extends StatelessWidget {
           '/add_budget': (context) => const AddBudgetScreen(),
           '/profile': (context) => const ProfileScreen(),
           '/notification': (context) => const NotificationScreen(),
+          '/auth_gateway': (context) =>
+              const AuthGatewayScreen(), // Added missing route explicitly matching onboarding route context below
         },
         home: AppHomeGateway(
           hasSeenOnboarding: hasSeenOnboarding,

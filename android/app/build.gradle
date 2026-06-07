@@ -1,29 +1,27 @@
 plugins {
     id "com.android.application"
-    // REMOVED: id "com.google.gms.google-services" <--- This was causing the error
+    id "com.google.gms.google-services" // 🚨 PUT THIS BACK! It is mandatory for Push Notifications.
     id "kotlin-android"
     id "dev.flutter.flutter-gradle-plugin"
 }
 
 android {
-    namespace = "com.example.spendwise"
+    namespace = "com.example.spendwise2003"
     compileSdk = 36
     ndkVersion = "28.2.13676358"
     
     compileOptions {
         coreLibraryDesugaringEnabled true
-
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
     }
 
-    // Just in case you use Kotlin, ensure it targets 1.8 too
     kotlinOptions {
         jvmTarget = '1.8'
     }
 
     defaultConfig {
-        applicationId = "com.example.spendwise"
+        applicationId = "com.example.spendwise2003"
         minSdk = 26
         targetSdk = 36
         versionCode = 1
@@ -37,17 +35,13 @@ android {
     buildTypes {
         release {
             signingConfig = signingConfigs.debug
-
-            minifyEnabled true
-            shrinkResources true
-
+            minifyEnabled false
+            shrinkResources false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
 
     dependencies {
-        // If you are using Supabase Auth with Google, you can keep this.
-        // If you aren't using Google Sign-In at all, you can remove this too.
         implementation 'com.google.android.gms:play-services-auth:20.7.0'
         implementation 'androidx.multidex:multidex:2.0.1'
         implementation 'androidx.core:core:1.9.0'
@@ -59,8 +53,18 @@ android {
     }
 }
 
+/// ─── CRITICAL FIX BLOCK ───
+// Forcing dynamic resolution rules without requiring hardcoded imports
+configurations.all {
+    resolutionStrategy {
+        eachDependency { details ->
+            if (details.requested.group == 'com.google.firebase' && details.requested.name == 'firebase-iid') {
+                details.useVersion '21.1.0' // Force a compatible version of firebase-iid
+            }
+        }
+    }
+}
+
 flutter {
     source = "../.."
 }
-
-// REMOVED: apply plugin: 'com.google.gms.google-services' <--- This was also causing the error

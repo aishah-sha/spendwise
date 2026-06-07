@@ -2,6 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
+import 'package:firebase_messaging/firebase_messaging.dart'; // Add Firebase Messaging Package
 import '../services/supabase_service.dart';
 
 // Import OAuth provider
@@ -64,6 +65,8 @@ class AuthCubit extends Cubit<AuthState> {
         if (session != null) {
           if (hasSeenOnboarding) {
             emit(Authenticated(session.user));
+            // Sync token immediately on positive session hook detection
+            await syncDeviceNotificationToken();
           } else {
             // Keep state as unauthenticated so main gateway falls back to onboarding route
             emit(Unauthenticated());
@@ -86,8 +89,32 @@ class AuthCubit extends Cubit<AuthState> {
 
     if (user != null && hasSeenOnboarding) {
       emit(Authenticated(user));
+      // Sync token if user is already logged in on application launch
+      await syncDeviceNotificationToken();
     } else {
       emit(Unauthenticated());
+    }
+  }
+
+  /// Extracts system identification configurations and pushes updates to database
+  Future<void> syncDeviceNotificationToken() async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Extract raw Firebase Push routing address key from mobile OS hardware stack
+      String? fcmToken = await FirebaseMessaging.instance.getToken();
+
+      if (fcmToken != null) {
+        await _supabase.from('user_tokens').upsert({
+          'user_id': userId,
+          'fcm_token': fcmToken,
+          'updated_at': DateTime.now().toIso8601String(),
+        });
+        print('✅ FCM Token successfully synced with Supabase Infrastructure.');
+      }
+    } catch (e) {
+      print('❌ Failed to bind notification token sync parameters: $e');
     }
   }
 
@@ -103,6 +130,8 @@ class AuthCubit extends Cubit<AuthState> {
       );
       if (!isClosed) {
         emit(Authenticated(response.user));
+        // Sync token right after successful manual email login
+        await syncDeviceNotificationToken();
       }
     } catch (e) {
       if (!isClosed) {
@@ -196,6 +225,8 @@ class AuthCubit extends Cubit<AuthState> {
 
       if (!isClosed) {
         emit(Authenticated(response.user));
+        // Sync token immediately after successful Google login sequence
+        await syncDeviceNotificationToken();
       }
     } catch (e) {
       print('Google Sign-In error: $e');
@@ -216,6 +247,15 @@ class AuthCubit extends Cubit<AuthState> {
         final prefs = await SharedPreferences.getInstance();
         await prefs.remove('saved_budget_$currentUserId');
         await prefs.remove('user_data');
+
+        // Optional safety design: Remove the token entry from Supabase on sign out
+        // so a logged-out device stops getting alerts meant for that specific account profile
+        try {
+          await _supabase
+              .from('user_tokens')
+              .delete()
+              .eq('user_id', currentUserId);
+        } catch (_) {}
       }
 
       await _googleSignIn.signOut();
