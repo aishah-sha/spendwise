@@ -2,7 +2,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:firebase_messaging/firebase_messaging.dart'; // Add Firebase Messaging Package
+import 'package:firebase_messaging/firebase_messaging.dart'; // Firebase Messaging Package
 import '../services/supabase_service.dart';
 
 // Import OAuth provider
@@ -34,11 +34,17 @@ class AuthFailure extends AuthState {
 
 // ============ CUBIT ============
 class AuthCubit extends Cubit<AuthState> {
+  // ─── CRITICAL BLOC FIX: Static instance setup for main.dart to reference ───
+  static AuthCubit? _instance;
+  static AuthCubit? get instance => _instance;
+
   final SupabaseClient _supabase = Supabase.instance.client;
   final SupabaseService _supabaseService = SupabaseService();
   late final GoogleSignIn _googleSignIn;
 
   AuthCubit() : super(AuthInitial()) {
+    _instance =
+        this; // Capture running provider context instance upon initialization
     _initialize();
     _setupGoogleSignIn();
   }
@@ -57,20 +63,12 @@ class AuthCubit extends Cubit<AuthState> {
       if (!isClosed) {
         final session = data.session;
 
-        // Check if onboarding was completed before emitting authentication routes
-        final prefs = await SharedPreferences.getInstance();
-        final bool hasSeenOnboarding =
-            prefs.getBool('has_seen_onboarding') ?? false;
-
+        // ─── CRITICAL FIX: If a valid session exists, immediately authenticate! ───
+        // Removing onboarding check locks here avoids loops where user stays stuck on Welcome Screen
         if (session != null) {
-          if (hasSeenOnboarding) {
-            emit(Authenticated(session.user));
-            // Sync token immediately on positive session hook detection
-            await syncDeviceNotificationToken();
-          } else {
-            // Keep state as unauthenticated so main gateway falls back to onboarding route
-            emit(Unauthenticated());
-          }
+          emit(Authenticated(session.user));
+          // Sync token immediately on positive session hook detection
+          await syncDeviceNotificationToken();
         } else {
           emit(Unauthenticated());
         }
@@ -82,18 +80,25 @@ class AuthCubit extends Cubit<AuthState> {
   void checkAuthStatus() async {
     if (isClosed) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final bool hasSeenOnboarding =
-        prefs.getBool('has_seen_onboarding') ?? false;
+    // ─── CRITICAL FIX: Check authentication state natively on launch ───
     final user = _supabase.auth.currentUser;
 
-    if (user != null && hasSeenOnboarding) {
+    if (user != null) {
       emit(Authenticated(user));
       // Sync token if user is already logged in on application launch
       await syncDeviceNotificationToken();
     } else {
       emit(Unauthenticated());
     }
+  }
+
+  // ─── STREAM HOOK METHODS REQUIRED BY MAIN.DART ───
+  void emitAuthenticated(User user) {
+    if (!isClosed) emit(Authenticated(user));
+  }
+
+  void emitUnauthenticated() {
+    if (!isClosed) emit(Unauthenticated());
   }
 
   /// Extracts system identification configurations and pushes updates to database
@@ -163,7 +168,7 @@ class AuthCubit extends Cubit<AuthState> {
           name: name,
         );
 
-        print('✅ Profile created for user: ${response.user!.id}');
+        print('fake account profile synced: ${response.user!.id}');
         await _supabase.auth.signOut();
 
         if (!isClosed) {
@@ -248,8 +253,7 @@ class AuthCubit extends Cubit<AuthState> {
         await prefs.remove('saved_budget_$currentUserId');
         await prefs.remove('user_data');
 
-        // Optional safety design: Remove the token entry from Supabase on sign out
-        // so a logged-out device stops getting alerts meant for that specific account profile
+        // Safety design: Remove token entry from Supabase on sign out
         try {
           await _supabase
               .from('user_tokens')
@@ -304,5 +308,13 @@ class AuthCubit extends Cubit<AuthState> {
       return 'Network error. Please check your internet connection.';
     }
     return 'An error occurred. Please try again.';
+  }
+
+  @override
+  Future<void> close() {
+    if (_instance == this) {
+      _instance = null;
+    }
+    return super.close();
   }
 }

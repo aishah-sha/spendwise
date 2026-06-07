@@ -3,8 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:firebase_core/firebase_core.dart'; // Add Firebase Core
-import 'package:firebase_messaging/firebase_messaging.dart'; // Add Firebase Messaging
+import 'package:firebase_core/firebase_core.dart'; // Firebase Core
+import 'package:firebase_messaging/firebase_messaging.dart'; // Firebase Messaging
 
 // Services
 import 'package:spendwise/services/notification_service.dart';
@@ -49,7 +49,18 @@ void main() async {
       throw Exception("Missing Supabase credentials in .env file");
     }
 
+    // Initialize Supabase Native Connection
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+
+    // ─── CRITICAL FIX: Listen to Supabase Session updates and stream them to your Bloc ───
+    Supabase.instance.client.auth.onAuthStateChange.listen((data) {
+      final session = data.session;
+      if (session != null) {
+        AuthCubit.instance?.emitAuthenticated(session.user);
+      } else {
+        AuthCubit.instance?.emitUnauthenticated();
+      }
+    });
 
     // ─── CRITICAL FCM FIX: Initialize Native Firebase Layers ───
     await Firebase.initializeApp();
@@ -147,8 +158,7 @@ class MyApp extends StatelessWidget {
           '/add_budget': (context) => const AddBudgetScreen(),
           '/profile': (context) => const ProfileScreen(),
           '/notification': (context) => const NotificationScreen(),
-          '/auth_gateway': (context) =>
-              const AuthGatewayScreen(), // Added missing route explicitly matching onboarding route context below
+          '/auth_gateway': (context) => const AuthGatewayScreen(),
         },
         home: AppHomeGateway(
           hasSeenOnboarding: hasSeenOnboarding,
@@ -171,16 +181,12 @@ class AppHomeGateway extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Check if we need to show onboarding
-    final shouldShowOnboarding =
-        !hasSeenOnboarding && showOnboardingEveryLaunch;
-
-    if (shouldShowOnboarding) {
-      // Show onboarding before any authentication check
-      return OnboardingScreen(nextRoute: '/auth_gateway');
+    // 1. Force onboarding FIRST if they have never seen it before
+    if (!hasSeenOnboarding && showOnboardingEveryLaunch) {
+      return const OnboardingScreen(nextRoute: '/auth_gateway');
     }
 
-    // After onboarding, check authentication state
+    // 2. Otherwise, monitor the Bloc Auth State directly
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, state) {
         if (state is AuthInitial || state is AuthLoading) {
@@ -192,19 +198,18 @@ class AppHomeGateway extends StatelessWidget {
           );
         }
 
+        // ─── CRITICAL FIX: Authenticated status immediately opens the DashboardScreen ───
         if (state is Authenticated) {
-          // Show onboarding before dashboard for authenticated users
-          return OnboardingScreen(nextRoute: '/dashboard');
+          return const DashboardScreen();
         } else {
-          // Show onboarding before welcome screen for unauthenticated users
-          return OnboardingScreen(nextRoute: '/welcome');
+          return const WelcomeScreen();
         }
       },
     );
   }
 }
 
-// Add a temporary gateway route handler
+// Gateway route handler fallback
 class AuthGatewayScreen extends StatelessWidget {
   const AuthGatewayScreen({super.key});
 

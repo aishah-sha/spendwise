@@ -414,22 +414,21 @@ class _ProfileContent extends StatelessWidget {
       children: [
         GestureDetector(
           onTap: () => _showImagePickerOptions(context, state),
-          child: Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: isDarkMode ? Colors.grey[800] : Colors.white,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isDarkMode
-                    ? Colors.grey[600]!
-                    : ProfileScreen.fabBorderColor,
-                width: 2,
-              ),
-            ),
-            child: Stack(
-              alignment: Alignment.center,
-              children: [
-                CircleAvatar(
+          child: Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: isDarkMode ? Colors.grey[800] : Colors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: isDarkMode
+                        ? Colors.grey[600]!
+                        : ProfileScreen.fabBorderColor,
+                    width: 2,
+                  ),
+                ),
+                child: CircleAvatar(
                   radius: 56,
                   backgroundColor: Colors.grey[300],
                   backgroundImage: state.user.profileImageUrl.isNotEmpty
@@ -439,19 +438,25 @@ class _ProfileContent extends StatelessWidget {
                       ? Icon(Icons.person, size: 56, color: Colors.grey[600])
                       : null,
                 ),
-                Container(
-                  decoration: BoxDecoration(
+              ),
+              // ✨ FIXED: Positioned camera icon badge on the bottom-right corner instead of overlaying the entire photo
+              Positioned(
+                bottom: 4,
+                right: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: const BoxDecoration(
+                    color: ProfileScreen.accentGreen,
                     shape: BoxShape.circle,
-                    color: Colors.black.withOpacity(0.3),
                   ),
                   child: const Icon(
                     Icons.camera_alt,
                     color: Colors.white,
-                    size: 30,
+                    size: 18,
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 16),
@@ -590,10 +595,13 @@ class _ProfileContent extends StatelessWidget {
         final File tempFile = File(image.path);
         final File permanentFile = await tempFile.copy(permanentPath);
 
+        // 1. Send path to Cubit (this handles the local state update)
         await context.read<ProfileCubit>().updateProfileImage(
           permanentFile.path,
         );
-        await context.read<ProfileCubit>().loadProfile(forceRefresh: true);
+
+        // ❌ REMOVE / COMMENT OUT THIS LINE below:
+        // await context.read<ProfileCubit>().loadProfile(forceRefresh: true);
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(

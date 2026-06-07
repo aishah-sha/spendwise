@@ -208,14 +208,13 @@ class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
-  // FIXED: Improved image update with proper storage
   Future<void> updateProfileImage(String imagePath) async {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;
 
       print('📸 Updating profile image to: $imagePath');
 
-      // Verify the image exists
+      // Verify the image exists locally
       if (imagePath.isNotEmpty && _isLocalPath(imagePath)) {
         String cleanPath = imagePath.replaceFirst('file://', '');
         if (!File(cleanPath).existsSync()) {
@@ -225,7 +224,7 @@ class ProfileCubit extends Cubit<ProfileState> {
         }
       }
 
-      // Delete old local image if it exists and different
+      // Delete old local image if it exists and is different
       final oldImageUrl = currentState.user.profileImageUrl;
       if (oldImageUrl.isNotEmpty && _isLocalPath(oldImageUrl)) {
         try {
@@ -239,16 +238,26 @@ class ProfileCubit extends Cubit<ProfileState> {
         }
       }
 
-      // Update user with new image path
+      // 1. Create the updated user model
       final updatedUser = currentState.user.copyWith(
         profileImageUrl: imagePath,
       );
+
+      // 2. Update memory cache and SharedPreferences
       _cachedUser = updatedUser;
       await _saveUser(updatedUser);
+
+      // 3. Emit the updated state immediately so the UI changes instantly
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       emit(ProfileImageUpdated(imageUrl: imagePath));
 
-      print('✅ Profile image updated successfully');
+      // 4. ✨ SYNC TO BACKEND: Tell Supabase about your new profile image path!
+      try {
+        await _supabaseService.updateUserProfile(profileImageUrl: imagePath);
+        print('✅ Profile image path synchronized with Supabase');
+      } catch (e) {
+        print('❌ Failed to update profile image path in Supabase: $e');
+      }
     }
   }
 

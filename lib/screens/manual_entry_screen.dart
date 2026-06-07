@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
+import 'package:spendwise/widgets/in_app_notification_dialog.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../cubit/add_expense_cubit.dart';
@@ -1386,12 +1387,14 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     }
 
     final String expenseId = widget.expenseToEdit?.id ?? const Uuid().v4();
+    final double totalAmount = _calculateTotal();
+    final String selectedCategory = _items.first.category ?? 'Food';
 
     final expense = ExpenseModel(
       id: expenseId,
       title: _vendorController.text,
-      category: _items.first.category ?? 'Food',
-      amount: _calculateTotal(),
+      category: selectedCategory,
+      amount: totalAmount,
       date: _selectedDate,
       isIncome: _isIncome,
       note: '${_items.length} items',
@@ -1400,6 +1403,9 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
     final expenseCubit = context.read<ExpenseCubit>();
     final addExpenseCubit = context.read<AddExpenseCubit>();
+
+    // 1. CHECK BUDGET LIMITS HERE BEFORE SAVING & LEAVING THE SCREEN
+    _checkBudgetLimitAndNotify(context, selectedCategory, totalAmount);
 
     if (widget.isEditing || widget.expenseToEdit != null) {
       await expenseCubit.updateExpense(expense);
@@ -1457,6 +1463,31 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
           }
         }
       });
+    }
+  }
+
+  // 2. ADD THIS NEW HELPER METHOD DIRECTLY UNDER _saveExpense
+  void _checkBudgetLimitAndNotify(
+    BuildContext context,
+    String category,
+    double newExpenseAmount,
+  ) {
+    // TODO: Connect this to your actual Budget Cubit/State management
+    // For now, here is a mock test scenario:
+    double typicalCategoryLimit = 500.00;
+    double alreadySpentInMonth = 480.00;
+
+    double simulatedTotalAfterSaving = alreadySpentInMonth + newExpenseAmount;
+
+    // If the new total breaks the budget wall, show the floating notification card
+    if (simulatedTotalAfterSaving > typicalCategoryLimit) {
+      InAppNotificationOverlay.showOverLimit(
+        context,
+        category: category,
+        spent: simulatedTotalAfterSaving,
+        limit: typicalCategoryLimit,
+        duration: const Duration(seconds: 6),
+      );
     }
   }
 
