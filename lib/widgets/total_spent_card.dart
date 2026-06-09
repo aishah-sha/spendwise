@@ -12,8 +12,9 @@ class TotalSpentCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return BlocBuilder<ExpenseCubit, ExpenseState>(
       builder: (context, state) {
-        final percentageChange = state.percentageChange;
-        final isLess = percentageChange < 0;
+        // Get the double value directly
+        final double percentageChange = state.percentageChange;
+        final bool isLess = percentageChange < 0;
 
         return Container(
           width: double.infinity,

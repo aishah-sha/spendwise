@@ -10,8 +10,8 @@ class CategoryChart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final categories = state.sortedCategoryTotals;
-    final total = state.totalSpent;
+    final Map<String, double> categories = state.sortedCategoryTotals;
+    final double total = state.totalSpent;
 
     if (categories.isEmpty) {
       return const Center(
@@ -25,13 +25,17 @@ class CategoryChart extends StatelessWidget {
       );
     }
 
+    // Convert to List of MapEntry and then iterate
+    final List<MapEntry<String, double>> categoryEntries = categories.entries
+        .toList();
+
     return Column(
-      children: categories.map((entry) {
-        final category = entry.key;
-        final amount = entry.value;
-        final percentage = (amount / total) * 100;
-        final cubit = context.read<ExpenseCubit>();
-        final color = cubit.getCategoryColor(category);
+      children: categoryEntries.map((MapEntry<String, double> entry) {
+        final String category = entry.key;
+        final double amount = entry.value;
+        final double percentage = (amount / total) * 100;
+        final ExpenseCubit cubit = context.read<ExpenseCubit>();
+        final Color color = cubit.getCategoryColor(category);
 
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),

@@ -19,18 +19,19 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
   static const _green = Color(0xFF4CAF50);
   static const _lightGreen = Color(0xFFE8F5E9);
   static const _orange = Color(0xFFFF9800);
+  static const _red = Color(0xFFF44336);
 
-  // Thresholds for blur UI states
-  static const _blurWarningThreshold = 2; // Show warning + focus button
-  static const _blurFailThreshold = 5; // Show "Enter Manually" escape hatch
-
-  // Prevents the result sheet from being shown more than once per scan
   bool _sheetOpen = false;
 
   @override
   void initState() {
     super.initState();
     context.read<ReceiptCubit>().initializeCamera();
+  }
+
+  @override
+  void dispose() {
+    super.dispose();
   }
 
   @override
@@ -41,9 +42,14 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
             state.receiptModel != null &&
             !_sheetOpen) {
           _sheetOpen = true;
-          _showResultSheet(context, state.receiptModel!);
-        } else if (state.status == ReceiptStatus.error) {
-          _showErrorDialog(context, state.errorMessage ?? 'Unknown error');
+          _showConfirmationSheet(context, state.receiptModel!);
+        } else if (state.status == ReceiptStatus.error &&
+            state.errorMessage != null) {
+          _showErrorSnackBar(context, state.errorMessage!);
+          // Reset error after showing
+          Future.delayed(const Duration(seconds: 2), () {
+            if (mounted) context.read<ReceiptCubit>().clearError();
+          });
         }
       },
       builder: (context, state) {
@@ -55,12 +61,9 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Show the "Receipt Scanned Successfully" result sheet
-  // ─────────────────────────────────────────────────────────────────────────
-  void _showResultSheet(BuildContext context, ReceiptModel receipt) {
-    final addExpenseCubit = context.read<AddExpenseCubit>();
+  void _showConfirmationSheet(BuildContext context, ReceiptModel receipt) {
     final receiptCubit = context.read<ReceiptCubit>();
+    final addExpenseCubit = context.read<AddExpenseCubit>();
 
     showModalBottomSheet(
       context: context,
@@ -69,35 +72,51 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
       builder: (sheetContext) {
-        return _ResultSheet(
+        return _ConfirmationSheet(
           receipt: receipt,
-
-          // "Scan Again" — close sheet and reset cubit so scanning resumes
-          onScanAgain: () {
-            Navigator.pop(sheetContext);
-            _sheetOpen = false;
-            receiptCubit.closeDialog();
-          },
-
-          // "Edit" — go to ManualEntryScreen with the scanned data pre-filled
           onEdit: () {
             Navigator.pop(sheetContext);
             _sheetOpen = false;
-            receiptCubit.closeDialog();
             _goToManualEntry(context, addExpenseCubit, receipt);
           },
-
-          // "Save & Continue" — same as Edit (ManualEntryScreen handles saving)
-          onSaveAndContinue: () {
+          onScanAgain: () {
             Navigator.pop(sheetContext);
             _sheetOpen = false;
-            receiptCubit.closeDialog();
-            _goToManualEntry(context, addExpenseCubit, receipt);
+            receiptCubit.resetAndRescan();
+          },
+          onConfirm: () {
+            Navigator.pop(sheetContext);
+            _sheetOpen = false;
+            // Save the expense
+            _saveExpense(context, addExpenseCubit, receipt);
           },
         );
       },
     ).whenComplete(() {
       if (mounted) _sheetOpen = false;
+    });
+  }
+
+  void _saveExpense(
+    BuildContext context,
+    AddExpenseCubit cubit,
+    ReceiptModel receipt,
+  ) {
+    // Add to recent uploads
+    cubit.addToRecentUploads(receipt);
+
+    // Show success message
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('✓ Receipt processed successfully!'),
+        backgroundColor: _green,
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    // Go back
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) Navigator.pop(context, receipt);
     });
   }
 
@@ -120,9 +139,6 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Loading screen while camera initializes
-  // ─────────────────────────────────────────────────────────────────────────
   Widget _buildLoadingScreen() {
     return const Scaffold(
       body: Center(
@@ -138,11 +154,11 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Main scanner screen
-  // ─────────────────────────────────────────────────────────────────────────
   Widget _buildScannerScreen(BuildContext context, ReceiptState state) {
     final cubit = context.read<ReceiptCubit>();
+    final isProcessing = state.status == ReceiptStatus.scanning;
+    final hasError = state.blurryCount > 3;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Scan Receipt'),
@@ -153,15 +169,19 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
         ),
         actions: [
           IconButton(
-            icon: const Icon(Icons.center_focus_strong),
-            onPressed: cubit.focusAndCapture,
-            tooltip: 'Manual focus',
+            icon: const Icon(Icons.refresh),
+            onPressed: () => cubit.resetAndRescan(),
+            tooltip: 'Reset scanner',
           ),
           IconButton(
             icon: const Icon(Icons.bug_report),
             onPressed: () {
               if (state.detectedTexts.isNotEmpty) {
-                _showDebugDialog(context, state.detectedTexts.last);
+                _showDebugDialog(context, state.detectedTexts.join('\n'));
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('No text detected yet.')),
+                );
               }
             },
           ),
@@ -169,63 +189,95 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
       ),
       body: Stack(
         children: [
-          if (cubit.controller != null)
-            Positioned.fill(child: CameraPreview(cubit.controller!)),
-          _buildScanOverlay(state),
-          _buildBottomInstructions(context, state, cubit),
+          if (cubit.controller != null && cubit.controller!.value.isInitialized)
+            Positioned.fill(child: CameraPreview(cubit.controller!))
+          else
+            Positioned.fill(child: Container(color: Colors.black)),
+
+          // Scanning overlay
+          _buildScanOverlay(state, isProcessing, hasError),
+
+          // Bottom instructions
+          _buildBottomInstructions(
+            context,
+            state,
+            cubit,
+            isProcessing,
+            hasError,
+          ),
+
+          // Processing indicator
+          if (isProcessing)
+            Container(
+              color: Colors.black54,
+              child: const Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text(
+                      'Processing receipt...',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ],
+                ),
+              ),
+            ),
         ],
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Scan overlay box — changes colour and icon based on blur state
-  // ─────────────────────────────────────────────────────────────────────────
-  Widget _buildScanOverlay(ReceiptState state) {
-    final isBlurry = state.blurryCount > _blurWarningThreshold;
-    final isFailing = state.blurryCount > _blurFailThreshold;
-
-    final Color borderColor = isFailing
-        ? Colors.red
-        : isBlurry
-        ? _orange
-        : _green;
-
-    final IconData icon = isFailing
+  Widget _buildScanOverlay(
+    ReceiptState state,
+    bool isProcessing,
+    bool hasError,
+  ) {
+    final borderColor = hasError ? _red : (isProcessing ? _orange : _green);
+    final icon = hasError
         ? Icons.error_outline
-        : isBlurry
-        ? Icons.warning_amber
-        : Icons.camera_alt;
-
-    final String label = isFailing
-        ? 'Cannot read receipt'
-        : isBlurry
-        ? 'Adjust focus...'
-        : 'Scanning...';
+        : (isProcessing ? Icons.hourglass_empty : Icons.camera_alt);
+    final label = hasError
+        ? 'Poor quality'
+        : (isProcessing ? 'Scanning...' : 'Position receipt here');
 
     return Center(
       child: Container(
-        width: MediaQuery.of(context).size.width * 0.9,
-        height: MediaQuery.of(context).size.height * 0.4,
+        width: MediaQuery.of(context).size.width * 0.85,
+        height: MediaQuery.of(context).size.height * 0.35,
         decoration: BoxDecoration(
           border: Border.all(color: borderColor, width: 3),
           borderRadius: BorderRadius.circular(16),
+          color: Colors.black12,
         ),
         child: Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: borderColor, size: 40),
-              const SizedBox(height: 8),
+              Icon(icon, color: borderColor, size: 48),
+              const SizedBox(height: 12),
               Text(
                 label,
                 style: TextStyle(
                   color: borderColor,
-                  fontSize: 20,
+                  fontSize: 18,
                   fontWeight: FontWeight.bold,
                   backgroundColor: Colors.black54,
                 ),
               ),
+              if (hasError) ...[
+                const SizedBox(height: 8),
+                const Text(
+                  'Move to brighter area\nKeep receipt flat',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    backgroundColor: Colors.black54,
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -233,16 +285,13 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Bottom instructions — adapts to blur severity
-  // ─────────────────────────────────────────────────────────────────────────
   Widget _buildBottomInstructions(
     BuildContext context,
     ReceiptState state,
     ReceiptCubit cubit,
+    bool isProcessing,
+    bool hasError,
   ) {
-    final isBlurry = state.blurryCount > _blurWarningThreshold;
-    final isFailing = state.blurryCount > _blurFailThreshold;
     final addExpenseCubit = context.read<AddExpenseCubit>();
 
     return Positioned(
@@ -251,61 +300,34 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
       right: 0,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-        color: Colors.black54,
+        color: Colors.black87,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // ── Status message ──────────────────────────────────────────────
             Text(
-              isFailing
-                  ? '❌ Receipt cannot be read. Try better lighting\nor enter details manually.'
-                  : isBlurry
-                  ? '⚠️ Receipt is blurry. Hold camera steady or tap focus.'
-                  : 'Position receipt within the green box\nAuto-scanning every 2 seconds...',
+              hasError
+                  ? '❌ Having trouble reading the receipt'
+                  : isProcessing
+                  ? '⏳ Analyzing receipt data...'
+                  : '📸 Auto-scan is active. Position receipt in the box.',
               textAlign: TextAlign.center,
               style: const TextStyle(color: Colors.white, fontSize: 14),
             ),
+            const SizedBox(height: 12),
 
-            const SizedBox(height: 10),
-
-            // ── Focus button (shown when blurry) ────────────────────────────
-            if (isBlurry)
-              TextButton.icon(
-                onPressed: cubit.focusAndCapture,
-                icon: const Icon(
-                  Icons.center_focus_strong,
-                  color: Colors.white,
-                ),
-                label: const Text(
-                  'Tap to refocus',
-                  style: TextStyle(color: Colors.white),
-                ),
-              ),
-
-            // ── Tips carousel for blurry state ─────────────────────────────
-            if (isBlurry && !isFailing) ...[
-              const SizedBox(height: 4),
-              const Text(
-                '💡 Tips: Lay receipt flat · Avoid shadows · Move closer',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            ],
-
-            // ── Manual entry escape hatch (shown when failing) ──────────────
-            if (isFailing) ...[
-              const SizedBox(height: 8),
+            if (hasError) ...[
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // Retry: reset blur count and try again
                   OutlinedButton.icon(
-                    onPressed: () {
-                      cubit.focusAndCapture();
-                    },
-                    icon: const Icon(Icons.refresh, color: Colors.white),
+                    onPressed: () => cubit.resetAndRescan(),
+                    icon: const Icon(
+                      Icons.refresh,
+                      color: Colors.white,
+                      size: 18,
+                    ),
                     label: const Text(
-                      'Retry',
+                      'Try Again',
                       style: TextStyle(color: Colors.white),
                     ),
                     style: OutlinedButton.styleFrom(
@@ -313,7 +335,6 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  // Manual entry
                   ElevatedButton.icon(
                     onPressed: () =>
                         _goToManualEntry(context, addExpenseCubit, null),
@@ -322,33 +343,46 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
                     style: ElevatedButton.styleFrom(
                       backgroundColor: _orange,
                       foregroundColor: Colors.white,
-                      elevation: 0,
                     ),
                   ),
                 ],
               ),
             ],
+
+            if (!hasError && !isProcessing)
+              const Text(
+                '💡 Tips: Good lighting · Flat surface · Hold steady',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
           ],
         ),
       ),
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // Debug dialog — shows raw OCR output
-  // ─────────────────────────────────────────────────────────────────────────
+  void _showErrorSnackBar(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: _red,
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   void _showDebugDialog(BuildContext context, String text) {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('Debug: Raw OCR Text'),
+        title: const Text('Raw OCR Text'),
         content: SizedBox(
           width: double.maxFinite,
           height: 400,
           child: SingleChildScrollView(
             child: SelectableText(
               text,
-              style: const TextStyle(fontFamily: 'monospace'),
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             ),
           ),
         ),
@@ -361,272 +395,200 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
       ),
     );
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // Error dialog
-  // ─────────────────────────────────────────────────────────────────────────
-  void _showErrorDialog(BuildContext context, String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Error'),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () {
-              context.read<ReceiptCubit>().clearError();
-              Navigator.pop(context);
-            },
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Result bottom sheet widget
-// ─────────────────────────────────────────────────────────────────────────────
-class _ResultSheet extends StatelessWidget {
+// Confirmation Sheet Widget
+class _ConfirmationSheet extends StatefulWidget {
   final ReceiptModel receipt;
-  final VoidCallback onScanAgain;
   final VoidCallback onEdit;
-  final VoidCallback onSaveAndContinue;
+  final VoidCallback onScanAgain;
+  final VoidCallback onConfirm;
 
-  const _ResultSheet({
+  const _ConfirmationSheet({
     required this.receipt,
-    required this.onScanAgain,
     required this.onEdit,
-    required this.onSaveAndContinue,
+    required this.onScanAgain,
+    required this.onConfirm,
   });
 
-  static const _green = Color(0xFF4CAF50);
-  static const _lightGreen = Color(0xFFE8F5E9);
+  @override
+  State<_ConfirmationSheet> createState() => _ConfirmationSheetState();
+}
+
+class _ConfirmationSheetState extends State<_ConfirmationSheet> {
+  late ReceiptModel _receipt;
+
+  @override
+  void initState() {
+    super.initState();
+    _receipt = widget.receipt;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final items = receipt.items ?? [];
+    final items = _receipt.items ?? [];
+    final totalAmount = _receipt.amount;
 
     return Container(
       constraints: BoxConstraints(
         maxHeight: MediaQuery.of(context).size.height * 0.85,
       ),
       decoration: const BoxDecoration(
-        color: Color(0xFFF0F0EA),
+        color: Colors.white,
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle indicator
+          // Drag handle
           Container(
             margin: const EdgeInsets.only(top: 12),
             width: 40,
             height: 4,
             decoration: BoxDecoration(
-              color: Colors.grey[400],
+              color: Colors.grey[300],
               borderRadius: BorderRadius.circular(2),
             ),
           ),
 
-          // Scrollable body
+          // Header
+          Padding(
+            padding: const EdgeInsets.all(20),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF4CAF50).withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(
+                    Icons.receipt,
+                    color: Color(0xFF4CAF50),
+                    size: 28,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Receipt Details',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Content
           Flexible(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 20, 20, 8),
+              padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // ── Header ──────────────────────────────────────────────
+                  // Merchant
+                  _buildInfoCard(
+                    title: 'Merchant',
+                    value: _receipt.merchantName ?? 'Unknown',
+                    icon: Icons.store,
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Date
+                  _buildInfoCard(
+                    title: 'Date',
+                    value: _receipt.formattedDate,
+                    icon: Icons.calendar_today,
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Total Amount
+                  _buildInfoCard(
+                    title: 'Total Amount',
+                    value: 'RM ${totalAmount.toStringAsFixed(2)}',
+                    icon: Icons.attach_money,
+                    isAmount: true,
+                  ),
+                  const SizedBox(height: 20),
+
+                  // Items Section
+                  if (items.isNotEmpty) ...[
+                    const Text(
+                      'Items',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    ...items.map((item) => _buildItemCard(item)),
+                    const SizedBox(height: 20),
+                  ],
+
+                  // Action Buttons
                   Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: _green.withOpacity(0.15),
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: const Icon(
-                          Icons.check_box,
-                          color: _green,
-                          size: 28,
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: widget.onScanAgain,
+                          icon: const Icon(Icons.camera_alt, size: 20),
+                          label: const Text('Scan Again'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: const BorderSide(color: Colors.grey),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
                         ),
                       ),
                       const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Receipt Scanned\nSuccessfully',
-                          style: TextStyle(
-                            fontSize: 22,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF1A1A1A),
-                            height: 1.25,
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: widget.onEdit,
+                          icon: const Icon(Icons.edit, size: 20),
+                          label: const Text('Edit'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            side: const BorderSide(color: Color(0xFF4CAF50)),
+                            foregroundColor: const Color(0xFF4CAF50),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
 
-                  const SizedBox(height: 16),
-
-                  // ── Items found badge ────────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFDCEEFF),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(
-                          Icons.camera_alt,
-                          color: Color(0xFF1976D2),
-                          size: 20,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Found ${items.length} item${items.length == 1 ? '' : 's'}',
-                          style: const TextStyle(
-                            color: Color(0xFF1565C0),
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 16),
-
-                  // ── Merchant + Total card ────────────────────────────────
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: _lightGreen,
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    child: Column(
-                      children: [
-                        _infoRow(
-                          label: 'Merchant:',
-                          value: receipt.merchantName ?? 'Unknown Store',
-                          valueBold: true,
-                        ),
-                        const Divider(height: 20, thickness: 0.8),
-                        _infoRow(
-                          label: 'Total Amount:',
-                          value: 'RM ${receipt.amount.toStringAsFixed(2)}',
-                          valueColor: _green,
-                          valueBold: true,
-                          valueFontSize: 18,
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // ── Items list ───────────────────────────────────────────
-                  if (items.isNotEmpty) ...[
-                    Text(
-                      'Items (${items.length})',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF1A1A1A),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    ...items.map((item) => _ItemCard(item: item)),
-                  ] else
-                    Container(
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.6),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Row(
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            color: Colors.grey,
-                            size: 18,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'No individual items detected',
-                            style: TextStyle(color: Colors.grey),
-                          ),
-                        ],
-                      ),
-                    ),
-
-                  const SizedBox(height: 24),
-
-                  // ── Secondary actions row ────────────────────────────────
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: onScanAgain,
-                        child: const Text(
-                          'Scan Again',
-                          style: TextStyle(
-                            color: _green,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      TextButton.icon(
-                        onPressed: onEdit,
-                        icon: const Icon(Icons.edit, color: _green, size: 16),
-                        label: const Text(
-                          'Edit',
-                          style: TextStyle(
-                            color: _green,
-                            fontWeight: FontWeight.w600,
-                            fontSize: 15,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  // ── Primary CTA ──────────────────────────────────────────
+                  // Confirm Button
                   SizedBox(
                     width: double.infinity,
-                    height: 52,
                     child: ElevatedButton(
-                      onPressed: onSaveAndContinue,
+                      onPressed: widget.onConfirm,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: _green,
+                        backgroundColor: const Color(0xFF4CAF50),
                         foregroundColor: Colors.white,
-                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(14),
+                          borderRadius: BorderRadius.circular(12),
                         ),
                       ),
                       child: const Text(
-                        'Save & Continue',
+                        'Confirm & Save',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
-                          letterSpacing: 0.3,
                         ),
                       ),
                     ),
                   ),
-
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 24),
                 ],
               ),
             ),
@@ -636,67 +598,67 @@ class _ResultSheet extends StatelessWidget {
     );
   }
 
-  Widget _infoRow({
-    required String label,
+  Widget _buildInfoCard({
+    required String title,
     required String value,
-    bool valueBold = false,
-    Color? valueColor,
-    double valueFontSize = 15,
+    required IconData icon,
+    bool isAmount = false,
   }) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(label, style: const TextStyle(fontSize: 14, color: Colors.grey)),
-        Flexible(
-          child: Text(
-            value,
-            textAlign: TextAlign.end,
-            style: TextStyle(
-              fontSize: valueFontSize,
-              fontWeight: valueBold ? FontWeight.bold : FontWeight.normal,
-              color: valueColor ?? const Color(0xFF1A1A1A),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Individual item card in the result sheet
-// ─────────────────────────────────────────────────────────────────────────────
-class _ItemCard extends StatelessWidget {
-  final ReceiptItem item;
-
-  const _ItemCard({required this.item});
-
-  static const _green = Color(0xFF4CAF50);
-
-  @override
-  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.75),
+        color: Colors.grey[50],
         borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.grey[200]!),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // Green left accent bar
+          Icon(icon, size: 24, color: Colors.grey[600]),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: TextStyle(
+                    fontSize: isAmount ? 20 : 16,
+                    fontWeight: isAmount ? FontWeight.bold : FontWeight.normal,
+                    color: isAmount ? const Color(0xFF4CAF50) : Colors.black87,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildItemCard(ReceiptItem item) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey[50],
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        children: [
           Container(
             width: 4,
-            height: 44,
+            height: 40,
             decoration: BoxDecoration(
-              color: _green,
+              color: const Color(0xFF4CAF50),
               borderRadius: BorderRadius.circular(2),
             ),
           ),
           const SizedBox(width: 12),
-
-          // Name + category
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -704,37 +666,35 @@ class _ItemCard extends StatelessWidget {
                 Text(
                   item.name,
                   style: const TextStyle(
-                    fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: Color(0xFF1A1A1A),
+                    fontSize: 14,
                   ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
-                if (item.category != null && item.category!.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    item.category!,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      color: _green,
-                      fontWeight: FontWeight.w500,
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (item.quantity > 1)
+                      Text(
+                        '${item.quantity}x ',
+                        style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                      ),
+                    Text(
+                      item.category,
+                      style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ],
             ),
           ),
-
-          const SizedBox(width: 8),
-
-          // Price
           Text(
-            'RM ${item.price.toStringAsFixed(2)}',
+            'RM ${(item.price).toStringAsFixed(2)}',
             style: const TextStyle(
-              fontSize: 14,
               fontWeight: FontWeight.bold,
-              color: Color(0xFF1A1A1A),
+              fontSize: 14,
+              color: Color(0xFF4CAF50),
             ),
           ),
         ],

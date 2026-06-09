@@ -2,12 +2,12 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:io';
-import 'package:uuid/uuid.dart'; // ADD THIS
+import 'package:uuid/uuid.dart';
 import '../models/expense_model.dart';
 import '../models/receipt_model.dart';
 import '../services/supabase_service.dart';
 
-// State class (same as before - no changes needed)
+// State class
 class AddExpenseState {
   final List<ReceiptModel> recentUploads;
   final List<ReceiptModel> multipleReceipts;
@@ -84,7 +84,7 @@ class AddExpenseState {
 class AddExpenseCubit extends Cubit<AddExpenseState> {
   final SupabaseService _supabaseService = SupabaseService();
   final ImagePicker _imagePicker = ImagePicker();
-  final Uuid _uuid = const Uuid(); // ADD THIS
+  final Uuid _uuid = const Uuid();
 
   String? get _currentUserId => Supabase.instance.client.auth.currentUser?.id;
 
@@ -111,9 +111,10 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
 
       print('Found ${response.length} receipts for user');
 
-      final receipts = (response as List).map((json) {
-        return ReceiptModel.fromDatabaseJson(json);
-      }).toList();
+      final List<ReceiptModel> receipts = (response as List)
+          .cast<Map<String, dynamic>>()
+          .map((json) => ReceiptModel.fromDatabaseJson(json))
+          .toList();
 
       emit(state.copyWith(recentUploads: receipts));
     } catch (e) {
@@ -161,6 +162,11 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
   // Update note for editing
   void updateNote(String note) {
     emit(state.copyWith(note: note));
+  }
+
+  // FIXED: Added an alias function targeting 'setEditingExpense' to resolve History UI errors
+  void setEditingExpense(ExpenseModel expense) {
+    setExpenseToEdit(expense);
   }
 
   // Set expense to edit
@@ -233,14 +239,14 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
           .from('receipts')
           .getPublicUrl(filePath);
 
-      // FIXED: Use UUID instead of timestamp
       final receipt = ReceiptModel(
-        id: _uuid.v4(), // ✅ CHANGED
+        id: _uuid.v4(),
         date: DateTime.now(),
         amount: 0.0,
         receiptType: 'image',
         imagePath: imageUrl,
         merchantName: null,
+        category: 'Groceries',
         userId: userId,
         processed: false,
       );
@@ -300,14 +306,14 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
             .from('receipts')
             .getPublicUrl(filePath);
 
-        // FIXED: Use UUID instead of timestamp
         final receipt = ReceiptModel(
-          id: _uuid.v4(), // ✅ CHANGED
+          id: _uuid.v4(),
           date: DateTime.now(),
           amount: 0.0,
           receiptType: 'image',
           imagePath: imageUrl,
           merchantName: null,
+          category: 'Groceries',
           userId: userId,
           processed: false,
         );
@@ -375,9 +381,8 @@ class AddExpenseCubit extends Cubit<AddExpenseState> {
         return;
       }
 
-      // FIXED: Use UUID for expense ID too
       final expense = ExpenseModel(
-        id: _uuid.v4(), // ✅ CHANGED
+        id: _uuid.v4(),
         title: title,
         amount: amount,
         category: category,

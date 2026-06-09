@@ -31,7 +31,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
 
   final _monthlyBudgetController = TextEditingController();
   final Map<String, double> _originalSpentAmounts = {};
-  List<Map<String, dynamic>> _categoryBudgets = [];
+  final List<Map<String, dynamic>> _categoryBudgets = [];
 
   final _newCategoryController = TextEditingController();
   final _newCategoryAmountController = TextEditingController();
@@ -243,8 +243,9 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                           if (widget.isAdding) {
                             if (value != null && value.isNotEmpty) {
                               final val = double.tryParse(value);
-                              if (val == null || val < 0)
+                              if (val == null || val < 0) {
                                 return 'Enter a valid amount';
+                              }
                             }
                             return null;
                           }
@@ -386,8 +387,9 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                                               final val = double.tryParse(
                                                 value,
                                               );
-                                              if (val == null || val < 0)
+                                              if (val == null || val < 0) {
                                                 return 'Invalid';
+                                              }
                                             }
                                             return null;
                                           },

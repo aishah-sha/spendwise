@@ -810,7 +810,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         ),
       ),
       child: DropdownButtonFormField<String>(
-        value: value,
+        initialValue: value,
         dropdownColor: isDarkMode ? Colors.grey[850] : Colors.white,
         decoration: InputDecoration(
           labelText: label,

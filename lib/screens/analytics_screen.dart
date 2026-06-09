@@ -8,6 +8,7 @@ import '../cubit/add_expense_cubit.dart';
 import '../cubit/notification_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import '../cubit/profile_state.dart';
+import '../cubit/budget_cubit.dart' as budget_cubit;
 import '../widgets/total_spent_card.dart';
 import '../widgets/category_legend.dart';
 import '../widgets/notification_badge.dart';
@@ -31,90 +32,85 @@ class AnalyticsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MultiBlocProvider(
-      providers: [
-        BlocProvider(create: (context) => ProfileCubit()..loadProfile()),
-      ],
-      child: BlocBuilder<ProfileCubit, ProfileState>(
-        builder: (context, profileState) {
-          bool isDarkMode = (profileState is ProfileLoaded)
-              ? profileState.user.isDarkMode
-              : false;
+    return BlocBuilder<ProfileCubit, ProfileState>(
+      builder: (context, profileState) {
+        bool isDarkMode = (profileState is ProfileLoaded)
+            ? profileState.user.isDarkMode
+            : false;
 
-          return Theme(
-            data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
-            child: Scaffold(
-              backgroundColor: isDarkMode ? Colors.black : bgColor,
-              body: Column(
-                children: [
-                  _buildTopHeader(context, isDarkMode),
-                  Expanded(
-                    child: BlocBuilder<ExpenseCubit, ExpenseState>(
-                      builder: (context, state) {
-                        return SingleChildScrollView(
-                          padding: const EdgeInsets.all(20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Analytics',
-                                style: TextStyle(
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDarkMode ? Colors.white : darkText,
-                                  letterSpacing: -0.5,
-                                ),
+        return Theme(
+          data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
+          child: Scaffold(
+            backgroundColor: isDarkMode ? Colors.black : bgColor,
+            body: Column(
+              children: [
+                _buildTopHeader(context, isDarkMode),
+                Expanded(
+                  child: BlocBuilder<ExpenseCubit, ExpenseState>(
+                    builder: (context, state) {
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.all(20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Analytics',
+                              style: TextStyle(
+                                fontSize: 32,
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode ? Colors.white : darkText,
+                                letterSpacing: -0.5,
                               ),
-                              const SizedBox(height: 20),
-                              _buildPeriodSelector(context, state, isDarkMode),
-                              const SizedBox(height: 20),
-                              TotalSpentCard(isDarkMode: isDarkMode),
-                              const SizedBox(height: 24),
-                              Text(
-                                'Spending by Category',
-                                style: TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: isDarkMode ? Colors.white : darkText,
-                                ),
+                            ),
+                            const SizedBox(height: 20),
+                            _buildPeriodSelector(context, state, isDarkMode),
+                            const SizedBox(height: 20),
+                            TotalSpentCard(isDarkMode: isDarkMode),
+                            const SizedBox(height: 24),
+                            Text(
+                              'Spending by Category',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode ? Colors.white : darkText,
                               ),
-                              const SizedBox(height: 16),
-                              _buildCategoryCircleChart(
-                                context,
-                                state,
-                                isDarkMode,
-                              ),
-                              const SizedBox(height: 24),
-                              _buildSpendingInsightsHeader(
-                                context,
-                                state,
-                                isDarkMode,
-                              ),
-                              const SizedBox(height: 12),
-                              _buildEnhancedDailySpendingTrend(
-                                context,
-                                state,
-                                isDarkMode,
-                              ),
-                              const SizedBox(height: 16),
-                              CategoryLegend(isDarkMode: isDarkMode),
-                              const SizedBox(height: 20),
-                            ],
-                          ),
-                        );
-                      },
-                    ),
+                            ),
+                            const SizedBox(height: 16),
+                            _buildCategoryCircleChart(
+                              context,
+                              state,
+                              isDarkMode,
+                            ),
+                            const SizedBox(height: 24),
+                            _buildSpendingInsightsHeader(
+                              context,
+                              state,
+                              isDarkMode,
+                            ),
+                            const SizedBox(height: 12),
+                            _buildEnhancedDailySpendingTrend(
+                              context,
+                              state,
+                              isDarkMode,
+                            ),
+                            const SizedBox(height: 16),
+                            CategoryLegend(isDarkMode: isDarkMode),
+                            const SizedBox(height: 20),
+                          ],
+                        ),
+                      );
+                    },
                   ),
-                ],
-              ),
-              floatingActionButtonLocation:
-                  FloatingActionButtonLocation.centerDocked,
-              floatingActionButton: _buildFab(context, isDarkMode),
-              bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
+                ),
+              ],
             ),
-          );
-        },
-      ),
+            floatingActionButtonLocation:
+                FloatingActionButtonLocation.centerDocked,
+            floatingActionButton: _buildFab(context, isDarkMode),
+            bottomNavigationBar: _buildBottomNavigation(context, isDarkMode),
+          ),
+        );
+      },
     );
   }
 
@@ -165,14 +161,14 @@ class AnalyticsScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: const Icon(
-                    Icons.account_balance_wallet,
+                    Icons.arrow_back,
                     color: Colors.white,
                     size: 15,
                   ),
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  'SpendWise',
+                  'Back',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
@@ -182,18 +178,20 @@ class AnalyticsScreen extends StatelessWidget {
               ],
             ),
           ),
-          Row(
-            children: [
-              IconTheme(
-                data: IconThemeData(
-                  color: isDarkMode ? Colors.white : darkText,
-                ),
-                child: BlocProvider(
-                  create: (context) => NotificationCubit(),
-                  child: const NotificationBadge(iconSize: 28),
-                ),
-              ),
-            ],
+          Text(
+            'SpendWise',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: isDarkMode ? Colors.white : darkText,
+            ),
+          ),
+          IconTheme(
+            data: IconThemeData(color: isDarkMode ? Colors.white : darkText),
+            child: BlocProvider(
+              create: (context) => NotificationCubit(),
+              child: const NotificationBadge(iconSize: 28),
+            ),
           ),
         ],
       ),
@@ -212,7 +210,6 @@ class AnalyticsScreen extends StatelessWidget {
     ];
 
     final selectedPeriod = _getSelectedPeriod(state.selectedAnalyticsPeriod);
-    final periodInfo = _getPeriodInfo(state.selectedAnalyticsPeriod);
 
     return Column(
       children: [
@@ -281,80 +278,8 @@ class AnalyticsScreen extends StatelessWidget {
             }).toList(),
           ),
         ),
-        const SizedBox(height: 12),
-        // Period info card
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-          decoration: BoxDecoration(
-            color: isDarkMode ? Colors.grey[850] : cardBgColor,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: isDarkMode ? Colors.grey[700]! : fabBorderColor,
-            ),
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  Icon(Icons.info_outline, size: 16, color: accentGreen),
-                  const SizedBox(width: 8),
-                  Text(
-                    periodInfo['title'] as String,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: isDarkMode ? Colors.white70 : Colors.grey.shade600,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 4,
-                ),
-                decoration: BoxDecoration(
-                  color: accentGreen.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  periodInfo['dateRange'] as String,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w500,
-                    color: accentGreen,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
       ],
     );
-  }
-
-  Map<String, String> _getPeriodInfo(AnalyticsPeriod period) {
-    final now = DateTime.now();
-    switch (period) {
-      case AnalyticsPeriod.week:
-        final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
-        final endOfWeek = startOfWeek.add(const Duration(days: 6));
-        return {
-          'title': 'This Week\'s Spending',
-          'dateRange':
-              '${DateFormat('MMM d').format(startOfWeek)} - ${DateFormat('MMM d').format(endOfWeek)}',
-        };
-      case AnalyticsPeriod.month:
-        return {
-          'title': 'This Month\'s Spending',
-          'dateRange': DateFormat('MMMM yyyy').format(now),
-        };
-      case AnalyticsPeriod.year:
-        return {
-          'title': 'This Year\'s Spending',
-          'dateRange': DateFormat('yyyy').format(now),
-        };
-    }
   }
 
   // --- SPENDING INSIGHTS HEADER ---
@@ -404,7 +329,7 @@ class AnalyticsScreen extends StatelessWidget {
 
   double _calculateAverageSpending(ExpenseState state, AnalyticsPeriod period) {
     final dailySpending = _getDailySpendingData(state, period);
-    if (dailySpending.isEmpty) return 0;
+    if (dailySpending.isEmpty) return 0.0;
     final total = dailySpending.values.reduce((a, b) => a + b);
     return total / dailySpending.length;
   }
@@ -418,13 +343,16 @@ class AnalyticsScreen extends StatelessWidget {
 
     DateTime startDate;
     switch (period) {
-      case AnalyticsPeriod.week:
+      case AnalyticsPeriod.daily:
+        startDate = now;
+        break;
+      case AnalyticsPeriod.weekly:
         startDate = now.subtract(Duration(days: now.weekday - 1));
         break;
-      case AnalyticsPeriod.month:
+      case AnalyticsPeriod.monthly:
         startDate = DateTime(now.year, now.month, 1);
         break;
-      case AnalyticsPeriod.year:
+      case AnalyticsPeriod.yearly:
         startDate = DateTime(now.year, 1, 1);
         break;
     }
@@ -440,7 +368,8 @@ class AnalyticsScreen extends StatelessWidget {
           expense.date.month,
           expense.date.day,
         );
-        dailySpending[dateKey] = (dailySpending[dateKey] ?? 0) + expense.amount;
+        dailySpending[dateKey] =
+            (dailySpending[dateKey] ?? 0.0) + expense.amount;
       }
     }
 
@@ -584,8 +513,10 @@ class AnalyticsScreen extends StatelessWidget {
                     itemCount: sortedDates.length,
                     itemBuilder: (context, index) {
                       final date = sortedDates[index];
-                      final amount = dailySpending[date] ?? 0;
-                      final height = (amount / maxSpending) * 150;
+                      final amount = dailySpending[date] ?? 0.0;
+                      final height = maxSpending > 0
+                          ? (amount / maxSpending) * 150
+                          : 0.0;
                       final isHighest = amount == maxSpending;
                       final isLowest =
                           amount == minSpending && amount != maxSpending;
@@ -699,12 +630,14 @@ class AnalyticsScreen extends StatelessWidget {
 
   String _getDateLabel(DateTime date, AnalyticsPeriod period) {
     switch (period) {
-      case AnalyticsPeriod.week:
-        return DateFormat('E').format(date); // Mon, Tue, etc.
-      case AnalyticsPeriod.month:
-        return DateFormat('d').format(date); // 1, 2, 3, etc.
-      case AnalyticsPeriod.year:
-        return DateFormat('MMM').format(date); // Jan, Feb, etc.
+      case AnalyticsPeriod.daily:
+        return DateFormat('HH:mm').format(date);
+      case AnalyticsPeriod.weekly:
+        return DateFormat('E').format(date);
+      case AnalyticsPeriod.monthly:
+        return DateFormat('d').format(date);
+      case AnalyticsPeriod.yearly:
+        return DateFormat('MMM').format(date);
     }
   }
 
@@ -714,10 +647,10 @@ class AnalyticsScreen extends StatelessWidget {
     ExpenseState state,
     bool isDarkMode,
   ) {
-    final categories = state.sortedCategoryTotals;
-    final total = state.totalSpent;
+    final Map<String, double> categoriesMap = state.sortedCategoryTotals;
+    final double total = state.totalSpent;
 
-    if (categories.isEmpty || total == 0) {
+    if (categoriesMap.isEmpty || total == 0) {
       return Container(
         padding: const EdgeInsets.all(40),
         decoration: BoxDecoration(
@@ -754,6 +687,9 @@ class AnalyticsScreen extends StatelessWidget {
       );
     }
 
+    final List<MapEntry<String, double>> categoryEntries = categoriesMap.entries
+        .toList();
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -769,7 +705,7 @@ class AnalyticsScreen extends StatelessWidget {
             height: 200,
             child: CustomPaint(
               painter: CategoryCirclePainter(
-                categories: categories,
+                categories: categoryEntries,
                 total: total,
                 cubit: context.read<ExpenseCubit>(),
                 isDarkMode: isDarkMode,
@@ -778,7 +714,7 @@ class AnalyticsScreen extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          ...categories.take(5).map((entry) {
+          ...categoryEntries.take(5).map((entry) {
             final percentage = (entry.value / total) * 100;
             return Padding(
               padding: const EdgeInsets.symmetric(vertical: 4),
@@ -822,11 +758,11 @@ class AnalyticsScreen extends StatelessWidget {
               ),
             );
           }),
-          if (categories.length > 5)
+          if (categoryEntries.length > 5)
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                '+ ${categories.length - 5} more categories',
+                '+ ${categoryEntries.length - 5} more categories',
                 style: TextStyle(
                   fontSize: 12,
                   color: isDarkMode ? Colors.white60 : Colors.grey.shade500,
@@ -859,7 +795,16 @@ class AnalyticsScreen extends StatelessWidget {
                 Navigator.pushReplacement(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const DashboardScreen(),
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider.value(
+                          value: context.read<budget_cubit.BudgetCubit>(),
+                        ),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
+                      ],
+                      child: const DashboardScreen(),
+                    ),
                   ),
                 );
               },
@@ -889,7 +834,18 @@ class AnalyticsScreen extends StatelessWidget {
               () {
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => const BudgetScreen()),
+                  MaterialPageRoute(
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider.value(
+                          value: context.read<budget_cubit.BudgetCubit>(),
+                        ),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
+                      ],
+                      child: const BudgetScreen(),
+                    ),
+                  ),
                 );
               },
             ),
@@ -903,7 +859,13 @@ class AnalyticsScreen extends StatelessWidget {
                 Navigator.push(
                   context,
                   MaterialPageRoute(
-                    builder: (context) => const ProfileScreen(),
+                    builder: (context) => MultiBlocProvider(
+                      providers: [
+                        BlocProvider.value(value: context.read<ExpenseCubit>()),
+                        BlocProvider.value(value: context.read<ProfileCubit>()),
+                      ],
+                      child: const ProfileScreen(),
+                    ),
                   ),
                 );
               },
@@ -951,20 +913,23 @@ class AnalyticsScreen extends StatelessWidget {
 
   String _getSelectedPeriod(AnalyticsPeriod period) {
     switch (period) {
-      case AnalyticsPeriod.week:
+      case AnalyticsPeriod.daily:
+        return 'Day';
+      case AnalyticsPeriod.weekly:
         return 'Week';
-      case AnalyticsPeriod.month:
+      case AnalyticsPeriod.monthly:
         return 'Month';
-      case AnalyticsPeriod.year:
+      case AnalyticsPeriod.yearly:
         return 'Year';
     }
   }
 
   void _changePeriod(BuildContext context, String period) {
     final cubit = context.read<ExpenseCubit>();
-    if (period == 'Week') cubit.changeAnalyticsPeriod(AnalyticsPeriod.week);
-    if (period == 'Month') cubit.changeAnalyticsPeriod(AnalyticsPeriod.month);
-    if (period == 'Year') cubit.changeAnalyticsPeriod(AnalyticsPeriod.year);
+    if (period == 'Day') cubit.changeAnalyticsPeriod(AnalyticsPeriod.daily);
+    if (period == 'Week') cubit.changeAnalyticsPeriod(AnalyticsPeriod.weekly);
+    if (period == 'Month') cubit.changeAnalyticsPeriod(AnalyticsPeriod.monthly);
+    if (period == 'Year') cubit.changeAnalyticsPeriod(AnalyticsPeriod.yearly);
   }
 }
 

@@ -7,7 +7,6 @@ import 'profile_state.dart';
 import '../models/user_model.dart';
 import '../services/supabase_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:path_provider/path_provider.dart';
 
 class ProfileCubit extends Cubit<ProfileState> {
   final SupabaseService _supabaseService = SupabaseService();

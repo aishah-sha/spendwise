@@ -19,9 +19,12 @@ import 'dashboard_screen.dart';
 import 'profile_screen.dart';
 import 'receipt_scanner_screen.dart';
 import '../cubit/budget_cubit.dart' as budget_cubit;
+import '../parser/receipt_parser.dart';
 
 class AddExpenseScreen extends StatelessWidget {
-  const AddExpenseScreen({super.key});
+  final String? editingExpenseId;
+
+  const AddExpenseScreen({super.key, this.editingExpenseId});
 
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
@@ -440,22 +443,19 @@ class AddExpenseScreen extends StatelessWidget {
 
     // 3. Parse with the same parser used by the live scanner
     // FIXED: Stripped out the incorrect "fallbackLines" argument causing the compiler failure
-    final receiptData = ReceiptParserV2.parseFromRecognizedText(
-      recognizedText,
-      fallbackLines: [],
-    );
+    final receiptData = ReceiptParser.parseRawText(recognizedText.text);
 
     // 4. Build ReceiptModel — critically, include imagePath so the thumbnail works
     return ReceiptModel(
       id: DateTime.now().millisecondsSinceEpoch
           .toString(), // Added a temporary unique ID string fallback if needed
-      merchantName: receiptData.merchant,
-      amount: receiptData.total,
+      merchantName: receiptData.merchantName,
+      amount: receiptData.amount,
       date: DateTime.now(),
       receiptType: 'image',
       imagePath: imagePath, // store path so FileImage renders
       items: receiptData.items
-          .map(
+          ?.map(
             (item) => ReceiptItem(
               // FIXED: Fixed invalid properties and mapped constructor arguments safely
               name: item.name,
@@ -813,7 +813,7 @@ class AddExpenseScreen extends StatelessWidget {
           width: 60,
           height: 60,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _thumbnailFallback(),
+          errorBuilder: (_, _, _) => _thumbnailFallback(),
         ),
       );
     }

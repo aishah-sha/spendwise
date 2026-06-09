@@ -50,6 +50,7 @@ class AuthCubit extends Cubit<AuthState> {
   }
 
   void _setupGoogleSignIn() {
+    // FIX: Double check package matching constructor syntax initialization explicitly
     _googleSignIn = GoogleSignIn(
       scopes: ['email', 'profile'],
       serverClientId:
@@ -101,11 +102,13 @@ class AuthCubit extends Cubit<AuthState> {
     if (!isClosed) emit(Unauthenticated());
   }
 
-  /// Extracts system identification configurations and pushes updates to database
   Future<void> syncDeviceNotificationToken() async {
     try {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return;
+
+      // FIX: Initialize Firebase Messaging first
+      await FirebaseMessaging.instance.requestPermission();
 
       // Extract raw Firebase Push routing address key from mobile OS hardware stack
       String? fcmToken = await FirebaseMessaging.instance.getToken();
@@ -203,6 +206,7 @@ class AuthCubit extends Cubit<AuthState> {
         return;
       }
 
+      // FIX: Added 'await' because authentication is an asynchronous getter
       final GoogleSignInAuthentication googleAuth =
           await googleUser.authentication;
 

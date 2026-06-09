@@ -45,165 +45,827 @@ class ExpenseHistoryScreen extends StatelessWidget {
             body: Column(
               children: [
                 _buildTopHeader(context, isDarkMode),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(20, 15, 20, 10),
-                  color: Colors.transparent,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Expense History',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkMode ? Colors.white : darkText,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Manage and Review all your expenses',
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: isDarkMode
-                              ? Colors.white70
-                              : darkText.withOpacity(0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.all(16.0),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      color: isDarkMode ? Colors.grey[850] : Colors.white,
-                      borderRadius: BorderRadius.circular(25),
-                      boxShadow: [
-                        BoxShadow(
-                          color: isDarkMode
-                              ? Colors.black.withOpacity(0.3)
-                              : Colors.grey.withOpacity(0.1),
-                          spreadRadius: 1,
-                          blurRadius: 5,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-                    ),
-                    child: TextField(
-                      style: TextStyle(
-                        color: isDarkMode ? Colors.white : darkText,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Search merchant, date, amount...',
-                        hintStyle: TextStyle(
-                          color: isDarkMode ? Colors.white60 : Colors.grey[500],
-                        ),
-                        prefixIcon: Icon(Icons.search, color: accentGreen),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 15,
-                        ),
-                      ),
-                      onChanged: (query) {
-                        context.read<ExpenseCubit>().searchExpenses(query);
-                      },
-                    ),
-                  ),
-                ),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
-                  child: Row(
-                    children: [
-                      _buildFilterChip(
-                        'All',
-                        isSelected: true,
-                        isDarkMode: isDarkMode,
-                      ),
-                      const SizedBox(width: 10),
-                      _buildFilterDropdown(context, 'Category', isDarkMode),
-                      const SizedBox(width: 10),
-                      _buildFilterDropdown(context, 'Date Range', isDarkMode),
-                      const Spacer(),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
+                _buildHeaderTitle(isDarkMode),
+                _buildSearchBar(context, isDarkMode),
+                _buildEnhancedFilterBar(context, isDarkMode),
+                const SizedBox(height: 8),
+                _buildActiveFilters(context, isDarkMode),
                 _buildSummaryCards(isDarkMode),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: BlocBuilder<ExpenseCubit, ExpenseState>(
-                    builder: (context, state) {
-                      if (state.allExpenses.isEmpty) {
-                        return Center(
-                          child: Text(
-                            'No expenses found',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: isDarkMode ? Colors.white60 : Colors.grey,
-                            ),
-                          ),
-                        );
-                      }
-
-                      if (state.filteredExpenses.isEmpty) {
-                        return Center(
-                          child: Text(
-                            'No expenses match your filters',
-                            style: TextStyle(
-                              fontSize: 16,
-                              color: isDarkMode ? Colors.white60 : Colors.grey,
-                            ),
-                          ),
-                        );
-                      }
-
-                      return ListView.builder(
-                        padding: const EdgeInsets.all(16),
-                        itemCount: state.groupedByDate.length,
-                        itemBuilder: (context, index) {
-                          final dateKey = state.groupedByDate.keys.elementAt(
-                            index,
-                          );
-                          final expenses = state.groupedByDate[dateKey]!;
-
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  vertical: 8.0,
-                                ),
-                                child: Text(
-                                  dateKey,
-                                  style: TextStyle(
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold,
-                                    color: isDarkMode ? Colors.white : darkText,
-                                  ),
-                                ),
-                              ),
-                              ...expenses.map(
-                                (expense) => _buildDismissibleExpenseItem(
-                                  context,
-                                  expense,
-                                  isDarkMode,
-                                ),
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                    },
-                  ),
-                ),
+                const SizedBox(height: 8),
+                _buildExpenseList(context, isDarkMode),
               ],
             ),
           ),
         );
       },
     );
+  }
+
+  Widget _buildHeaderTitle(bool isDarkMode) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(20, 15, 20, 10),
+      color: Colors.transparent,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Expense History',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.bold,
+              color: isDarkMode ? Colors.white : darkText,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Manage and Review all your expenses',
+            style: TextStyle(
+              fontSize: 14,
+              color: isDarkMode ? Colors.white70 : darkText.withOpacity(0.7),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(BuildContext context, bool isDarkMode) {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Container(
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey[850] : Colors.white,
+          borderRadius: BorderRadius.circular(25),
+          boxShadow: [
+            BoxShadow(
+              color: isDarkMode
+                  ? Colors.black.withOpacity(0.3)
+                  : Colors.grey.withOpacity(0.1),
+              spreadRadius: 1,
+              blurRadius: 5,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: TextField(
+          style: TextStyle(color: isDarkMode ? Colors.white : darkText),
+          decoration: InputDecoration(
+            hintText: 'Search merchant, date, amount...',
+            hintStyle: TextStyle(
+              color: isDarkMode ? Colors.white60 : Colors.grey[500],
+            ),
+            prefixIcon: Icon(Icons.search, color: accentGreen),
+            border: InputBorder.none,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 15,
+            ),
+          ),
+          onChanged: (query) {
+            context.read<ExpenseCubit>().searchExpenses(query);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActiveFilters(BuildContext context, bool isDarkMode) {
+    return BlocBuilder<ExpenseCubit, ExpenseState>(
+      builder: (context, state) {
+        final activeFilters = _getActiveFilters(state);
+        if (activeFilters.isEmpty) return const SizedBox.shrink();
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Active Filters',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDarkMode ? Colors.white54 : Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  ...activeFilters.map(
+                    (filter) => Chip(
+                      label: Text(filter),
+                      backgroundColor: accentGreen.withOpacity(0.1),
+                      deleteIcon: Icon(
+                        Icons.close,
+                        size: 16,
+                        color: accentGreen,
+                      ),
+                      onDeleted: () {
+                        if (filter.contains('Category:')) {
+                          context.read<ExpenseCubit>().filterByCategory(
+                            ExpenseFilter.all,
+                          );
+                        } else if (filter.contains('Date:')) {
+                          context.read<ExpenseCubit>().filterByDateRange(
+                            DateRangeFilter.all,
+                          );
+                        } else if (filter == 'Income Only') {
+                          context.read<ExpenseCubit>().filterByCategory(
+                            ExpenseFilter.all,
+                          );
+                        } else if (filter == 'Expenses Only') {
+                          context.read<ExpenseCubit>().filterByCategory(
+                            ExpenseFilter.all,
+                          );
+                        } else if (filter.contains('Search:')) {
+                          context.read<ExpenseCubit>().searchExpenses('');
+                        }
+                      },
+                      labelStyle: TextStyle(
+                        fontSize: 12,
+                        color: accentGreen,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (activeFilters.isNotEmpty)
+                    GestureDetector(
+                      onTap: () {
+                        context.read<ExpenseCubit>().filterByCategory(
+                          ExpenseFilter.all,
+                        );
+                        context.read<ExpenseCubit>().filterByDateRange(
+                          DateRangeFilter.all,
+                        );
+                        context.read<ExpenseCubit>().searchExpenses('');
+                      },
+                      child: Chip(
+                        label: const Text('Clear All'),
+                        backgroundColor: Colors.red.withOpacity(0.1),
+                        labelStyle: TextStyle(
+                          fontSize: 12,
+                          color: Colors.red,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildExpenseList(BuildContext context, bool isDarkMode) {
+    return Expanded(
+      child: BlocBuilder<ExpenseCubit, ExpenseState>(
+        builder: (context, state) {
+          if (state.allExpenses.isEmpty) {
+            return Center(
+              child: Text(
+                'No expenses found',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: isDarkMode ? Colors.white60 : Colors.grey,
+                ),
+              ),
+            );
+          }
+
+          if (state.filteredExpenses.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.filter_alt_off,
+                    size: 64,
+                    color: isDarkMode ? Colors.white38 : Colors.grey[400],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No expenses match your filters',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: isDarkMode ? Colors.white60 : Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  TextButton(
+                    onPressed: () {
+                      context.read<ExpenseCubit>().filterByCategory(
+                        ExpenseFilter.all,
+                      );
+                      context.read<ExpenseCubit>().filterByDateRange(
+                        DateRangeFilter.all,
+                      );
+                      context.read<ExpenseCubit>().searchExpenses('');
+                    },
+                    child: const Text('Clear All Filters'),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: state.groupedByDate.length,
+            itemBuilder: (context, index) {
+              final dateKey = state.groupedByDate.keys.elementAt(index);
+              final expenses = state.groupedByDate[dateKey]!;
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8.0),
+                    child: Text(
+                      dateKey,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: isDarkMode ? Colors.white : darkText,
+                      ),
+                    ),
+                  ),
+                  ...expenses.map(
+                    (expense) => _buildDismissibleExpenseItem(
+                      context,
+                      expense,
+                      isDarkMode,
+                    ),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildEnhancedFilterBar(BuildContext context, bool isDarkMode) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey[850] : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          boxShadow: [
+            BoxShadow(
+              color: isDarkMode
+                  ? Colors.black.withOpacity(0.2)
+                  : Colors.grey.withOpacity(0.08),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.filter_alt, color: accentGreen, size: 20),
+            const SizedBox(width: 12),
+            Expanded(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildFilterButton(
+                      context,
+                      'All',
+                      Icons.clear_all,
+                      isDarkMode,
+                      () {
+                        context.read<ExpenseCubit>().filterByCategory(
+                          ExpenseFilter.all,
+                        );
+                        context.read<ExpenseCubit>().filterByDateRange(
+                          DateRangeFilter.all,
+                        );
+                        context.read<ExpenseCubit>().searchExpenses('');
+                      },
+                    ),
+                    const SizedBox(width: 8),
+                    _buildFilterButton(
+                      context,
+                      'Category',
+                      Icons.category,
+                      isDarkMode,
+                      () => _showCategoryFilter(context, isDarkMode),
+                      hasDropdown: true,
+                    ),
+                    const SizedBox(width: 8),
+                    _buildFilterButton(
+                      context,
+                      'Date',
+                      Icons.calendar_today,
+                      isDarkMode,
+                      () => _showDateFilter(context, isDarkMode),
+                      hasDropdown: true,
+                    ),
+                    const SizedBox(width: 8),
+                    _buildFilterButton(
+                      context,
+                      'Type',
+                      Icons.trending_up,
+                      isDarkMode,
+                      () => _showTypeFilter(context, isDarkMode),
+                      hasDropdown: true,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFilterButton(
+    BuildContext context,
+    String label,
+    IconData icon,
+    bool isDarkMode,
+    VoidCallback onTap, {
+    bool hasDropdown = false,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey[800] : Colors.grey[100],
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: accentGreen.withOpacity(0.3), width: 1),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon, size: 16, color: accentGreen),
+            const SizedBox(width: 6),
+            BlocBuilder<ExpenseCubit, ExpenseState>(
+              builder: (context, state) {
+                String displayText = label;
+                if (label == 'Category' &&
+                    state.selectedCategory != null &&
+                    state.selectedCategory != 'All Categories' &&
+                    state.selectedCategory != 'Income Only' &&
+                    state.selectedCategory != 'Expenses Only') {
+                  displayText = state.selectedCategory!;
+                } else if (label == 'Category' &&
+                    state.selectedCategory == 'Income Only') {
+                  displayText = 'Income';
+                } else if (label == 'Category' &&
+                    state.selectedCategory == 'Expenses Only') {
+                  displayText = 'Expense';
+                } else if (label == 'Date' &&
+                    state.dateRangeFilter != DateRangeFilter.all) {
+                  displayText = _getDateRangeText(state.dateRangeFilter);
+                } else if (label == 'Type') {
+                  if (state.selectedCategory == 'Income Only') {
+                    displayText = 'Income';
+                  } else if (state.selectedCategory == 'Expenses Only') {
+                    displayText = 'Expenses';
+                  }
+                }
+                return Text(
+                  displayText,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w500,
+                    color: displayText != label
+                        ? accentGreen
+                        : (isDarkMode ? Colors.white70 : Colors.grey[700]),
+                  ),
+                );
+              },
+            ),
+            if (hasDropdown) ...[
+              const SizedBox(width: 4),
+              Icon(Icons.arrow_drop_down, size: 18, color: accentGreen),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showCategoryFilter(BuildContext context, bool isDarkMode) {
+    final expenseState = context.read<ExpenseCubit>().state;
+    final Set<String> categories = {};
+
+    for (var expense in expenseState.allExpenses) {
+      if (expense.category.isNotEmpty) {
+        categories.add(expense.category);
+      }
+    }
+
+    final sortedCategories = categories.toList()..sort();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) =>
+          _buildFilterBottomSheet(context, 'Filter by Category', isDarkMode, [
+            _buildFilterOption('All Categories', Icons.clear_all, () {
+              context.read<ExpenseCubit>().filterByCategory(ExpenseFilter.all);
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildFilterOption('Income Only', Icons.attach_money, () {
+              context.read<ExpenseCubit>().filterByCategory(
+                ExpenseFilter.income,
+              );
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildFilterOption('Expenses Only', Icons.shopping_cart, () {
+              context.read<ExpenseCubit>().filterByCategory(
+                ExpenseFilter.expense,
+              );
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildDivider(),
+            _buildHeader('Categories'),
+            ...sortedCategories.map(
+              (category) => _buildFilterOption(
+                category,
+                _getCategoryIcon(category),
+                () {
+                  context.read<ExpenseCubit>().filterByCategory(
+                    ExpenseFilter.all,
+                    specificCategory: category,
+                  );
+                  Navigator.pop(context);
+                },
+                iconColor: _getCategoryColor(category),
+                isDarkMode: isDarkMode,
+              ),
+            ),
+            if (sortedCategories.isEmpty)
+              _buildFilterOption(
+                'No categories available',
+                Icons.info,
+                null,
+                enabled: false,
+                isDarkMode: isDarkMode,
+              ),
+          ]),
+    );
+  }
+
+  void _showDateFilter(BuildContext context, bool isDarkMode) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) =>
+          _buildFilterBottomSheet(context, 'Filter by Date', isDarkMode, [
+            _buildFilterOption('All Time', Icons.access_time, () {
+              context.read<ExpenseCubit>().filterByDateRange(
+                DateRangeFilter.all,
+              );
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildFilterOption('Today', Icons.today, () {
+              context.read<ExpenseCubit>().filterByDateRange(
+                DateRangeFilter.today,
+              );
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildFilterOption('Yesterday', Icons.calendar_view_day, () {
+              context.read<ExpenseCubit>().filterByDateRange(
+                DateRangeFilter.yesterday,
+              );
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildFilterOption('This Week', Icons.weekend, () {
+              context.read<ExpenseCubit>().filterByDateRange(
+                DateRangeFilter.week,
+              );
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildFilterOption('This Month', Icons.calendar_view_month, () {
+              context.read<ExpenseCubit>().filterByDateRange(
+                DateRangeFilter.month,
+              );
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildFilterOption('Custom Range', Icons.date_range, () {
+              Navigator.pop(context);
+              _showCustomDateRangePicker(context, isDarkMode);
+            }, isDarkMode: isDarkMode),
+          ]),
+    );
+  }
+
+  void _showTypeFilter(BuildContext context, bool isDarkMode) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) =>
+          _buildFilterBottomSheet(context, 'Filter by Type', isDarkMode, [
+            _buildFilterOption('All Types', Icons.list_alt, () {
+              context.read<ExpenseCubit>().filterByCategory(ExpenseFilter.all);
+              Navigator.pop(context);
+            }, isDarkMode: isDarkMode),
+            _buildFilterOption(
+              'Income Only',
+              Icons.trending_up,
+              () {
+                context.read<ExpenseCubit>().filterByCategory(
+                  ExpenseFilter.income,
+                );
+                Navigator.pop(context);
+              },
+              iconColor: Colors.green,
+              isDarkMode: isDarkMode,
+            ),
+            _buildFilterOption(
+              'Expenses Only',
+              Icons.trending_down,
+              () {
+                context.read<ExpenseCubit>().filterByCategory(
+                  ExpenseFilter.expense,
+                );
+                Navigator.pop(context);
+              },
+              iconColor: Colors.red,
+              isDarkMode: isDarkMode,
+            ),
+          ]),
+    );
+  }
+
+  Widget _buildFilterBottomSheet(
+    BuildContext context,
+    String title,
+    bool isDarkMode,
+    List<Widget> options,
+  ) {
+    return Container(
+      margin: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[900] : Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.2),
+            blurRadius: 20,
+            offset: const Offset(0, -4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: isDarkMode ? Colors.grey[800]! : Colors.grey[200]!,
+                  width: 1,
+                ),
+              ),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: isDarkMode ? Colors.white : darkText,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () => Navigator.pop(context),
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: accentGreen.withOpacity(0.1),
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.close, color: accentGreen, size: 20),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              physics: const BouncingScrollPhysics(),
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              children: options,
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFilterOption(
+    String title,
+    IconData icon,
+    VoidCallback? onTap, {
+    bool enabled = true,
+    Color? iconColor,
+    required bool isDarkMode,
+  }) {
+    return ListTile(
+      leading: Icon(icon, color: iconColor ?? accentGreen, size: 24),
+      title: Text(
+        title,
+        style: TextStyle(
+          color: enabled
+              ? (isDarkMode ? Colors.white : darkText)
+              : (isDarkMode ? Colors.white38 : Colors.grey[400]),
+          fontSize: 16,
+        ),
+      ),
+      onTap: enabled ? onTap : null,
+      enabled: enabled,
+      trailing: enabled
+          ? Icon(Icons.chevron_right, color: Colors.grey[400], size: 20)
+          : null,
+    );
+  }
+
+  Widget _buildDivider() {
+    return const Divider(height: 1);
+  }
+
+  Widget _buildHeader(String title) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          color: accentGreen,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+
+  void _showCustomDateRangePicker(BuildContext context, bool isDarkMode) async {
+    DateTime? startDate;
+    DateTime? endDate;
+
+    await showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) {
+          return AlertDialog(
+            title: const Text('Select Date Range'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  title: const Text('Start Date'),
+                  subtitle: Text(
+                    startDate != null
+                        ? _formatDate(startDate!)
+                        : 'Not selected',
+                  ),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate: DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        startDate = picked;
+                      });
+                    }
+                  },
+                ),
+                ListTile(
+                  title: const Text('End Date'),
+                  subtitle: Text(
+                    endDate != null ? _formatDate(endDate!) : 'Not selected',
+                  ),
+                  trailing: const Icon(Icons.calendar_today),
+                  onTap: () async {
+                    final picked = await showDatePicker(
+                      context: context,
+                      initialDate: DateTime.now(),
+                      firstDate: startDate ?? DateTime(2020),
+                      lastDate: DateTime.now(),
+                    );
+                    if (picked != null) {
+                      setState(() {
+                        endDate = picked;
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () {
+                  if (startDate != null && endDate != null) {
+                    final filtered = context
+                        .read<ExpenseCubit>()
+                        .state
+                        .allExpenses
+                        .where((expense) {
+                          final expenseDate = expense.date;
+                          return expenseDate.isAfter(
+                                startDate!.subtract(const Duration(days: 1)),
+                              ) &&
+                              expenseDate.isBefore(
+                                endDate!.add(const Duration(days: 1)),
+                              );
+                        })
+                        .toList();
+
+                    context.read<ExpenseCubit>().applyCustomDateRange(filtered);
+                    Navigator.pop(context);
+                  }
+                },
+                child: const Text('Apply'),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+
+  List<String> _getActiveFilters(ExpenseState state) {
+    final filters = <String>[];
+
+    if (state.selectedCategory != null &&
+        state.selectedCategory != 'All Categories' &&
+        state.selectedCategory != 'Income Only' &&
+        state.selectedCategory != 'Expenses Only') {
+      filters.add('Category: ${state.selectedCategory}');
+    } else if (state.selectedCategory == 'Income Only') {
+      filters.add('Income Only');
+    } else if (state.selectedCategory == 'Expenses Only') {
+      filters.add('Expenses Only');
+    }
+
+    if (state.dateRangeFilter != DateRangeFilter.all &&
+        state.dateRangeFilter != DateRangeFilter.custom) {
+      filters.add('Date: ${_getDateRangeText(state.dateRangeFilter)}');
+    } else if (state.dateRangeFilter == DateRangeFilter.custom) {
+      filters.add('Date: Custom Range');
+    }
+
+    if (state.searchQuery.isNotEmpty) {
+      filters.add('Search: ${state.searchQuery}');
+    }
+
+    return filters;
+  }
+
+  String _getDateRangeText(DateRangeFilter filter) {
+    switch (filter) {
+      case DateRangeFilter.today:
+        return 'Today';
+      case DateRangeFilter.yesterday:
+        return 'Yesterday';
+      case DateRangeFilter.week:
+        return 'This Week';
+      case DateRangeFilter.month:
+        return 'This Month';
+      case DateRangeFilter.custom:
+        return 'Custom Range';
+      default:
+        return 'All Time';
+    }
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
   }
 
   Widget _buildFab(BuildContext context, bool isDarkMode) {
@@ -227,12 +889,15 @@ class ExpenseHistoryScreen extends StatelessWidget {
                   BlocProvider.value(
                     value: context.read<budget_cubit.BudgetCubit>(),
                   ),
+                  BlocProvider.value(value: context.read<ExpenseCubit>()),
+                  BlocProvider.value(value: context.read<ProfileCubit>()),
                 ],
                 child: const AddExpenseScreen(),
               ),
             ),
           ).then((_) {
             _refreshBudget(context);
+            context.read<ExpenseCubit>().loadExpenses();
           });
         },
         child: const Icon(Icons.add, color: accentGreen, size: 45),
@@ -242,54 +907,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
 
   void _refreshBudget(BuildContext context) {
     context.read<budget_cubit.BudgetCubit>().loadBudget(forceRefresh: true);
-  }
-
-  void _updateBudgetFromExpense(BuildContext context, dynamic expense) {
-    if (expense.isIncome != true) {
-      final budgetCubit = context.read<budget_cubit.BudgetCubit>();
-      final budgetState = budgetCubit.state;
-
-      if (budgetState is budget_cubit.BudgetLoaded) {
-        final currentBudget = budgetState.budget;
-        double currentSpent = 0;
-
-        for (var category in currentBudget.categories) {
-          if (category.name == expense.category) {
-            currentSpent = category.spent;
-            break;
-          }
-        }
-
-        budgetCubit.updateCategorySpent(
-          expense.category,
-          currentSpent + expense.amount,
-        );
-      }
-    }
-  }
-
-  void _updateBudgetOnDelete(BuildContext context, dynamic expense) {
-    if (expense.isIncome != true) {
-      final budgetCubit = context.read<budget_cubit.BudgetCubit>();
-      final budgetState = budgetCubit.state;
-
-      if (budgetState is budget_cubit.BudgetLoaded) {
-        final currentBudget = budgetState.budget;
-        double currentSpent = 0;
-
-        for (var category in currentBudget.categories) {
-          if (category.name == expense.category) {
-            currentSpent = category.spent;
-            break;
-          }
-        }
-
-        budgetCubit.updateCategorySpent(
-          expense.category,
-          currentSpent - expense.amount,
-        );
-      }
-    }
   }
 
   Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
@@ -333,8 +950,15 @@ class ExpenseHistoryScreen extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => BlocProvider.value(
-                        value: context.read<ExpenseCubit>(),
+                      builder: (context) => MultiBlocProvider(
+                        providers: [
+                          BlocProvider.value(
+                            value: context.read<ExpenseCubit>(),
+                          ),
+                          BlocProvider.value(
+                            value: context.read<ProfileCubit>(),
+                          ),
+                        ],
                         child: const AnalyticsScreen(),
                       ),
                     ),
@@ -359,274 +983,6 @@ class ExpenseHistoryScreen extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildFilterChip(
-    String label, {
-    bool isSelected = false,
-    required bool isDarkMode,
-  }) {
-    return GestureDetector(
-      onTap: () {},
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isSelected
-              ? accentGreen
-              : (isDarkMode ? Colors.grey[800] : Colors.white),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isSelected
-                ? accentGreen
-                : (isDarkMode ? Colors.grey[700]! : Colors.grey.shade300),
-            width: 1,
-          ),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            color: isSelected
-                ? Colors.white
-                : (isDarkMode ? Colors.white70 : darkText),
-            fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildFilterDropdown(
-    BuildContext context,
-    String label,
-    bool isDarkMode,
-  ) {
-    return GestureDetector(
-      onTap: () {
-        if (label == 'Category') {
-          _showCategoryFilterMenu(context, isDarkMode);
-        } else if (label == 'Date Range') {
-          _showDateFilterMenu(context, isDarkMode);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: isDarkMode ? Colors.grey[800] : Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(
-            color: isDarkMode ? Colors.grey[700]! : Colors.grey.shade300,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            BlocBuilder<ExpenseCubit, ExpenseState>(
-              builder: (context, state) {
-                String displayText = label;
-                if (label == 'Category' && state.selectedCategory != null) {
-                  displayText = state.selectedCategory!;
-                } else if (label == 'Date Range' &&
-                    state.dateRangeFilter != DateRangeFilter.all) {
-                  switch (state.dateRangeFilter) {
-                    case DateRangeFilter.today:
-                      displayText = 'Today';
-                      break;
-                    case DateRangeFilter.yesterday:
-                      displayText = 'Yesterday';
-                      break;
-                    case DateRangeFilter.week:
-                      displayText = 'This Week';
-                      break;
-                    case DateRangeFilter.month:
-                      displayText = 'This Month';
-                      break;
-                    default:
-                      displayText = label;
-                  }
-                }
-                return Text(
-                  displayText,
-                  style: TextStyle(color: isDarkMode ? Colors.white : darkText),
-                );
-              },
-            ),
-            const SizedBox(width: 4),
-            Icon(Icons.arrow_drop_down, color: accentGreen, size: 20),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showCategoryFilterMenu(BuildContext context, bool isDarkMode) {
-    final expenseState = context.read<ExpenseCubit>().state;
-    final Set<String> categories = {};
-
-    for (var expense in expenseState.allExpenses) {
-      if (expense.category.isNotEmpty) {
-        categories.add(expense.category);
-      }
-    }
-
-    final sortedCategories = categories.toList()..sort();
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Filter by Category',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isDarkMode ? Colors.white : darkText,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildFilterOption(context, 'All Categories', isDarkMode, () {
-                context.read<ExpenseCubit>().filterByCategory(
-                  ExpenseFilter.all,
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'Income Only', isDarkMode, () {
-                context.read<ExpenseCubit>().filterByCategory(
-                  ExpenseFilter.income,
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'Expenses Only', isDarkMode, () {
-                context.read<ExpenseCubit>().filterByCategory(
-                  ExpenseFilter.expense,
-                );
-                Navigator.pop(context);
-              }),
-              const Divider(),
-              Text(
-                'Specific Categories',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: isDarkMode ? Colors.white70 : darkText,
-                ),
-              ),
-              const SizedBox(height: 8),
-              ...sortedCategories.map(
-                (category) =>
-                    _buildFilterOption(context, category, isDarkMode, () {
-                      context.read<ExpenseCubit>().filterByCategory(
-                        ExpenseFilter.all,
-                        specificCategory: category,
-                      );
-                      Navigator.pop(context);
-                    }),
-              ),
-              if (sortedCategories.isEmpty)
-                Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: Text(
-                    'No categories available',
-                    style: TextStyle(
-                      color: isDarkMode ? Colors.white60 : Colors.grey,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showDateFilterMenu(BuildContext context, bool isDarkMode) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: isDarkMode ? Colors.grey[900] : Colors.white,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Filter by Date',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: isDarkMode ? Colors.white : darkText,
-                ),
-              ),
-              const SizedBox(height: 16),
-              _buildFilterOption(context, 'All Time', isDarkMode, () {
-                context.read<ExpenseCubit>().filterByDateRange(
-                  DateRangeFilter.all,
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'Today', isDarkMode, () {
-                context.read<ExpenseCubit>().filterByDateRange(
-                  DateRangeFilter.today,
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'Yesterday', isDarkMode, () {
-                context.read<ExpenseCubit>().filterByDateRange(
-                  DateRangeFilter.yesterday,
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'This Week', isDarkMode, () {
-                context.read<ExpenseCubit>().filterByDateRange(
-                  DateRangeFilter.week,
-                );
-                Navigator.pop(context);
-              }),
-              _buildFilterOption(context, 'This Month', isDarkMode, () {
-                context.read<ExpenseCubit>().filterByDateRange(
-                  DateRangeFilter.month,
-                );
-                Navigator.pop(context);
-              }),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildFilterOption(
-    BuildContext context,
-    String title,
-    bool isDarkMode,
-    VoidCallback onTap,
-  ) {
-    return ListTile(
-      title: Text(
-        title,
-        style: TextStyle(color: isDarkMode ? Colors.white : darkText),
-      ),
-      onTap: onTap,
-      leading: Icon(
-        Icons.filter_list,
-        color: title == 'All Categories' || title == 'All Time'
-            ? Colors.grey
-            : accentGreen,
       ),
     );
   }
@@ -790,7 +1146,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
     return Dismissible(
       key: Key(expense.id),
       direction: DismissDirection.endToStart,
-      background: Container(), // No background for left swipe
+      background: Container(),
       secondaryBackground: Container(
         alignment: Alignment.centerRight,
         padding: const EdgeInsets.only(right: 20),
@@ -804,18 +1160,10 @@ class ExpenseHistoryScreen extends StatelessWidget {
         if (direction == DismissDirection.endToStart) {
           final confirmed = await _showDeleteConfirmation(context);
           if (confirmed) {
-            // Perform deletion and return true only if successful
             try {
-              // Update budget before deletion
               _updateBudgetOnDelete(context, expense);
-
-              // Delete the expense
               await context.read<ExpenseCubit>().deleteExpense(expense.id);
-
-              // Force refresh on dashboard by loading expenses again
               await context.read<ExpenseCubit>().loadExpenses();
-
-              // Also refresh budget to update remaining amounts
               context.read<budget_cubit.BudgetCubit>().loadBudget(
                 forceRefresh: true,
               );
@@ -846,12 +1194,35 @@ class ExpenseHistoryScreen extends StatelessWidget {
         }
         return false;
       },
-      onDismissed: (direction) {
-        // The widget will be removed automatically when confirmDismiss returns true
-        // No need to do anything here
-      },
-      child: _buildExpenseItem(context, expense, isDarkMode),
+      child: GestureDetector(
+        onTap: () => _navigateToEditExpense(context, expense),
+        child: _buildExpenseItem(context, expense, isDarkMode),
+      ),
     );
+  }
+
+  void _updateBudgetOnDelete(BuildContext context, dynamic expense) {
+    if (expense.isIncome != true) {
+      final budgetCubit = context.read<budget_cubit.BudgetCubit>();
+      final budgetState = budgetCubit.state;
+
+      if (budgetState is budget_cubit.BudgetLoaded) {
+        final currentBudget = budgetState.budget;
+        double currentSpent = 0;
+
+        for (var category in currentBudget.categories) {
+          if (category.name == expense.category) {
+            currentSpent = category.spent;
+            break;
+          }
+        }
+
+        budgetCubit.updateCategorySpent(
+          expense.category,
+          currentSpent - expense.amount,
+        );
+      }
+    }
   }
 
   IconData _getCategoryIcon(String category) {
@@ -1009,7 +1380,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        '1 ${expense.category}',
+                        '${expense.category}',
                         style: TextStyle(
                           fontSize: 10,
                           color: _getCategoryColor(expense.category),
@@ -1204,12 +1575,10 @@ class ExpenseHistoryScreen extends StatelessWidget {
   }
 }
 
-// FIXED: This function now properly creates and configures the AddExpenseCubit
+// Navigation helper functions
 void _navigateToEditExpense(BuildContext context, dynamic expense) {
-  // Create a new AddExpenseCubit
   final addExpenseCubit = AddExpenseCubit();
 
-  // Update the cubit with the expense data
   addExpenseCubit.updateTitle(expense.title);
   addExpenseCubit.updateAmount(expense.amount);
   addExpenseCubit.updateCategory(expense.category);
@@ -1217,7 +1586,6 @@ void _navigateToEditExpense(BuildContext context, dynamic expense) {
   addExpenseCubit.updateIsIncome(expense.isIncome ?? false);
   addExpenseCubit.updateNote(expense.note ?? '');
 
-  // Navigate to edit screen
   Navigator.push(
     context,
     MaterialPageRoute(
@@ -1228,11 +1596,10 @@ void _navigateToEditExpense(BuildContext context, dynamic expense) {
           BlocProvider.value(value: context.read<budget_cubit.BudgetCubit>()),
           BlocProvider.value(value: context.read<ProfileCubit>()),
         ],
-        child: const AddExpenseScreen(),
+        child: AddExpenseScreen(editingExpenseId: expense.id),
       ),
     ),
   ).then((_) {
-    // Refresh data after returning
     context.read<budget_cubit.BudgetCubit>().loadBudget(forceRefresh: true);
     context.read<ExpenseCubit>().loadExpenses();
   });

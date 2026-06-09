@@ -1,6 +1,6 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:bloc/bloc.dart';
+import 'dart:async';
 import '../models/expense_model.dart';
 import 'expense_state.dart';
 import '../services/supabase_service.dart';
@@ -39,9 +39,9 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         _updateStateWithExpenses(expenses);
       },
       onError: (error) {
-        print('Error listening to expenses: $error');
+        debugPrint('Error listening to expenses: $error');
         if (!isClosed) {
-          emit(state.copyWith(error: error.toString(), isLoading: false));
+          emit(state.copyWith(error: () => error.toString(), isLoading: false));
         }
       },
     );
@@ -60,13 +60,13 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         totalSpending: totalSpending,
         totalBalance: totalBalance,
         isLoading: false,
-        error: null,
+        error: () => null,
       ),
     );
 
     if (!isClosed) {
       emit(newState);
-      // ─── CRITICAL FIX: Trigger budget threshold verification ───
+      // Trigger budget threshold verification
       _checkThresholds(totalSpending, expenses);
     }
   }
@@ -101,9 +101,20 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     }
   }
 
+  void applyCustomDateRange(List<ExpenseModel> filteredExpenses) {
+    if (isClosed) return;
+    emit(
+      state.copyWith(
+        filteredExpenses: filteredExpenses,
+        dateRangeFilter: DateRangeFilter.custom,
+        selectedCategory: null,
+      ),
+    );
+  }
+
   Future<void> loadExpenses() async {
     if (isClosed) return;
-    emit(state.copyWith(isLoading: true, error: null));
+    emit(state.copyWith(isLoading: true, error: () => null));
 
     try {
       final transactions = await _supabaseService.getTransactions().first;
@@ -122,7 +133,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       _updateStateWithExpenses(expenses);
     } catch (e) {
       if (!isClosed) {
-        emit(state.copyWith(error: e.toString(), isLoading: false));
+        emit(state.copyWith(error: () => e.toString(), isLoading: false));
       }
     }
   }
@@ -143,9 +154,9 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       );
       await loadExpenses();
     } catch (e) {
-      print('Error adding expense: $e');
+      debugPrint('Error adding expense: $e');
       if (!isClosed) {
-        emit(state.copyWith(error: e.toString()));
+        emit(state.copyWith(error: () => e.toString()));
       }
     }
   }
@@ -162,9 +173,9 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       );
       await loadExpenses();
     } catch (e) {
-      print('Error adding income: $e');
+      debugPrint('Error adding income: $e');
       if (!isClosed) {
-        emit(state.copyWith(error: e.toString()));
+        emit(state.copyWith(error: () => e.toString()));
       }
     }
   }
@@ -180,9 +191,9 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       });
       await loadExpenses();
     } catch (e) {
-      print('Error updating expense: $e');
+      debugPrint('Error updating expense: $e');
       if (!isClosed) {
-        emit(state.copyWith(error: e.toString()));
+        emit(state.copyWith(error: () => e.toString()));
       }
     }
   }
@@ -192,17 +203,31 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       await _supabaseService.deleteTransaction(id);
       await loadExpenses();
     } catch (e) {
-      print('Error deleting expense: $e');
+      debugPrint('Error deleting expense: $e');
       if (!isClosed) {
-        emit(state.copyWith(error: e.toString()));
+        emit(state.copyWith(error: () => e.toString()));
       }
     }
   }
 
-  void searchExpenses(String query) {
+  // --- METHODS REQUESTED BY HISTORY LAYOUT ---
+
+  /// Updates text keyword filters dynamically
+  void updateSearchQuery(String query) {
     if (isClosed) return;
     final newState = state.copyWith(searchQuery: query);
     emit(_applyFilters(newState));
+  }
+
+  /// Updates explicit category group selections
+  void updateCategoryFilter(ExpenseFilter filter) {
+    if (isClosed) return;
+    final newState = state.copyWith(categoryFilter: filter);
+    emit(_applyFilters(newState));
+  }
+
+  void searchExpenses(String query) {
+    updateSearchQuery(query);
   }
 
   void filterByCategory(ExpenseFilter filter, {String? specificCategory}) {
@@ -239,7 +264,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       customEndDate: null,
       filteredExpenses: state.allExpenses,
     );
-    emit(newState);
+    emit(_applyFilters(newState));
   }
 
   void updateBudget(double newBudget) {
@@ -262,6 +287,9 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     await loadExpenses();
   }
 
+  // ─────────────────────────────────────────────────────────────────────────
+  // UI Aesthetic Color/Icon Mappers (Soft Greens/Warm Palettes)
+  // ─────────────────────────────────────────────────────────────────────────
   IconData getCategoryIcon(String category) {
     switch (category) {
       case 'Food':
@@ -302,7 +330,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   Color getCategoryColor(String categoryName) {
     switch (categoryName) {
       case 'Groceries':
-        return const Color(0xFF4CAF50);
+        return const Color(0xFF4CAF50); // Balanced Sage Green
       case 'Food':
         return const Color(0xFFFF9800);
       case 'Beverages':
@@ -357,10 +385,18 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   ExpenseState _applyFilters(ExpenseState state) {
     var filtered = List<ExpenseModel>.from(state.allExpenses);
 
-    if (state.selectedCategory != null) {
+    // Apply category filter
+    if (state.selectedCategory != null &&
+        state.selectedCategory != 'All Categories' &&
+        state.selectedCategory != 'Income Only' &&
+        state.selectedCategory != 'Expenses Only') {
       filtered = filtered
           .where((e) => e.category == state.selectedCategory)
           .toList();
+    } else if (state.selectedCategory == 'Income Only') {
+      filtered = filtered.where((e) => e.isIncome).toList();
+    } else if (state.selectedCategory == 'Expenses Only') {
+      filtered = filtered.where((e) => !e.isIncome).toList();
     } else {
       switch (state.categoryFilter) {
         case ExpenseFilter.income:
@@ -374,6 +410,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       }
     }
 
+    // Apply search filter
     if (state.searchQuery.isNotEmpty) {
       final query = state.searchQuery.toLowerCase();
       filtered = filtered.where((expense) {
@@ -382,6 +419,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       }).toList();
     }
 
+    // Apply date range filter
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -426,7 +464,9 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         break;
     }
 
+    // Sort by date (newest first)
     filtered.sort((a, b) => b.date.compareTo(a.date));
+
     return state.copyWith(filteredExpenses: filtered);
   }
 

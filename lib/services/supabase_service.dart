@@ -1,10 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'dart:io';
-import '../models/expense_model.dart';
-import '../models/budget_model.dart';
-import '../models/notification_model.dart';
 import '../models/receipt_model.dart';
-import '../models/user_model.dart';
 
 class SupabaseService {
   final SupabaseClient _supabase = Supabase.instance.client;

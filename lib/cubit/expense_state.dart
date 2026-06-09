@@ -5,303 +5,172 @@ enum ExpenseFilter { all, income, expense }
 
 enum DateRangeFilter { all, today, yesterday, week, month, custom }
 
-enum AnalyticsPeriod { week, month, year }
+enum AnalyticsPeriod { daily, weekly, monthly, yearly }
 
 class ExpenseState extends Equatable {
-  final String userName;
-  final DateTime currentDate;
-  final double totalBalance;
+  final List<ExpenseModel> allExpenses;
+  final List<ExpenseModel> filteredExpenses;
+  final bool isLoading;
+  final String? error;
   final double totalSpending;
+  final double totalBalance;
   final double budget;
-  final List<ExpenseModel> allExpenses; // All expenses
-  final List<ExpenseModel> filteredExpenses; // Filtered expenses for display
   final String searchQuery;
   final ExpenseFilter categoryFilter;
   final DateRangeFilter dateRangeFilter;
+  final String? selectedCategory;
   final DateTime? customStartDate;
   final DateTime? customEndDate;
-  final String? selectedCategory;
-  final bool isLoading; // ADDED: loading state
-  final String? error; // ADDED: error state
-
-  // Analytics properties
   final AnalyticsPeriod selectedAnalyticsPeriod;
   final DateTime analyticsSelectedDate;
 
-  const ExpenseState({
-    required this.userName,
-    required this.currentDate,
-    required this.totalBalance,
-    required this.totalSpending,
-    required this.budget,
-    required this.allExpenses,
-    required this.filteredExpenses,
-    this.searchQuery = '',
-    this.categoryFilter = ExpenseFilter.all,
-    this.dateRangeFilter = DateRangeFilter.all,
-    this.customStartDate,
-    this.customEndDate,
-    this.selectedCategory,
-    this.isLoading = false, // ADDED
-    this.error, // ADDED
-    this.selectedAnalyticsPeriod = AnalyticsPeriod.month,
-    required this.analyticsSelectedDate,
-  });
+  // Additional properties needed for analytics
+  double get totalSpent => totalSpending;
 
-  factory ExpenseState.initial() {
-    final now = DateTime.now();
-    return ExpenseState(
-      userName: 'User',
-      currentDate: now,
-      totalBalance: 0.0,
-      totalSpending: 0.0,
-      budget: 0.0,
-      allExpenses: const [],
-      filteredExpenses: const [],
-      analyticsSelectedDate: now,
-      isLoading: false,
-      error: null,
-    );
-  }
+  Map<String, double> get sortedCategoryTotals {
+    final Map<String, double> categoryTotals = {};
 
-  // Computed properties for analytics - all based on actual expenses
-  double get totalSpent {
-    return getExpensesForAnalytics().fold(0.0, (sum, expense) {
-      return expense.isIncome ? sum : sum + expense.amount;
-    });
-  }
-
-  double get lastMonthTotal {
-    // Calculate based on actual expenses from last month
-    final now = analyticsSelectedDate;
-    final thisMonthStart = DateTime(now.year, now.month, 1);
-    final lastMonthStart = DateTime(now.year, now.month - 1, 1);
-    final lastMonthEnd = thisMonthStart.subtract(const Duration(days: 1));
-
-    return allExpenses.fold(0.0, (sum, expense) {
-      if (!expense.isIncome &&
-          expense.date.isAfter(lastMonthStart) &&
-          expense.date.isBefore(lastMonthEnd)) {
-        return sum + expense.amount;
+    for (final expense in filteredExpenses) {
+      if (!expense.isIncome) {
+        categoryTotals[expense.category] =
+            (categoryTotals[expense.category] ?? 0.0) + expense.amount;
       }
-      return sum;
-    });
-  }
-
-  double get percentageChange {
-    if (lastMonthTotal == 0) return 0;
-    return ((totalSpent - lastMonthTotal) / lastMonthTotal) * 100;
-  }
-
-  Map<String, double> get categoryTotals {
-    final Map<String, double> totals = {};
-    final analyticsExpenses = getExpensesForAnalytics();
-
-    for (var expense in analyticsExpenses.where((e) => !e.isIncome)) {
-      totals[expense.category] =
-          (totals[expense.category] ?? 0) + expense.amount;
     }
-    return totals;
+
+    // Sort by value descending
+    final sortedEntries = categoryTotals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return Map.fromEntries(sortedEntries);
   }
 
-  // FIXED: Ensure this returns a list even when empty
-  List<MapEntry<String, double>> get sortedCategoryTotals {
-    final entries = categoryTotals.entries.toList();
-    entries.sort((a, b) => b.value.compareTo(a.value));
-    return entries;
+  // FIXED: Explicitly return double, not num
+  double get percentageChange {
+    // Calculate spending change compared to previous period
+    final now = DateTime.now();
+    final currentPeriodStart = DateTime(now.year, now.month, 1);
+    final previousPeriodStart = DateTime(now.year, now.month - 1, 1);
+    final previousPeriodEnd = DateTime(now.year, now.month, 0);
+
+    double currentSpent = 0.0;
+    double previousSpent = 0.0;
+
+    for (final expense in allExpenses) {
+      if (!expense.isIncome) {
+        if (expense.date.isAfter(currentPeriodStart)) {
+          currentSpent += expense.amount;
+        } else if (expense.date.isAfter(previousPeriodStart) &&
+            expense.date.isBefore(previousPeriodEnd)) {
+          previousSpent += expense.amount;
+        }
+      }
+    }
+
+    if (previousSpent == 0.0) return 0.0;
+    return ((currentSpent - previousSpent) / previousSpent) * 100.0;
   }
 
-  // FIXED: Ensure this returns a map even when empty
   Map<DateTime, double> get dailyTotals {
     final Map<DateTime, double> totals = {};
-    final analyticsExpenses = getExpensesForAnalytics();
 
-    for (var expense in analyticsExpenses.where((e) => !e.isIncome)) {
-      final day = DateTime(
-        expense.date.year,
-        expense.date.month,
-        expense.date.day,
-      );
-      totals[day] = (totals[day] ?? 0) + expense.amount;
+    for (final expense in filteredExpenses) {
+      if (!expense.isIncome) {
+        final date = DateTime(
+          expense.date.year,
+          expense.date.month,
+          expense.date.day,
+        );
+        totals[date] = (totals[date] ?? 0.0) + expense.amount;
+      }
     }
+
     return totals;
   }
 
   List<ExpenseModel> get smallExpenses {
-    return getExpensesForAnalytics()
-        .where((e) => !e.isIncome && e.amount < 10)
-        .toList();
+    return filteredExpenses.where((e) => !e.isIncome && e.amount < 10).toList();
   }
 
-  double get groceriesTotal {
-    return getExpensesForAnalytics()
-        .where((e) => !e.isIncome && e.category.toLowerCase() == 'groceries')
-        .fold(0.0, (sum, e) => sum + e.amount);
-  }
-
-  // Helper method to get expenses based on selected analytics period
-  List<ExpenseModel> getExpensesForAnalytics() {
-    final now = analyticsSelectedDate;
-
-    switch (selectedAnalyticsPeriod) {
-      case AnalyticsPeriod.week:
-        final startOfWeek = DateTime(
-          now.year,
-          now.month,
-          now.day - now.weekday + 1,
-        );
-        return allExpenses
-            .where(
-              (e) =>
-                  e.date.isAfter(startOfWeek.subtract(const Duration(days: 1))),
-            )
-            .toList();
-      case AnalyticsPeriod.month:
-        final startOfMonth = DateTime(now.year, now.month, 1);
-        final endOfMonth = DateTime(now.year, now.month + 1, 0);
-        return allExpenses
-            .where(
-              (e) =>
-                  e.date.isAfter(
-                    startOfMonth.subtract(const Duration(days: 1)),
-                  ) &&
-                  e.date.isBefore(endOfMonth.add(const Duration(days: 1))),
-            )
-            .toList();
-      case AnalyticsPeriod.year:
-        final startOfYear = DateTime(now.year, 1, 1);
-        final endOfYear = DateTime(now.year, 12, 31);
-        return allExpenses
-            .where(
-              (e) =>
-                  e.date.isAfter(
-                    startOfYear.subtract(const Duration(days: 1)),
-                  ) &&
-                  e.date.isBefore(endOfYear.add(const Duration(days: 1))),
-            )
-            .toList();
-    }
-  }
-
-  // Group expenses by date for history view
+  // Grouped expenses by date for UI display
   Map<String, List<ExpenseModel>> get groupedByDate {
-    final grouped = <String, List<ExpenseModel>>{};
-
-    for (var expense in filteredExpenses) {
+    final map = <String, List<ExpenseModel>>{};
+    for (final expense in filteredExpenses) {
       final dateKey = _getDateKey(expense.date);
-      if (!grouped.containsKey(dateKey)) {
-        grouped[dateKey] = [];
+      if (!map.containsKey(dateKey)) {
+        map[dateKey] = [];
       }
-      grouped[dateKey]!.add(expense);
+      map[dateKey]!.add(expense);
     }
-
-    final sortedKeys = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
-    final sortedGrouped = <String, List<ExpenseModel>>{};
-    for (var key in sortedKeys) {
-      sortedGrouped[key] = grouped[key]!;
-    }
-
-    return sortedGrouped;
+    return map;
   }
 
   String _getDateKey(DateTime date) {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final yesterday = today.subtract(const Duration(days: 1));
     final expenseDate = DateTime(date.year, date.month, date.day);
 
-    if (expenseDate == today) return 'TODAY';
-    if (expenseDate == yesterday) return 'YESTERDAY';
-    if (expenseDate.isAfter(today.subtract(const Duration(days: 7)))) {
-      return 'THIS WEEK';
+    if (expenseDate == today) {
+      return 'Today';
+    } else if (expenseDate == today.subtract(const Duration(days: 1))) {
+      return 'Yesterday';
+    } else {
+      return '${date.day}/${date.month}/${date.year}';
     }
-    return '${_getMonthAbbreviation(expenseDate.month)} ${expenseDate.year}';
   }
 
-  String _getMonthAbbreviation(int month) {
-    const months = [
-      'JAN',
-      'FEB',
-      'MAR',
-      'APR',
-      'MAY',
-      'JUN',
-      'JUL',
-      'AUG',
-      'SEP',
-      'OCT',
-      'NOV',
-      'DEC',
-    ];
-    return months[month - 1];
-  }
+  const ExpenseState({
+    this.allExpenses = const [],
+    this.filteredExpenses = const [],
+    this.isLoading = false,
+    this.error,
+    this.totalSpending = 0.0,
+    this.totalBalance = 0.0,
+    this.budget = 0.0,
+    this.searchQuery = '',
+    this.categoryFilter = ExpenseFilter.all,
+    this.dateRangeFilter = DateRangeFilter.all,
+    this.selectedCategory,
+    this.customStartDate,
+    this.customEndDate,
+    this.selectedAnalyticsPeriod = AnalyticsPeriod.monthly,
+    required this.analyticsSelectedDate,
+  });
 
-  // Computed properties based on actual data
-  double get remaining => budget > 0 ? budget - totalSpending : 0;
-  double get budgetProgress => budget > 0 ? totalSpending / budget : 0;
-  int get totalExpensesCount => filteredExpenses.length;
-
-  double get totalAmount {
-    return filteredExpenses.fold(0.0, (sum, expense) {
-      return expense.isIncome ? sum + expense.amount : sum - expense.amount;
-    });
-  }
-
-  // Update totalSpending based on all expenses
-  double calculateTotalSpending() {
-    return allExpenses.fold(0.0, (sum, expense) {
-      return expense.isIncome ? sum : sum + expense.amount;
-    });
-  }
-
-  // Update totalBalance based on income and expenses
-  double calculateTotalBalance() {
-    double balance = 0.0;
-    for (var expense in allExpenses) {
-      if (expense.isIncome) {
-        balance += expense.amount;
-      } else {
-        balance -= expense.amount;
-      }
-    }
-    return balance;
+  factory ExpenseState.initial() {
+    return ExpenseState(analyticsSelectedDate: DateTime.now());
   }
 
   ExpenseState copyWith({
-    String? userName,
-    DateTime? currentDate,
-    double? totalBalance,
-    double? totalSpending,
-    double? budget,
     List<ExpenseModel>? allExpenses,
     List<ExpenseModel>? filteredExpenses,
+    bool? isLoading,
+    String? Function()? error,
+    double? totalSpending,
+    double? totalBalance,
+    double? budget,
     String? searchQuery,
     ExpenseFilter? categoryFilter,
     DateRangeFilter? dateRangeFilter,
+    String? selectedCategory,
     DateTime? customStartDate,
     DateTime? customEndDate,
-    String? selectedCategory,
-    bool? isLoading,
-    String? error,
     AnalyticsPeriod? selectedAnalyticsPeriod,
     DateTime? analyticsSelectedDate,
   }) {
     return ExpenseState(
-      userName: userName ?? this.userName,
-      currentDate: currentDate ?? this.currentDate,
-      totalBalance: totalBalance ?? this.totalBalance,
-      totalSpending: totalSpending ?? this.totalSpending,
-      budget: budget ?? this.budget,
       allExpenses: allExpenses ?? this.allExpenses,
       filteredExpenses: filteredExpenses ?? this.filteredExpenses,
+      isLoading: isLoading ?? this.isLoading,
+      error: error != null ? error() : this.error,
+      totalSpending: totalSpending ?? this.totalSpending,
+      totalBalance: totalBalance ?? this.totalBalance,
+      budget: budget ?? this.budget,
       searchQuery: searchQuery ?? this.searchQuery,
       categoryFilter: categoryFilter ?? this.categoryFilter,
       dateRangeFilter: dateRangeFilter ?? this.dateRangeFilter,
+      selectedCategory: selectedCategory ?? this.selectedCategory,
       customStartDate: customStartDate ?? this.customStartDate,
       customEndDate: customEndDate ?? this.customEndDate,
-      selectedCategory: selectedCategory ?? this.selectedCategory,
-      isLoading: isLoading ?? this.isLoading,
-      error: error,
       selectedAnalyticsPeriod:
           selectedAnalyticsPeriod ?? this.selectedAnalyticsPeriod,
       analyticsSelectedDate:
@@ -311,21 +180,19 @@ class ExpenseState extends Equatable {
 
   @override
   List<Object?> get props => [
-    userName,
-    currentDate,
-    totalBalance,
-    totalSpending,
-    budget,
     allExpenses,
     filteredExpenses,
+    isLoading,
+    error,
+    totalSpending,
+    totalBalance,
+    budget,
     searchQuery,
     categoryFilter,
     dateRangeFilter,
+    selectedCategory,
     customStartDate,
     customEndDate,
-    selectedCategory,
-    isLoading,
-    error,
     selectedAnalyticsPeriod,
     analyticsSelectedDate,
   ];
