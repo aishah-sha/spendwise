@@ -51,11 +51,7 @@ class AuthCubit extends Cubit<AuthState> {
 
   void _setupGoogleSignIn() {
     // FIX: Double check package matching constructor syntax initialization explicitly
-    _googleSignIn = GoogleSignIn(
-      scopes: ['email', 'profile'],
-      serverClientId:
-          '265157656052-8qn65l77ps423er6srsgqrpsm2j7ku4c.apps.googleusercontent.com',
-    );
+    _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
   }
 
   Future<void> _initialize() async {
@@ -196,8 +192,16 @@ class AuthCubit extends Cubit<AuthState> {
 
     emit(AuthLoading());
     try {
+      // Force sign out to ensure fresh login
       await _googleSignIn.signOut();
-      final GoogleSignInAccount? googleUser = await _googleSignIn.signIn();
+
+      // Add timeout
+      final googleUser = await _googleSignIn.signIn().timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          throw Exception('Sign-in timeout');
+        },
+      );
 
       if (googleUser == null) {
         if (!isClosed) {
@@ -206,13 +210,18 @@ class AuthCubit extends Cubit<AuthState> {
         return;
       }
 
-      // FIX: Added 'await' because authentication is an asynchronous getter
-      final GoogleSignInAuthentication googleAuth =
-          await googleUser.authentication;
+      final googleAuth = await googleUser.authentication;
+
+      if (googleAuth.idToken == null) {
+        if (!isClosed) {
+          emit(AuthFailure(error: 'Failed to get Google authentication token'));
+        }
+        return;
+      }
 
       final response = await _supabase.auth.signInWithIdToken(
         provider: OAuthProvider.google,
-        idToken: googleAuth.idToken ?? '',
+        idToken: googleAuth.idToken!,
         accessToken: googleAuth.accessToken,
       );
 
@@ -230,17 +239,28 @@ class AuthCubit extends Cubit<AuthState> {
                 googleUser.email.split('@').first,
           );
         }
-      }
 
-      if (!isClosed) {
-        emit(Authenticated(response.user));
-        // Sync token immediately after successful Google login sequence
-        await syncDeviceNotificationToken();
+        if (!isClosed) {
+          emit(Authenticated(response.user));
+          await syncDeviceNotificationToken();
+        }
+      } else {
+        if (!isClosed) {
+          emit(AuthFailure(error: 'Google Sign-In failed: No user returned'));
+        }
       }
     } catch (e) {
       print('Google Sign-In error: $e');
       if (!isClosed) {
-        emit(AuthFailure(error: 'Google Sign-In failed: ${e.toString()}'));
+        String errorMessage = 'Google Sign-In failed: ';
+        if (e.toString().contains('network')) {
+          errorMessage += 'Check your internet connection';
+        } else if (e.toString().contains('canceled')) {
+          errorMessage += 'Sign-in was cancelled';
+        } else {
+          errorMessage += e.toString();
+        }
+        emit(AuthFailure(error: errorMessage));
       }
     }
   }

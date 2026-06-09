@@ -294,10 +294,18 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-class _ProfileContent extends StatelessWidget {
+// Custom ProfileImageWidget for better image handling
+class ProfileImageWidget extends StatelessWidget {
+  final String imageUrl;
+  final double radius;
   final bool isDarkMode;
 
-  const _ProfileContent({required this.isDarkMode});
+  const ProfileImageWidget({
+    Key? key,
+    required this.imageUrl,
+    required this.radius,
+    required this.isDarkMode,
+  }) : super(key: key);
 
   ImageProvider _getProfileImage(String imageUrl) {
     if (imageUrl.isEmpty) {
@@ -306,24 +314,72 @@ class _ProfileContent extends StatelessWidget {
       );
     }
 
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      return NetworkImage(imageUrl);
-    }
-
-    try {
-      String cleanPath = imageUrl.replaceFirst('file://', '');
-      final file = File(cleanPath);
+    // Handle local file paths
+    if (imageUrl.startsWith('file://')) {
+      final file = File(imageUrl.replaceFirst('file://', ''));
       if (file.existsSync()) {
         return FileImage(file);
       }
-    } catch (e) {
-      print('Error loading image: $e');
+    } else if (imageUrl.startsWith('/')) {
+      // Direct file path
+      final file = File(imageUrl);
+      if (file.existsSync()) {
+        return FileImage(file);
+      }
+    } else if (imageUrl.startsWith('http://') ||
+        imageUrl.startsWith('https://')) {
+      return NetworkImage(imageUrl);
     }
 
+    // Fallback to default avatar
     return const NetworkImage(
       'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y',
     );
   }
+
+  @override
+  Widget build(BuildContext context) {
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: isDarkMode ? Colors.grey[800] : Colors.grey[300],
+      child: ClipOval(
+        child: imageUrl.isNotEmpty
+            ? Image(
+                image: _getProfileImage(imageUrl),
+                width: radius * 2,
+                height: radius * 2,
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) {
+                  print('Error loading image: $error');
+                  return Icon(
+                    Icons.person,
+                    size: radius,
+                    color: isDarkMode ? Colors.grey[600] : Colors.grey[500],
+                  );
+                },
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Center(
+                    child: CircularProgressIndicator(
+                      color: ProfileScreen.accentGreen,
+                    ),
+                  );
+                },
+              )
+            : Icon(
+                Icons.person,
+                size: radius,
+                color: isDarkMode ? Colors.grey[600] : Colors.grey[500],
+              ),
+      ),
+    );
+  }
+}
+
+class _ProfileContent extends StatelessWidget {
+  final bool isDarkMode;
+
+  const _ProfileContent({required this.isDarkMode});
 
   @override
   Widget build(BuildContext context) {
@@ -428,18 +484,12 @@ class _ProfileContent extends StatelessWidget {
                     width: 2,
                   ),
                 ),
-                child: CircleAvatar(
+                child: ProfileImageWidget(
+                  imageUrl: state.user.profileImageUrl,
                   radius: 56,
-                  backgroundColor: Colors.grey[300],
-                  backgroundImage: state.user.profileImageUrl.isNotEmpty
-                      ? _getProfileImage(state.user.profileImageUrl)
-                      : null,
-                  child: state.user.profileImageUrl.isEmpty
-                      ? Icon(Icons.person, size: 56, color: Colors.grey[600])
-                      : null,
+                  isDarkMode: isDarkMode,
                 ),
               ),
-              // ✨ FIXED: Positioned camera icon badge on the bottom-right corner instead of overlaying the entire photo
               Positioned(
                 bottom: 4,
                 right: 4,
@@ -595,13 +645,10 @@ class _ProfileContent extends StatelessWidget {
         final File tempFile = File(image.path);
         final File permanentFile = await tempFile.copy(permanentPath);
 
-        // 1. Send path to Cubit (this handles the local state update)
+        // Update profile image - this will automatically update the UI
         await context.read<ProfileCubit>().updateProfileImage(
           permanentFile.path,
         );
-
-        // ❌ REMOVE / COMMENT OUT THIS LINE below:
-        // await context.read<ProfileCubit>().loadProfile(forceRefresh: true);
 
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -642,9 +689,6 @@ class _ProfileContent extends StatelessWidget {
             onPressed: () async {
               Navigator.pop(context);
               await context.read<ProfileCubit>().updateProfileImage('');
-              await context.read<ProfileCubit>().loadProfile(
-                forceRefresh: true,
-              );
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -967,15 +1011,10 @@ class _ProfileContent extends StatelessWidget {
               Stack(
                 alignment: Alignment.center,
                 children: [
-                  CircleAvatar(
+                  ProfileImageWidget(
+                    imageUrl: state.user.profileImageUrl,
                     radius: 50,
-                    backgroundColor: Colors.grey[300],
-                    backgroundImage: state.user.profileImageUrl.isNotEmpty
-                        ? _getProfileImage(state.user.profileImageUrl)
-                        : null,
-                    child: state.user.profileImageUrl.isEmpty
-                        ? Icon(Icons.person, size: 50, color: Colors.grey[600])
-                        : null,
+                    isDarkMode: isDarkMode,
                   ),
                   Positioned(
                     bottom: 0,
@@ -1093,7 +1132,6 @@ class _ProfileContent extends StatelessWidget {
                       emailController.text,
                     );
                   }
-                  await context.read<ProfileCubit>().loadProfile();
                   if (context.mounted) {
                     Navigator.pop(context);
                   }
