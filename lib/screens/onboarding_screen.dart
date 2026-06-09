@@ -25,9 +25,14 @@ class OnboardingView extends StatelessWidget {
   Future<void> _completeOnboarding(BuildContext context) async {
     try {
       final prefs = await SharedPreferences.getInstance();
+      
+      // Stop unauthenticated users from seeing it repeatedly before the Welcome screen
       await prefs.setBool('has_seen_onboarding', true);
-      await prefs.setBool('is_onboarding_shown', true);
-      debugPrint('Onboarding marked as completed');
+      
+      // Keep this true so authenticated launches continue showing it before the dashboard
+      await prefs.setBool('show_onboarding_every_launch', true);
+      
+      debugPrint('Onboarding preference states synchronized safely.');
     } catch (e) {
       debugPrint('Error saving onboarding status: $e');
     }
@@ -41,7 +46,7 @@ class OnboardingView extends StatelessWidget {
           await _completeOnboarding(context);
 
           if (context.mounted) {
-            // Use custom nextRoute or fallback to state.nextRoute
+            // Priority given to the explicitly passed nextRoute property
             final route = nextRoute ?? state.nextRoute;
             Navigator.pushReplacementNamed(context, route);
           }

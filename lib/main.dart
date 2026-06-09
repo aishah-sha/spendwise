@@ -27,11 +27,8 @@ import 'cubit/notification_cubit.dart';
 import 'cubit/auth_cubit.dart';
 
 /// ─── CRITICAL FCM FIX: Background Push Notification Handler ───
-/// Must be a top-level function outside any class. It intercepts hardware signals
-/// even when the application is entirely shut down / swiped away.
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  // Ensure background isolate context connects directly with Firebase Core hooks
   await Firebase.initializeApp();
   debugPrint("Handling background system message: ${message.messageId}");
 }
@@ -52,7 +49,7 @@ void main() async {
     // Initialize Supabase Native Connection
     await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
 
-    // ─── CRITICAL FIX: Listen to Supabase Session updates and stream them to your Bloc ───
+    // Listen to Supabase Session updates and stream them to your Bloc
     Supabase.instance.client.auth.onAuthStateChange.listen((data) {
       final session = data.session;
       if (session != null) {
@@ -62,7 +59,7 @@ void main() async {
       }
     });
 
-    // ─── CRITICAL FCM FIX: Initialize Native Firebase Layers ───
+    // Initialize Native Firebase Layers
     await Firebase.initializeApp();
     FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
 
@@ -117,7 +114,6 @@ class MyApp extends StatelessWidget {
           create: (context) => NotificationCubit(),
         ),
         BlocProvider<BudgetCubit>(create: (context) => BudgetCubit()),
-        // Inject Cubits sequentially to let ExpenseCubit access data updates
         BlocProvider<ExpenseCubit>(
           create: (context) => ExpenseCubit(
             budgetCubit: context.read<BudgetCubit>(),
@@ -181,14 +177,9 @@ class AppHomeGateway extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // 1. Force onboarding FIRST if they have never seen it before
-    if (!hasSeenOnboarding && showOnboardingEveryLaunch) {
-      return const OnboardingScreen(nextRoute: '/auth_gateway');
-    }
-
-    // 2. Otherwise, monitor the Bloc Auth State directly
     return BlocBuilder<AuthCubit, AuthState>(
       builder: (context, state) {
+        // 1. While authentication state is unknown/loading, show a native loader
         if (state is AuthInitial || state is AuthLoading) {
           return const Scaffold(
             backgroundColor: Color(0xFFE8F7CB),
@@ -198,10 +189,21 @@ class AppHomeGateway extends StatelessWidget {
           );
         }
 
-        // ─── CRITICAL FIX: Authenticated status immediately opens the DashboardScreen ───
+        // 2. USER IS LOGGED IN (Authenticated State)
         if (state is Authenticated) {
+          // If configured to always show animation transitions before dashboard
+          if (showOnboardingEveryLaunch) {
+            return const OnboardingScreen(nextRoute: '/dashboard');
+          }
           return const DashboardScreen();
-        } else {
+        } 
+        
+        // 3. USER IS NOT LOGGED IN (Unauthenticated State)
+        else {
+          // If they haven't seen the initial onboarding run, show it before registration/welcome
+          if (!hasSeenOnboarding) {
+            return const OnboardingScreen(nextRoute: '/welcome');
+          }
           return const WelcomeScreen();
         }
       },
@@ -209,7 +211,7 @@ class AppHomeGateway extends StatelessWidget {
   }
 }
 
-// Gateway route handler fallback
+// Gateway route handler fallback for manual triggers
 class AuthGatewayScreen extends StatelessWidget {
   const AuthGatewayScreen({super.key});
 
