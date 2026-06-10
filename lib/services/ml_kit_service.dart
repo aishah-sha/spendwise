@@ -1,17 +1,18 @@
 // lib/services/ml_kit_service.dart
 import 'dart:io';
-import 'package:google_ml_kit/google_ml_kit.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image_picker/image_picker.dart';
+import '../parser/receipt_parser.dart';
+import '../models/receipt_model.dart';
 
 class MLKitService {
   final ImagePicker _imagePicker = ImagePicker();
 
-  // Pick image from camera
   Future<XFile?> pickImageFromCamera() async {
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.camera,
-        imageQuality: 80,
+        imageQuality: 100,
       );
       return image;
     } catch (e) {
@@ -20,12 +21,11 @@ class MLKitService {
     }
   }
 
-  // Pick image from gallery
   Future<XFile?> pickImageFromGallery() async {
     try {
       final XFile? image = await _imagePicker.pickImage(
         source: ImageSource.gallery,
-        imageQuality: 80,
+        imageQuality: 100,
       );
       return image;
     } catch (e) {
@@ -34,108 +34,114 @@ class MLKitService {
     }
   }
 
-  // Process receipt image with ML Kit
   Future<Map<String, dynamic>> processReceiptImage(File imageFile) async {
     try {
-      final inputImage = InputImage.fromFile(imageFile);
-      final textDetector = GoogleMlKit.vision.textRecognizer();
-
-      // Recognize text from image
-      final RecognizedText recognizedText = await textDetector.processImage(
+      final inputImage = InputImage.fromFilePath(imageFile.path);
+      final textRecognizer = TextRecognizer(
+        script: TextRecognitionScript.latin,
+      );
+      final RecognizedText recognizedText = await textRecognizer.processImage(
         inputImage,
       );
 
-      // Extract receipt information from recognized text
-      final receiptData = _extractReceiptInfo(recognizedText);
-
-      await textDetector.close();
-
-      return receiptData;
-    } catch (e) {
-      print('Error processing image: $e');
-      return {};
-    }
-  }
-
-  // Extract receipt information from recognized text
-  Map<String, dynamic> _extractReceiptInfo(RecognizedText recognizedText) {
-    String fullText = '';
-    List<String> lines = [];
-    double totalAmount = 0.0;
-    String? merchantName;
-    List<Map<String, dynamic>> items = [];
-
-    // Collect all text from recognized blocks
-    for (TextBlock block in recognizedText.blocks) {
-      for (TextLine line in block.lines) {
-        fullText += '${line.text}\n';
-        lines.add(line.text);
+      List<TextLine> allLines = [];
+      for (TextBlock block in recognizedText.blocks) {
+        for (TextLine line in block.lines) {
+          allLines.add(line);
+        }
       }
-    }
 
-    // Extract total amount (look for patterns like "Total", "Amount", "RM", "$")
-    for (String line in lines) {
-      // Check for total amount patterns
-      if (line.toLowerCase().contains('total') ||
-          line.toLowerCase().contains('amount') ||
-          line.toLowerCase().contains('rm') ||
-          line.contains('\$')) {
-        // Extract numbers from the line
-        RegExp amountRegex = RegExp(r'(\d+\.?\d*)');
-        Iterable<Match> matches = amountRegex.allMatches(line);
+      if (allLines.isEmpty) {
+        await textRecognizer.close();
+        return {
+          'merchantName': 'Unknown Store',
+          'totalAmount': 0.0,
+          'items': [],
+          'fullText': '',
+          'date': DateTime.now().toIso8601String(),
+        };
+      }
 
-        for (Match match in matches) {
-          double amount = double.tryParse(match.group(0) ?? '0') ?? 0;
-          if (amount > totalAmount) {
-            totalAmount = amount;
+      // Sort lines vertically from top to bottom
+      allLines.sort((a, b) => a.boundingBox.top.compareTo(b.boundingBox.top));
+
+      // Spatial alignment grid reconstruction
+      List<Map<String, dynamic>> structuredRows = [];
+      double yTolerance = 14.0;
+
+      for (var line in allLines) {
+        double currentTop = line.boundingBox.top.toDouble();
+        bool matchedRow = false;
+
+        for (var row in structuredRows) {
+          double rowTop = row['yTop'];
+          if ((rowTop - currentTop).abs() <= yTolerance) {
+            row['lines'].add(line);
+            matchedRow = true;
+            break;
           }
         }
-      }
 
-      // Try to extract merchant name (usually first line)
-      if (merchantName == null &&
-          line.length > 3 &&
-          !line.contains(RegExp(r'\d'))) {
-        merchantName = line;
-      }
-
-      // Try to extract items (lines with price at the end)
-      RegExp itemRegex = RegExp(r'(.+?)\s+(\d+\.?\d*)\s*$');
-      Match? itemMatch = itemRegex.firstMatch(line);
-      if (itemMatch != null) {
-        String itemName = itemMatch.group(1)?.trim() ?? '';
-        double itemPrice = double.tryParse(itemMatch.group(2) ?? '0') ?? 0;
-
-        if (itemName.isNotEmpty && itemPrice > 0) {
-          items.add({'name': itemName, 'price': itemPrice, 'quantity': 1});
+        if (!matchedRow) {
+          structuredRows.add({
+            'yTop': currentTop,
+            'lines': [line],
+          });
         }
       }
-    }
 
-    // If total amount not found, try to find the largest number
-    if (totalAmount == 0.0) {
-      RegExp numberRegex = RegExp(r'(\d+\.?\d*)');
-      Iterable<Match> matches = numberRegex.allMatches(fullText);
+      String rebuiltFullText = '';
+      for (var row in structuredRows) {
+        List<TextLine> rowLines = List<TextLine>.from(row['lines']);
+        // Sort items left to right across the page layout
+        rowLines.sort(
+          (a, b) => a.boundingBox.left.compareTo(b.boundingBox.left),
+        );
 
-      for (Match match in matches) {
-        double amount = double.tryParse(match.group(0) ?? '0') ?? 0;
-        if (amount > totalAmount && amount < 100000) {
-          // Reasonable receipt amount
-          totalAmount = amount;
-        }
+        String combinedRowText = rowLines.map((l) => l.text).join(" ").trim();
+        rebuiltFullText += '$combinedRowText\n';
       }
+
+      await textRecognizer.close();
+
+      // We pass the clean text blocks right into your native parser system
+      ReceiptModel parsedModel = ReceiptParser.parseRawText(
+        rebuiltFullText,
+        imagePath: imageFile.path,
+      );
+
+      // Convert items into the exact plain-map structures your UI views expect
+      List<Map<String, dynamic>> organizedItemsList = [];
+
+      // FIXED: Added a null-coalescing check (?? const []) to handle nullable models safely
+      for (var item in parsedModel.items ?? const []) {
+        organizedItemsList.add({
+          'name': item.name,
+          'price': item.price,
+          'quantity': item.quantity,
+          'category': item.category,
+        });
+      }
+
+      // Return the complete layout payload to satisfy all states
+      return {
+        'merchantName': parsedModel.merchantName,
+        'totalAmount': parsedModel.amount,
+        'items': organizedItemsList,
+        'fullText': rebuiltFullText,
+        'date': parsedModel.date.toIso8601String(),
+      };
+    } catch (e) {
+      print('Error processing image via ML Kit: $e');
+      return {
+        'merchantName': 'Error Reading',
+        'totalAmount': 0.0,
+        'items': [],
+        'fullText': '',
+        'date': DateTime.now().toIso8601String(),
+      };
     }
-
-    return {
-      'fullText': fullText,
-      'merchantName': merchantName,
-      'totalAmount': totalAmount,
-      'items': items,
-    };
   }
 
-  // Clean up resources
-  void dispose() {
-    // Clean up if needed
-  }
+  void dispose() {}
 }

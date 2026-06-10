@@ -1,3 +1,4 @@
+// lib/cubit/receipt_cubit.dart
 import 'dart:async';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -41,15 +42,12 @@ class ReceiptCubit extends Cubit<ReceiptState> {
 
       _controller = CameraController(
         cameras.first,
-        ResolutionPreset.medium, // Use medium for better performance
+        ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
 
       await _controller!.initialize();
-
-      // Start automatic scanning when camera is ready
-      _startAutoScanning();
 
       emit(
         state.copyWith(
@@ -57,6 +55,8 @@ class ReceiptCubit extends Cubit<ReceiptState> {
           isCameraInitialized: true,
         ),
       );
+
+      _startAutoScanning();
     } catch (e) {
       emit(
         state.copyWith(
@@ -68,112 +68,146 @@ class ReceiptCubit extends Cubit<ReceiptState> {
   }
 
   void _startAutoScanning() {
-    // Listen to camera stream for automatic scanning
-    if (_controller == null || !_controller!.value.isInitialized) return;
-
-    // Capture every 1.5 seconds for auto-scan
     _scanTimer?.cancel();
     _scanTimer = Timer.periodic(_scanDelay, (timer) async {
-      if (state.status == ReceiptStatus.scanning ||
-          state.status == ReceiptStatus.success ||
-          !_controller!.value.isInitialized) {
-        return;
+      if (_controller != null &&
+          _controller!.value.isInitialized &&
+          !_controller!.value.isTakingPicture &&
+          state.status != ReceiptStatus.success &&
+          !state.isDialogOpen) {
+        await _captureAndProcessFrame();
       }
-      await captureAndScan();
     });
   }
 
-  Future<void> captureAndScan() async {
-    if (_controller == null || !_controller!.value.isInitialized) return;
+  Future<void> _captureAndProcessFrame() async {
+    if (state.status == ReceiptStatus.scanning) return;
 
     try {
-      // Take picture
-      final XFile picture = await _controller!.takePicture();
-      await scanReceiptImage(picture);
-    } catch (e) {
-      // Ignore capture errors, will retry next cycle
-      debugPrint("Auto-capture error: $e");
-    }
-  }
+      emit(state.copyWith(status: ReceiptStatus.scanning, isScanning: true));
 
-  Future<void> scanReceiptImage(XFile file) async {
-    try {
-      emit(state.copyWith(status: ReceiptStatus.scanning));
-
+      final XFile file = await _controller!.takePicture();
       final inputImage = InputImage.fromFilePath(file.path);
       final RecognizedText recognizedText = await _textRecognizer.processImage(
         inputImage,
       );
-      final scannedText = recognizedText.text.trim();
 
-      if (scannedText.isEmpty) {
-        emit(
-          state.copyWith(
-            status: ReceiptStatus.initial,
-            errorMessage: "No text detected. Please try again.",
-          ),
-        );
-        return;
+      // 1. EXTRACT ALL RAW TEXT LINES
+      List<TextLine> allLines = [];
+      for (TextBlock block in recognizedText.blocks) {
+        for (TextLine line in block.lines) {
+          allLines.add(line);
+        }
       }
 
-      // Avoid duplicate scans of same text
-      if (scannedText == _lastScannedText) {
-        return;
-      }
-      _lastScannedText = scannedText;
-
-      // Parse receipt
-      final ReceiptModel receipt = ReceiptParser.parseRawText(
-        scannedText,
-        imagePath: file.path,
-      );
-
-      // Check if we found any items or a valid amount
-      if ((receipt.items == null || receipt.items!.isEmpty) &&
-          receipt.amount == 0.0) {
-        // Update blurry count for feedback
-        final newBlurryCount = state.blurryCount + 1;
+      // FIXED: Use allLines.length instead of lines.length to prevent the null error!
+      if (allLines.length < 3) {
+        int currentBlurry = state.blurryCount + 1;
         emit(
           state.copyWith(
-            status: ReceiptStatus.initial,
-            blurryCount: newBlurryCount,
-            errorMessage: newBlurryCount > 3
-                ? "Having trouble reading the receipt. Please ensure good lighting and flat surface."
+            status: currentBlurry >= 3
+                ? ReceiptStatus.error
+                : ReceiptStatus.initial,
+            isScanning: false,
+            blurryCount: currentBlurry,
+            errorMessage: currentBlurry >= 3
+                ? "Poor photo quality. Adjust lighting."
                 : null,
           ),
         );
         return;
       }
 
-      // Reset blurry count on successful scan
-      final updatedHistory = List<Map<String, dynamic>>.from(state.scanHistory)
-        ..add({'path': file.path, 'date': DateTime.now().toIso8601String()});
+      // 2. SPATIAL RECONSTRUCTION GRID (Matches Item Name on left with Price on right)
+      allLines.sort((a, b) => a.boundingBox.top.compareTo(b.boundingBox.top));
 
-      final updatedScannedTexts = Set<String>.from(state.scannedTexts)
-        ..addAll(
-          scannedText
-              .split('\n')
-              .map((e) => e.trim())
-              .where((e) => e.isNotEmpty),
+      List<Map<String, dynamic>> structuredRows = [];
+      double yTolerance = 14.0; // Margin in pixels to map elements horizontally
+
+      for (var line in allLines) {
+        double currentTop = line.boundingBox.top.toDouble();
+        bool matchedRow = false;
+
+        for (var row in structuredRows) {
+          double rowTop = row['yTop'];
+          if ((rowTop - currentTop).abs() <= yTolerance) {
+            row['lines'].add(line);
+            matchedRow = true;
+            break;
+          }
+        }
+
+        if (!matchedRow) {
+          structuredRows.add({
+            'yTop': currentTop,
+            'lines': [line],
+          });
+        }
+      }
+
+      // 3. REBUILD THE PERFECT HORIZONTAL RAW TEXT
+      String rebuiltFullText = '';
+      for (var row in structuredRows) {
+        List<TextLine> rowLines = List<TextLine>.from(row['lines']);
+        rowLines.sort(
+          (a, b) => a.boundingBox.left.compareTo(b.boundingBox.left),
         );
 
+        String combinedRowText = rowLines.map((l) => l.text).join(" ").trim();
+        rebuiltFullText += '$combinedRowText\n';
+      }
+
+      // Prevent processing duplicates of the exact same frame scan
+      if (_lastScannedText == rebuiltFullText) {
+        emit(state.copyWith(status: ReceiptStatus.initial, isScanning: false));
+        return;
+      }
+      _lastScannedText = rebuiltFullText;
+
+      print("--- Cleaned Spatial Scanning Output ---");
+      print(rebuiltFullText);
+
+      // 4. PARSE STRINGS INTO THE SYSTEM ECOSYSTEM MODEL
+      ReceiptModel receipt = ReceiptParser.parseRawText(
+        rebuiltFullText,
+        imagePath: file.path,
+      );
+
+      // Update recent history arrays
+      final Map<String, dynamic> historyItem = {
+        'id': receipt.id,
+        'merchantName': receipt.merchantName,
+        'amount': receipt.amount,
+        'date': receipt.date.toIso8601String(),
+        'itemCount': receipt.items?.length,
+      };
+
+      final updatedHistory = List<Map<String, dynamic>>.from(state.scanHistory)
+        ..insert(0, historyItem);
+      final updatedScannedTexts = Set<String>.from(state.scannedTexts)
+        ..add(rebuiltFullText);
+
+      // 5. ASSIGN BOTH model AND scannedReceipt TO SYNC WITH UI
       emit(
         state.copyWith(
           status: ReceiptStatus.success,
-          receiptModel: receipt,
-          detectedTexts: scannedText.split('\n'),
+          isScanning: false,
+          receiptModel: receipt, // Syncs old layouts
+          scannedReceipt: receipt, // Syncs your UI item table lists!
+          detectedTexts: rebuiltFullText.split('\n'),
           scanHistory: updatedHistory,
           scannedTexts: updatedScannedTexts,
-          blurryCount: 0, // Reset on success
+          blurryCount: 0,
         ),
       );
 
-      // Pause auto-scanning when successful
-      _scanTimer?.cancel();
+      _scanTimer?.cancel(); // Successfully scanned! Stop timer loops.
     } catch (e) {
+      print("OCR process error: $e");
       emit(
         state.copyWith(
           status: ReceiptStatus.error,
+          isScanning: false,
           errorMessage: "OCR processing failed: $e",
         ),
       );
@@ -186,23 +220,44 @@ class ReceiptCubit extends Cubit<ReceiptState> {
       state.copyWith(
         status: ReceiptStatus.initial,
         receiptModel: null,
+        scannedReceipt: null, // Clear out
         errorMessage: null,
         blurryCount: 0,
+        isScanning: false,
       ),
     );
     _startAutoScanning();
   }
 
   void clearError() {
-    emit(state.copyWith(status: ReceiptStatus.initial, errorMessage: null));
+    emit(
+      state.copyWith(
+        status: ReceiptStatus.initial,
+        errorMessage: null,
+        isScanning: false,
+      ),
+    );
   }
 
   void setBlurryCount(int count) {
     emit(state.copyWith(blurryCount: count));
   }
 
-  void toggleDialog(bool isOpen) {
+  void toggleFlash() async {
+    if (_controller != null && _controller!.value.isInitialized) {
+      bool currentFlash = state.isFlashOn;
+      await _controller!.setFlashMode(
+        currentFlash ? FlashMode.off : FlashMode.torch,
+      );
+      emit(state.copyWith(isFlashOn: !currentFlash));
+    }
+  }
+
+  void setDialogOpen(bool isOpen) {
     emit(state.copyWith(isDialogOpen: isOpen));
+    if (!isOpen && state.status != ReceiptStatus.success) {
+      _startAutoScanning();
+    }
   }
 
   @override

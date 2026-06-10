@@ -38,7 +38,7 @@ dependencies:
   flutter_bloc: ^9.1.1
   equatable: ^2.0.8
   intl: ^0.20.2
-  image_picker: ^1.2.1
+  image_picker: ^1.0.7
   camera: ^0.12.0
   google_ml_kit: ^0.21.0
   permission_handler: ^12.0.1

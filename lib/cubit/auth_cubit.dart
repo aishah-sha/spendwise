@@ -6,7 +6,6 @@ import 'package:firebase_messaging/firebase_messaging.dart'; // Firebase Messagi
 import '../services/supabase_service.dart';
 
 // Import OAuth provider
-import 'package:supabase_flutter/supabase_flutter.dart' show OAuthProvider;
 
 // ============ STATES ============
 abstract class AuthState {}

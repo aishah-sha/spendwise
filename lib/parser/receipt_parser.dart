@@ -1,13 +1,14 @@
+// lib/parser/receipt_parser.dart
 import '../models/receipt_model.dart';
 
 class ReceiptParser {
-  // Price patterns - supports RM, MYR, and plain numbers
+  // 1. IMPROVED PRICE REGEX: Safely allows optional Malaysian tax suffix codes (S, Z, E)
   static final _priceRe = RegExp(
-    r'(?:RM|MYR|M\s?Y\s?R)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)\b',
+    r'(?:RM|MYR|M\s?Y\s?R)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2}))(?:\s*[A-Z])?\b',
     caseSensitive: false,
   );
 
-  // Date patterns (Malaysian format: DD/MM/YYYY, DD-MM-YYYY, etc.)
+  // Date patterns (Malaysian formats: DD/MM/YYYY, DD-MM-YYYY)
   static final _dateRe = RegExp(
     r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b',
     caseSensitive: false,
@@ -19,62 +20,62 @@ class ReceiptParser {
     caseSensitive: false,
   );
 
-  // Skip patterns
+  // Transaction metadata words to skip completely
   static final _skipLineRe = RegExp(
     r'\b(CASH|CHANGE|TUNAI|BAKI|TENDER|PAYMENT|CARD|CREDIT|DEBIT|'
     r'CASHIER|KASIR|OPERATOR|RECEIPT|INVOICE|TABLE|ORDER|SERVER|STAFF|'
     r'DATE|TIME|TARIKH|MASA|TEL|PHONE|FAX|EMAIL|WEBSITE|'
     r'TRANSACTION|REF|REFERENCE|MEMBER|POINT|POINTS|'
-    r'DISCOUNT|DISKAUN|ROUNDING|TAX|GST|SST|SERVICE\s*CHARGE|'
+    r'DISCOUNT|DISKAUN|TAX|GST|SST|SERVICE\s*CHARGE|'
     r'ITEM\s*COUNT|TOTAL\s*ITEM|TOTAL\s*QTY|'
     r'SUBTOTAL|SUB\s*TOTAL|THANK\s*YOU|TERIMA\s*KASIH|'
     r'JALAN|LOT\s*\d|UNIT\s*\d|SDN\s*BHD|NO\.\s*\d)\b',
     caseSensitive: false,
   );
 
-  // Quantity patterns
+  // Multi-variant quantity pattern matchers (e.g., "12 x 1.75" or "2 @ RM3.50")
   static final _qtyPatterns = [
-    RegExp(r'^(\d{1,3})\s*[xX@]\s*(?:RM|MYR)?\s*(\d+(?:\.\d{2})?)'),
-    RegExp(r'^(\d{1,3})\s+(?:RM|MYR)?\s*(\d+(?:\.\d{2})?)$'),
-    RegExp(r'(\d{1,3})\s*[xX]\s*(?:RM|MYR)?\s*(\d+(?:\.\d{2})?)'),
+    RegExp(r'(\d{1,3})\s*[xX@]\s*(?:RM|MYR)?\s*(\d+(?:\.\d{2})?)'),
+    RegExp(r'\b(\d{1,3})\s+(?:RM|MYR)?\s*(\d+(?:\.\d{2})?)$'),
   ];
 
-  // Total amount indicators
   static final _totalRe = RegExp(
-    r'\b(TOTAL|JUMLAH|GRAND\s*TOTAL|AMOUNT|AMOUNT\s*DUE):?\s*(?:RM|MYR)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
+    r'\b(TOTAL|JUMLAH|GRAND\s*TOTAL|AMOUNT|AMOUNT\s*DUE|BUNDARAN|ROUNDING):?\s*(?:RM|MYR)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
     caseSensitive: false,
   );
 
   static ReceiptModel parseRawText(String rawText, {String? imagePath}) {
-    final lines = rawText.split('\n');
+    final lines = rawText
+        .split('\n')
+        .map((l) => l.trim())
+        .where((l) => l.isNotEmpty)
+        .toList();
     final List<ReceiptItem> items = [];
 
-    String merchantName = "Unknown Merchant";
+    String merchantName = "Unknown Store";
     DateTime? receiptDate;
     double extractedTotal = 0.0;
     double calculatedSubtotal = 0.0;
 
-    // First pass: Extract merchant and date
+    // First Pass: Extract Header Metadata (Merchant and Date)
     for (int i = 0; i < lines.length && i < 10; i++) {
-      final line = lines[i].trim();
-      if (line.isEmpty) continue;
+      final line = lines[i];
 
-      // Extract merchant name
-      if (merchantName == "Unknown Merchant") {
+      if (merchantName == "Unknown Store") {
         final merchantMatch = _merchantRe.firstMatch(line);
-        if (merchantMatch != null && line.length > 5 && line.length < 100) {
-          merchantName = merchantMatch.group(1)!.trim();
-          merchantName = merchantName.replaceAll(RegExp(r'\s+'), ' ').trim();
+        if (merchantMatch != null && line.length > 4) {
+          merchantName = merchantMatch
+              .group(1)!
+              .trim()
+              .replaceAll(RegExp(r'\s+'), ' ');
         } else if (line.length > 5 &&
-            line.length < 80 &&
             !_skipLineRe.hasMatch(line) &&
             !_priceRe.hasMatch(line) &&
             !line.contains(':')) {
-          merchantName = line.trim();
+          merchantName = line;
         }
       }
 
-      // Extract date
       if (receiptDate == null) {
         final dateMatch = _dateRe.firstMatch(line);
         if (dateMatch != null) {
@@ -83,131 +84,85 @@ class ReceiptParser {
       }
     }
 
-    // Second pass: Process items
-    for (var line in lines) {
-      final trimmed = line.trim();
-      if (trimmed.isEmpty) continue;
+    // Second Pass: Parse Items & Totals using a Look-Behind buffering logic
+    for (int i = 0; i < lines.length; i++) {
+      final line = lines[i];
 
-      // Check for total amount
-      final totalMatch = _totalRe.firstMatch(trimmed);
+      // Grab grand totals if present
+      final totalMatch = _totalRe.firstMatch(line);
       if (totalMatch != null) {
         final amountStr = totalMatch.group(2)!.replaceAll(',', '');
-        extractedTotal = double.tryParse(amountStr) ?? 0.0;
+        double parsedTotal = double.tryParse(amountStr) ?? 0.0;
+        if (parsedTotal > extractedTotal) extractedTotal = parsedTotal;
         continue;
       }
 
-      // Skip lines without prices
-      final priceMatch = _priceRe.firstMatch(trimmed);
+      // If a line doesn't have a visible price metric, don't drop it yet! It might be a detached item name.
+      final priceMatch = _priceRe.firstMatch(line);
       if (priceMatch == null) continue;
 
-      // Skip non-item lines
-      if (_skipLineRe.hasMatch(trimmed)) continue;
+      // Skip lines that are purely transaction metadata
+      if (_skipLineRe.hasMatch(line)) continue;
 
       final priceStr = priceMatch.group(1)!.replaceAll(',', '');
       double linePrice = double.tryParse(priceStr) ?? 0.0;
 
-      // Get item text
-      String itemText = trimmed.substring(0, priceMatch.start).trim();
-      if (itemText.isEmpty) {
-        itemText = trimmed.replaceAll(priceMatch.group(0)!, '').trim();
+      // Determine product text descriptor using context fallback tracking
+      String itemText = line.substring(0, priceMatch.start).trim();
+
+      // LOOK-BEHIND MULTI-LINE BUFFERING FIX:
+      // If the item text segment on this line is empty or too short, look up to the previous line!
+      if ((itemText.isEmpty ||
+              RegExp(r'^[\d\s\-•*,.@xX]+$').hasMatch(itemText)) &&
+          i > 0) {
+        final previousLine = lines[i - 1];
+        if (!_skipLineRe.hasMatch(previousLine) &&
+            !_priceRe.hasMatch(previousLine)) {
+          itemText = previousLine;
+        }
       }
 
       int quantity = 1;
       double unitPrice = linePrice;
 
-      // Extract quantity
+      // Parse quantity structures out of the text string
       for (final pattern in _qtyPatterns) {
         final qtyMatch = pattern.firstMatch(itemText);
         if (qtyMatch != null) {
-          final qtyStr = qtyMatch.group(1);
-          final priceStr2 = qtyMatch.group(2);
-
-          if (qtyStr != null && priceStr2 != null) {
-            quantity = int.tryParse(qtyStr) ?? 1;
-            final extractedPrice = double.tryParse(
-              priceStr2.replaceAll(',', ''),
-            );
-            if (extractedPrice != null) {
-              unitPrice = extractedPrice;
-              linePrice = unitPrice * quantity;
-            }
-            itemText = itemText.replaceAll(qtyMatch.group(0)!, '').trim();
-          }
+          quantity = int.tryParse(qtyMatch.group(1) ?? '1') ?? 1;
+          unitPrice = double.tryParse(qtyMatch.group(2) ?? '0') ?? linePrice;
+          itemText = itemText.replaceAll(qtyMatch.group(0)!, '').trim();
           break;
         }
       }
 
-      // Clean up item text
-      itemText = itemText
-          .replaceAll(RegExp(r'^[\d\s\-•*,.@xX]+|[\d\s\-•*,.@xX]+$'), '')
-          .trim();
+      // CLEANUP BARCODES: Strip any leftover leading numbers, symbols, dots or index keys
+      itemText = itemText.replaceAll(RegExp(r'^[\d\s\-•*,.@xX#]+'), '').trim();
+      itemText = itemText.replaceAll(RegExp(r'[\d\s\-•*,.@xX]+$'), '').trim();
 
-      // Validate item
+      // Final validation guards for your clean items list array
       if (itemText.length < 2 ||
-          itemText.length > 100 ||
-          itemText.contains('PROMO') ||
-          itemText.contains('DISCOUNT')) {
+          itemText.length > 80 ||
+          itemText.toLowerCase().contains('total')) {
         continue;
       }
 
-      final category = categorizeItem(itemText);
-
       items.add(
         ReceiptItem(
-          name: itemText,
+          name: itemText.toUpperCase(),
           price: linePrice,
           quantity: quantity,
-          category: category,
+          category: categorizeItem(itemText),
           unitPrice: unitPrice,
         ),
       );
-
       calculatedSubtotal += linePrice;
     }
-
-    // Fallback: simpler parsing if no items found
-    if (items.isEmpty) {
-      for (var line in lines) {
-        final trimmed = line.trim();
-        if (trimmed.isEmpty) continue;
-
-        final priceMatch = _priceRe.firstMatch(trimmed);
-        if (priceMatch != null && !_skipLineRe.hasMatch(trimmed)) {
-          final priceStr = priceMatch.group(1)!.replaceAll(',', '');
-          double linePrice = double.tryParse(priceStr) ?? 0.0;
-
-          String itemText = trimmed.replaceAll(priceMatch.group(0)!, '').trim();
-          itemText = itemText
-              .replaceAll(RegExp(r'^[\d\s\-•*,.]+|[\d\s\-•*,.]+$'), '')
-              .trim();
-
-          if (itemText.isNotEmpty &&
-              itemText.length >= 2 &&
-              itemText.length <= 100) {
-            items.add(
-              ReceiptItem(
-                name: itemText,
-                price: linePrice,
-                quantity: 1,
-                category: categorizeItem(itemText),
-                unitPrice: linePrice,
-              ),
-            );
-            calculatedSubtotal += linePrice;
-          }
-        }
-      }
-    }
-
-    // Use extracted total or calculated subtotal
-    final finalAmount = extractedTotal > 0
-        ? extractedTotal
-        : calculatedSubtotal;
 
     return ReceiptModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       date: receiptDate ?? DateTime.now(),
-      amount: finalAmount,
+      amount: extractedTotal > 0 ? extractedTotal : calculatedSubtotal,
       subtotal: calculatedSubtotal,
       tax: 0.0,
       serviceCharge: 0.0,
@@ -218,7 +173,7 @@ class ReceiptParser {
       currency: 'RM',
       ocrStatus: 'SUCCESS',
       processed: false,
-      items: items,
+      items: items, // Fully structured items populated
     );
   }
 
@@ -229,22 +184,15 @@ class ReceiptParser {
         int day = int.parse(parts[0]);
         int month = int.parse(parts[1]);
         int year = int.parse(parts[2]);
-
-        if (year < 100) {
-          year += 2000;
-        }
-
+        if (year < 100) year += 2000;
         return DateTime(year, month, day);
       }
-    } catch (e) {
-      // Ignore parsing errors
-    }
+    } catch (e) {}
     return null;
   }
 
   static String categorizeItem(String itemName) {
     final lower = itemName.toLowerCase();
-
     if (RegExp(
       r'cili|kobis|lobak|bawang|kentang|tomato|sayur|vegetable|halia|daun|broccoli|carrot',
     ).hasMatch(lower)) {

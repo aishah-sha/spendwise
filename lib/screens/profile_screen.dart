@@ -301,11 +301,11 @@ class ProfileImageWidget extends StatelessWidget {
   final bool isDarkMode;
 
   const ProfileImageWidget({
-    Key? key,
+    super.key,
     required this.imageUrl,
     required this.radius,
     required this.isDarkMode,
-  }) : super(key: key);
+  });
 
   ImageProvider _getProfileImage(String imageUrl) {
     if (imageUrl.isEmpty) {
