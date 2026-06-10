@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:equatable/equatable.dart';
 
 class ReceiptItem extends Equatable {
@@ -5,7 +6,7 @@ class ReceiptItem extends Equatable {
   final double price;
   final int quantity;
   final String category;
-  final double? unitPrice; // Changed from 'amount' to 'unitPrice' for clarity
+  final double? unitPrice;
 
   const ReceiptItem({
     required this.name,
@@ -151,10 +152,29 @@ class ReceiptModel extends Equatable {
   }
 
   factory ReceiptModel.fromDatabaseJson(Map<String, dynamic> json) {
+    // Dynamically safely handles database list text blocks or array lists maps
+    List<ReceiptItem>? parsedItems;
+    if (json['items'] != null) {
+      try {
+        final rawItems = json['items'];
+        final List listData = rawItems is String
+            ? jsonDecode(rawItems)
+            : rawItems;
+        parsedItems = listData
+            .map((item) => ReceiptItem.fromJson(item as Map<String, dynamic>))
+            .toList();
+      } catch (e) {
+        parsedItems = null;
+      }
+    }
+
     return ReceiptModel(
-      id: json['id'] as String,
-      date: DateTime.parse(json['date'] as String),
-      amount: (json['amount'] as num).toDouble(),
+      id: json['id'] as String? ?? '',
+      date: json['date'] != null
+          ? DateTime.parse(json['date'] as String)
+          : DateTime.now(),
+      amount: (json['amount'] as num? ?? 0.0)
+          .toDouble(), // FIXED: Strict num conversion rules applied
       tax: (json['tax'] as num?)?.toDouble(),
       subtotal: (json['subtotal'] as num?)?.toDouble(),
       serviceCharge: (json['service_charge'] as num?)?.toDouble(),
@@ -165,15 +185,9 @@ class ReceiptModel extends Equatable {
       currency: json['currency'] as String?,
       ocrStatus: json['ocr_status'] as String?,
       userId: json['user_id'] as String?,
-      processed: json['processed'] == 1, // Handles SQLite integer flags
+      processed: json['processed'] == 1 || json['processed'] == true,
       expenseId: json['expense_id'] as String?,
-      items: json['items'] != null
-          ? (json['items'] as List)
-                .map(
-                  (item) => ReceiptItem.fromJson(item as Map<String, dynamic>),
-                )
-                .toList()
-          : null,
+      items: parsedItems,
     );
   }
 
@@ -194,7 +208,10 @@ class ReceiptModel extends Equatable {
       'user_id': userId,
       'processed': processed ? 1 : 0,
       'expense_id': expenseId,
-      'items': items?.map((item) => item.toJson()).toList(),
+      // Converts map to a JSON string block so your SQLite text field won't crash on standard string writes
+      'items': items != null
+          ? jsonEncode(items!.map((item) => item.toJson()).toList())
+          : null,
     };
   }
 

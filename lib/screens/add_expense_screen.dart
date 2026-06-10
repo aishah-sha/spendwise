@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/notification_cubit.dart';
@@ -11,6 +10,7 @@ import '../cubit/profile_state.dart';
 import '../cubit/receipt_cubit.dart';
 import '../models/receipt_model.dart';
 import '../widgets/notification_badge.dart';
+import '../services/ml_kit_service.dart';
 import 'analytics_screen.dart';
 import 'budget_screen.dart';
 import 'manual_entry_screen.dart';
@@ -19,7 +19,6 @@ import 'dashboard_screen.dart';
 import 'profile_screen.dart';
 import 'receipt_scanner_screen.dart';
 import '../cubit/budget_cubit.dart' as budget_cubit;
-import '../parser/receipt_parser.dart';
 
 class AddExpenseScreen extends StatelessWidget {
   final String? editingExpenseId;
@@ -223,15 +222,7 @@ class AddExpenseScreen extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // ── Upload Single Image — FIXED ────────────────────────────────────
-        // Root cause 1: uploadImage() in AddExpenseCubit picks the file but
-        //   never runs ML Kit OCR on it, so scannedReceipt.amount is always 0
-        //   and items is always empty.
-        // Root cause 2: imagePath was never stored on the ReceiptModel, so
-        //   FileImage had no path and the thumbnail showed nothing.
-        //
-        // Fix: pick the file here, run ML Kit Text Recognition directly,
-        //   parse the result with ReceiptParserV2, and carry imagePath forward.
+        // ── Upload Single Image ────────────────────────────────────
         _buildOptionCard(
           icon: Icons.photo_library,
           title: 'Upload Image',
@@ -245,7 +236,7 @@ class AddExpenseScreen extends StatelessWidget {
 
         const SizedBox(height: 12),
 
-        // ── Upload Multiple Images — FIXED ─────────────────────────────────
+        // ── Upload Multiple Images ─────────────────────────────────
         _buildOptionCard(
           icon: Icons.photo_library_outlined,
           title: 'Upload Multiple',
@@ -307,16 +298,18 @@ class AddExpenseScreen extends StatelessWidget {
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _handleUploadSingle(BuildContext context) async {
     final addExpenseCubit = context.read<AddExpenseCubit>();
+    final mlKitService = MLKitService();
 
     // 1. Let the user pick a single image from the gallery
     final picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 90,
+      imageQuality: 85,
+      maxWidth: 1200,
+      maxHeight: 1200,
     );
-    if (pickedFile == null) return; // user cancelled
 
-    final imagePath = pickedFile.path;
+    if (pickedFile == null) return;
 
     // Show a loading indicator while we process
     if (context.mounted) {
@@ -324,8 +317,11 @@ class AddExpenseScreen extends StatelessWidget {
     }
 
     try {
-      // 2. Run ML Kit OCR on the picked file
-      final receipt = await _extractReceiptFromImageFile(imagePath);
+      // 2. Process the image using MLKitService
+      final receipt = await mlKitService.processReceiptImage(
+        File(pickedFile.path),
+        context: context, // Pass context for debug dialog if needed
+      );
 
       if (context.mounted) {
         addExpenseCubit.setLoading(false);
@@ -358,15 +354,17 @@ class AddExpenseScreen extends StatelessWidget {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // UPLOAD MULTIPLE IMAGES — pick → OCR each → parse → show dialog
+  // UPLOAD MULTIPLE IMAGES — pick → OCR each → show dialog
   // ─────────────────────────────────────────────────────────────────────────
   Future<void> _handleUploadMultiple(BuildContext context) async {
     final addExpenseCubit = context.read<AddExpenseCubit>();
+    final mlKitService = MLKitService();
 
     final picker = ImagePicker();
     final List<XFile> pickedFiles = await picker.pickMultiImage(
       imageQuality: 90,
     );
+
     if (pickedFiles.isEmpty) return;
 
     if (context.mounted) {
@@ -377,7 +375,10 @@ class AddExpenseScreen extends StatelessWidget {
       final List<ReceiptModel> receipts = [];
 
       for (final file in pickedFiles) {
-        final receipt = await _extractReceiptFromImageFile(file.path);
+        final receipt = await mlKitService.processReceiptImage(
+          File(file.path),
+          context: context,
+        );
         receipts.add(receipt);
       }
 
@@ -418,58 +419,7 @@ class AddExpenseScreen extends StatelessWidget {
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // CORE HELPER — Run ML Kit OCR on a file path and return a ReceiptModel.
-  // This is the method that was missing: previously the cubit just stored a
-  // path but never extracted text from it.
-  // ─────────────────────────────────────────────────────────────────────────
-  Future<ReceiptModel> _extractReceiptFromImageFile(String imagePath) async {
-    // 1. Build ML Kit InputImage from the on-disk file
-    final inputImage = InputImage.fromFilePath(imagePath);
-
-    // 2. Run OCR
-    final textRecognizer = TextRecognizer(script: TextRecognitionScript.latin);
-
-    RecognizedText recognizedText;
-    try {
-      recognizedText = await textRecognizer.processImage(inputImage);
-    } finally {
-      await textRecognizer.close();
-    }
-
-    debugPrint(
-      "📸 [Upload] Raw OCR text (${recognizedText.text.length} chars):",
-    );
-    debugPrint(recognizedText.text);
-
-    // 3. Parse with the same parser used by the live scanner
-    // FIXED: Stripped out the incorrect "fallbackLines" argument causing the compiler failure
-    final receiptData = ReceiptParser.parseRawText(recognizedText.text);
-
-    // 4. Build ReceiptModel — critically, include imagePath so the thumbnail works
-    return ReceiptModel(
-      id: DateTime.now().millisecondsSinceEpoch
-          .toString(), // Added a temporary unique ID string fallback if needed
-      merchantName: receiptData.merchantName,
-      amount: receiptData.amount,
-      date: DateTime.now(),
-      receiptType: 'image',
-      imagePath: imagePath, // store path so FileImage renders
-      items: receiptData.items
-          ?.map(
-            (item) => ReceiptItem(
-              // FIXED: Fixed invalid properties and mapped constructor arguments safely
-              name: item.name,
-              price: item.price,
-              quantity: item.quantity ?? 1,
-              category: item.category,
-            ),
-          )
-          .toList(),
-    );
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // UI HELPERS (unchanged)
+  // UI HELPERS
   // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
@@ -732,7 +682,6 @@ class AddExpenseScreen extends StatelessWidget {
             ),
             child: Row(
               children: [
-                // ── Thumbnail — FIX: check file exists before rendering ────
                 _buildThumbnail(receipt),
                 const SizedBox(width: 16),
                 Expanded(
@@ -799,22 +748,28 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  // ── Thumbnail widget: safely shows the image or a fallback icon ───────────
-  // Previously this used DecorationImage which silently fails when the file
-  // doesn't exist. Using Image.file with an errorBuilder is more robust.
+  // ── Thumbnail widget with proper async file checking ──
   Widget _buildThumbnail(ReceiptModel receipt) {
     final path = receipt.imagePath;
 
-    if (path != null && File(path).existsSync()) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(10),
-        child: Image.file(
-          File(path),
-          width: 60,
-          height: 60,
-          fit: BoxFit.cover,
-          errorBuilder: (_, _, _) => _thumbnailFallback(),
-        ),
+    if (path != null) {
+      return FutureBuilder<bool>(
+        future: File(path).exists(),
+        builder: (context, snapshot) {
+          if (snapshot.hasData && snapshot.data == true) {
+            return ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: Image.file(
+                File(path),
+                width: 60,
+                height: 60,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => _thumbnailFallback(),
+              ),
+            );
+          }
+          return _thumbnailFallback();
+        },
       );
     }
 
@@ -1006,7 +961,7 @@ class AddExpenseScreen extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Dialogs (module-level, same as before)
+// Dialogs
 // ─────────────────────────────────────────────────────────────────────────────
 
 void _showErrorDialog(BuildContext context, String message) {
