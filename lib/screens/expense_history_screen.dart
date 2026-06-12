@@ -879,8 +879,8 @@ class ExpenseHistoryScreen extends StatelessWidget {
         shape: const CircleBorder(
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
         ),
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          final result = await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => MultiBlocProvider(
@@ -895,10 +895,15 @@ class ExpenseHistoryScreen extends StatelessWidget {
                 child: const AddExpenseScreen(),
               ),
             ),
-          ).then((_) {
-            _refreshBudget(context);
-            context.read<ExpenseCubit>().loadExpenses();
-          });
+          );
+
+          // FIX: Force refresh when returning
+          if (context.mounted) {
+            await context.read<ExpenseCubit>().refreshExpenses();
+            await context.read<budget_cubit.BudgetCubit>().loadBudget(
+              forceRefresh: true,
+            );
+          }
         },
         child: const Icon(Icons.add, color: accentGreen, size: 45),
       ),

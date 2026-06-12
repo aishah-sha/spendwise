@@ -174,12 +174,16 @@ class ReceiptCubit extends Cubit<ReceiptState> {
       );
 
       // Update recent history arrays
+      // Update recent history arrays safely
       final Map<String, dynamic> historyItem = {
         'id': receipt.id,
         'merchantName': receipt.merchantName,
-        'amount': receipt.amount,
+        'amount': receipt.amount, // Direct main total balance
         'date': receipt.date.toIso8601String(),
-        'itemCount': receipt.items?.length,
+        // FIX: Read total quantity of actual products, fallback to array length
+        'itemCount': receipt.totalItemCount > 0
+            ? receipt.totalItemCount
+            : (receipt.items?.length ?? 0),
       };
 
       final updatedHistory = List<Map<String, dynamic>>.from(state.scanHistory)

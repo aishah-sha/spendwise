@@ -66,7 +66,7 @@ class ReceiptItem extends Equatable {
 class ReceiptModel extends Equatable {
   final String id;
   final DateTime date;
-  final double amount;
+  final double rawAmount; // <-- 1. Rename the field to avoid conflict
   final double? tax;
   final double? subtotal;
   final double? serviceCharge;
@@ -80,11 +80,13 @@ class ReceiptModel extends Equatable {
   final String? userId;
   final bool processed;
   final String? expenseId;
+  final String establishmentType;
 
   const ReceiptModel({
     required this.id,
     required this.date,
-    required this.amount,
+    double amount =
+        0.0, // <-- 2. Keep 'amount' as the constructor argument name for compatibility
     this.tax,
     this.subtotal,
     this.serviceCharge,
@@ -98,7 +100,21 @@ class ReceiptModel extends Equatable {
     this.userId,
     this.processed = false,
     this.expenseId,
-  });
+    this.establishmentType = 'General Retail',
+  }) : rawAmount = amount; // <-- 3. Initialize the internal field here
+
+  // <-- 4. Now this getter works perfectly without any name conflicts!
+  double get amount {
+    if (rawAmount > 0.0) return rawAmount;
+    if (items != null && items!.isNotEmpty) {
+      return items!.fold(0.0, (sum, item) => sum + item.totalAmount) +
+          (tax ?? 0.0) +
+          (serviceCharge ?? 0.0);
+    }
+    return 0.0;
+  }
+
+  // ... rest of your model methods (Update toDatabaseJson and copyWith below)
 
   bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
 
@@ -152,7 +168,6 @@ class ReceiptModel extends Equatable {
   }
 
   factory ReceiptModel.fromDatabaseJson(Map<String, dynamic> json) {
-    // Dynamically safely handles database list text blocks or array lists maps
     List<ReceiptItem>? parsedItems;
     if (json['items'] != null) {
       try {
@@ -173,8 +188,7 @@ class ReceiptModel extends Equatable {
       date: json['date'] != null
           ? DateTime.parse(json['date'] as String)
           : DateTime.now(),
-      amount: (json['amount'] as num? ?? 0.0)
-          .toDouble(), // FIXED: Strict num conversion rules applied
+      amount: (json['amount'] as num? ?? 0.0).toDouble(),
       tax: (json['tax'] as num?)?.toDouble(),
       subtotal: (json['subtotal'] as num?)?.toDouble(),
       serviceCharge: (json['service_charge'] as num?)?.toDouble(),
@@ -188,6 +202,9 @@ class ReceiptModel extends Equatable {
       processed: json['processed'] == 1 || json['processed'] == true,
       expenseId: json['expense_id'] as String?,
       items: parsedItems,
+      establishmentType:
+          json['establishment_type'] as String? ??
+          'General Retail', // <--- PARSE FIELD
     );
   }
 
@@ -208,10 +225,10 @@ class ReceiptModel extends Equatable {
       'user_id': userId,
       'processed': processed ? 1 : 0,
       'expense_id': expenseId,
-      // Converts map to a JSON string block so your SQLite text field won't crash on standard string writes
       'items': items != null
           ? jsonEncode(items!.map((item) => item.toJson()).toList())
           : null,
+      'establishment_type': establishmentType, // <--- WRITE FIELD
     };
   }
 
@@ -232,6 +249,7 @@ class ReceiptModel extends Equatable {
     String? userId,
     bool? processed,
     String? expenseId,
+    String? establishmentType, // <--- ARGUMENT
   }) {
     return ReceiptModel(
       id: id ?? this.id,
@@ -250,6 +268,8 @@ class ReceiptModel extends Equatable {
       userId: userId ?? this.userId,
       processed: processed ?? this.processed,
       expenseId: expenseId ?? this.expenseId,
+      establishmentType:
+          establishmentType ?? this.establishmentType, // <--- RE-MAP
     );
   }
 
@@ -271,5 +291,6 @@ class ReceiptModel extends Equatable {
     userId,
     processed,
     expenseId,
+    establishmentType, // <--- EQUATABLE TRACKING
   ];
 }

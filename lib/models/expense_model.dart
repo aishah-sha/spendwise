@@ -1,4 +1,3 @@
-// lib/models/expense_model.dart
 class ExpenseModel {
   final String id;
   final String title;
@@ -7,7 +6,9 @@ class ExpenseModel {
   final DateTime date;
   final bool isIncome;
   final String? note;
-  final String? userId; // ADD THIS
+  final String? userId;
+  final String itemBreakdown; // New field for "2 Groceries +1 other"
+  final int itemCount; // New field for "3 items"
 
   ExpenseModel({
     required this.id,
@@ -17,7 +18,9 @@ class ExpenseModel {
     required this.date,
     this.isIncome = false,
     this.note,
-    this.userId, // ADD THIS
+    this.userId,
+    this.itemBreakdown = '',
+    this.itemCount = 0,
   });
 
   // Convert to Supabase transaction format
@@ -31,7 +34,9 @@ class ExpenseModel {
       'title': title,
       'note': note,
       'date': date.toIso8601String(),
-      'user_id': userId, // ADD THIS
+      'user_id': userId,
+      'item_breakdown': itemBreakdown,
+      'item_count': itemCount,
     };
   }
 
@@ -45,6 +50,8 @@ class ExpenseModel {
       date: DateTime.parse(json['date'] as String),
       isIncome: (json['type'] as String) == 'income',
       note: json['note'] as String?,
+      itemBreakdown: json['item_breakdown'] as String? ?? '',
+      itemCount: json['item_count'] as int? ?? 0,
     );
   }
 
@@ -57,6 +64,8 @@ class ExpenseModel {
       date: DateTime.parse(json['date']),
       isIncome: json['isIncome'] ?? false,
       note: json['note'],
+      itemBreakdown: json['itemBreakdown'] ?? '',
+      itemCount: json['itemCount'] ?? 0,
     );
   }
 
@@ -69,6 +78,8 @@ class ExpenseModel {
       'date': date.toIso8601String(),
       'isIncome': isIncome,
       'note': note,
+      'itemBreakdown': itemBreakdown,
+      'itemCount': itemCount,
     };
   }
 
@@ -80,6 +91,8 @@ class ExpenseModel {
     DateTime? date,
     bool? isIncome,
     String? note,
+    String? itemBreakdown,
+    int? itemCount,
   }) {
     return ExpenseModel(
       id: id ?? this.id,
@@ -89,6 +102,8 @@ class ExpenseModel {
       date: date ?? this.date,
       isIncome: isIncome ?? this.isIncome,
       note: note ?? this.note,
+      itemBreakdown: itemBreakdown ?? this.itemBreakdown,
+      itemCount: itemCount ?? this.itemCount,
     );
   }
 

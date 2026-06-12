@@ -9,10 +9,9 @@ import '../models/receipt_model.dart';
 class MLKitService {
   final ImagePicker _imagePicker = ImagePicker();
 
-  // Configuration constants
-  static const double yTolerance = 14.0;
   static const int defaultImageQuality = 100;
-  static const bool enableDebugDialog = false; // Set to true for debugging
+  static const bool enableDebugDialog =
+      false; // Toggle true to show raw layout dialog maps
 
   Future<XFile?> pickImageFromCamera() async {
     try {
@@ -40,8 +39,6 @@ class MLKitService {
     }
   }
 
-  /// Process a receipt image and extract structured data
-  /// Returns a ReceiptModel with parsed information
   Future<ReceiptModel> processReceiptImage(
     File imageFile, {
     BuildContext? context,
@@ -56,25 +53,20 @@ class MLKitService {
         inputImage,
       );
 
-      // Extract and organize text lines
       final String organizedText = _organizeTextLines(recognizedText);
 
-      // Debug dialog (only when explicitly enabled)
       if (enableDebugDialog && context != null && context.mounted) {
         _showDebugDialog(context, organizedText);
       }
 
-      // Parse using your receipt parser
       final ReceiptModel parsedModel = ReceiptParser.parseRawText(
         organizedText,
         imagePath: imageFile.path,
       );
 
-      // Validate and ensure data integrity
       return _validateReceiptModel(parsedModel, imageFile.path);
     } catch (e) {
       debugPrint('Error processing image via ML Kit: $e');
-      // Return a default receipt model instead of throwing
       return ReceiptModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         merchantName: 'Error Reading Receipt',
@@ -86,12 +78,11 @@ class MLKitService {
         items: [],
       );
     } finally {
-      // Ensure proper cleanup of resources
       await textRecognizer?.close();
     }
   }
 
-  /// Organize text lines with spatial awareness
+  // FIXED: Center-line adaptive row clustering strategy prevents text fragments from merging out of order
   String _organizeTextLines(RecognizedText recognizedText) {
     List<TextLine> allLines = [];
 
@@ -105,45 +96,70 @@ class MLKitService {
       return '';
     }
 
-    // Sort lines vertically from top to bottom
-    allLines.sort((a, b) => a.boundingBox.top.compareTo(b.boundingBox.top));
+    // 1. Sort fragments vertically by center point
+    allLines.sort((a, b) {
+      double aCenter = a.boundingBox.top + a.boundingBox.height / 2;
+      double bCenter = b.boundingBox.top + b.boundingBox.height / 2;
+      return aCenter.compareTo(bCenter);
+    });
 
-    // Spatial alignment grid reconstruction
-    List<_StructuredRow> structuredRows = [];
+    // 2. Classify blocks into layout row rows dynamically
+    List<List<TextLine>> rows = [];
 
     for (var line in allLines) {
-      double currentTop = line.boundingBox.top.toDouble();
+      double lineCenter = line.boundingBox.top + line.boundingBox.height / 2;
       bool matchedRow = false;
 
-      for (var row in structuredRows) {
-        if ((row.yTop - currentTop).abs() <= yTolerance) {
-          row.lines.add(line);
+      for (var row in rows) {
+        double rowCenterSum = 0;
+        double rowHeightSum = 0;
+        for (var rowLine in row) {
+          rowCenterSum +=
+              rowLine.boundingBox.top + rowLine.boundingBox.height / 2;
+          rowHeightSum += rowLine.boundingBox.height;
+        }
+        double rowAvgCenter = rowCenterSum / row.length;
+        double rowAvgHeight = rowHeightSum / row.length;
+
+        if ((rowAvgCenter - lineCenter).abs() <= (rowAvgHeight * 0.35) ||
+            (rowAvgCenter - lineCenter).abs() <= 6.0) {
+          row.add(line);
           matchedRow = true;
           break;
         }
       }
 
       if (!matchedRow) {
-        structuredRows.add(_StructuredRow(yTop: currentTop, lines: [line]));
+        rows.add([line]);
       }
     }
 
-    // Build the organized text
-    StringBuffer rebuiltFullText = StringBuffer();
-    for (var row in structuredRows) {
-      // Sort items left to right across the page layout
-      row.lines.sort(
-        (a, b) => a.boundingBox.left.compareTo(b.boundingBox.left),
-      );
+    // 3. Keep rows sequenced top-to-bottom
+    rows.sort((a, b) {
+      double aCenter =
+          a
+              .map((l) => l.boundingBox.top + l.boundingBox.height / 2)
+              .reduce((q, w) => q + w) /
+          a.length;
+      double bCenter =
+          b
+              .map((l) => l.boundingBox.top + l.boundingBox.height / 2)
+              .reduce((q, w) => q + w) /
+          b.length;
+      return aCenter.compareTo(bCenter);
+    });
 
-      String combinedRowText = row.lines.map((l) => l.text).join(" ").trim();
+    // 4. Join line blocks ordered left-to-right
+    StringBuffer rebuiltFullText = StringBuffer();
+    for (var row in rows) {
+      row.sort((a, b) => a.boundingBox.left.compareTo(b.boundingBox.left));
+      String combinedRowText = row.map((l) => l.text).join(" ").trim();
       rebuiltFullText.writeln(combinedRowText);
     }
 
     return rebuiltFullText.toString();
   }
 
-  /// Validate and ensure ReceiptModel has all required fields
   ReceiptModel _validateReceiptModel(ReceiptModel model, String imagePath) {
     return ReceiptModel(
       id: model.id.isNotEmpty
@@ -153,17 +169,21 @@ class MLKitService {
           ? model.merchantName
           : 'Unknown Store',
       amount: model.amount > 0 ? model.amount : 0.0,
+      subtotal: model.subtotal,
+      tax: model.tax,
+      serviceCharge: model.serviceCharge,
       date: model.date,
       receiptType: 'image',
       imagePath: imagePath,
-      category: model.category?.isNotEmpty == true
+      category: model.category.isNotEmpty == true
           ? model.category
           : 'Uncategorized',
-      items: model.items?.where((item) => item != null).toList() ?? [],
+      items: model.items ?? [],
+      establishmentType: model.establishmentType,
+      currency: model.currency,
     );
   }
 
-  /// Optional debug dialog for troubleshooting
   void _showDebugDialog(BuildContext context, String recognizedText) {
     showDialog(
       context: context,
@@ -185,15 +205,5 @@ class MLKitService {
     );
   }
 
-  void dispose() {
-    // Clean up any resources if needed
-  }
-}
-
-/// Helper class for structured row data
-class _StructuredRow {
-  final double yTop;
-  final List<TextLine> lines;
-
-  _StructuredRow({required this.yTop, required this.lines});
+  void dispose() {}
 }

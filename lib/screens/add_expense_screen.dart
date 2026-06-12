@@ -213,8 +213,14 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               );
 
-              if (result == true && context.mounted) {
-                Navigator.pop(context);
+              // Update recent uploads if a receipt was confirmed/saved
+              if (result != null) {
+                if (result is ReceiptModel) {
+                  addExpenseCubit.addToRecentUploads(result);
+                } else {
+                  addExpenseCubit.addToRecentUploads(scannedReceipt);
+                }
+                if (context.mounted) Navigator.pop(context);
               }
             }
           },
@@ -261,21 +267,23 @@ class AddExpenseScreen extends StatelessWidget {
             final cubit = context.read<AddExpenseCubit>();
             final expenseToEdit = cubit.state.expenseToEdit;
 
+            final fallbackReceipt = expenseToEdit != null
+                ? ReceiptModel(
+                    id: expenseToEdit.id,
+                    date: expenseToEdit.date,
+                    amount: expenseToEdit.amount,
+                    receiptType: 'manual',
+                    merchantName: expenseToEdit.title,
+                  )
+                : null;
+
             final result = await Navigator.push(
               context,
               MaterialPageRoute(
                 builder: (context) => BlocProvider.value(
                   value: cubit,
                   child: ManualEntryScreen(
-                    receipt: expenseToEdit != null
-                        ? ReceiptModel(
-                            id: expenseToEdit.id,
-                            date: expenseToEdit.date,
-                            amount: expenseToEdit.amount,
-                            receiptType: 'manual',
-                            merchantName: expenseToEdit.title,
-                          )
-                        : null,
+                    receipt: fallbackReceipt,
                     isEditing: expenseToEdit != null,
                     expenseToEdit: expenseToEdit,
                     fromAddExpense: true,
@@ -284,8 +292,13 @@ class AddExpenseScreen extends StatelessWidget {
               ),
             );
 
-            if (result == true && context.mounted) {
-              Navigator.pop(context);
+            if (result != null) {
+              if (result is ReceiptModel) {
+                cubit.addToRecentUploads(result);
+              } else if (fallbackReceipt != null) {
+                cubit.addToRecentUploads(fallbackReceipt);
+              }
+              if (context.mounted) Navigator.pop(context);
             }
           },
         ),
@@ -300,7 +313,6 @@ class AddExpenseScreen extends StatelessWidget {
     final addExpenseCubit = context.read<AddExpenseCubit>();
     final mlKitService = MLKitService();
 
-    // 1. Let the user pick a single image from the gallery
     final picker = ImagePicker();
     final XFile? pickedFile = await picker.pickImage(
       source: ImageSource.gallery,
@@ -311,22 +323,19 @@ class AddExpenseScreen extends StatelessWidget {
 
     if (pickedFile == null) return;
 
-    // Show a loading indicator while we process
     if (context.mounted) {
       addExpenseCubit.setLoading(true);
     }
 
     try {
-      // 2. Process the image using MLKitService
       final receipt = await mlKitService.processReceiptImage(
         File(pickedFile.path),
-        context: context, // Pass context for debug dialog if needed
+        context: context,
       );
 
       if (context.mounted) {
         addExpenseCubit.setLoading(false);
 
-        // 3. Navigate to ManualEntryScreen with the extracted data
         final result = await Navigator.push(
           context,
           MaterialPageRoute(
@@ -337,12 +346,15 @@ class AddExpenseScreen extends StatelessWidget {
           ),
         );
 
-        // 4. Store in recent uploads so the thumbnail appears
-        addExpenseCubit.addToRecentUploads(receipt);
-        addExpenseCubit.clearScannedReceipt();
-
-        if (result == true && context.mounted) {
-          Navigator.pop(context);
+        // Capture confirmed execution and add to UI list state
+        if (result != null) {
+          if (result is ReceiptModel) {
+            addExpenseCubit.addToRecentUploads(result);
+          } else {
+            addExpenseCubit.addToRecentUploads(receipt);
+          }
+          addExpenseCubit.clearScannedReceipt();
+          if (context.mounted) Navigator.pop(context);
         }
       }
     } catch (e) {
@@ -387,7 +399,6 @@ class AddExpenseScreen extends StatelessWidget {
 
         if (receipts.isNotEmpty) {
           if (receipts.length == 1) {
-            // Single result — go straight to ManualEntryScreen
             final result = await Navigator.push(
               context,
               MaterialPageRoute(
@@ -400,12 +411,16 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               ),
             );
-            addExpenseCubit.addToRecentUploads(receipts.first);
-            if (result == true && context.mounted) {
-              Navigator.pop(context);
+
+            if (result != null) {
+              if (result is ReceiptModel) {
+                addExpenseCubit.addToRecentUploads(result);
+              } else {
+                addExpenseCubit.addToRecentUploads(receipts.first);
+              }
+              if (context.mounted) Navigator.pop(context);
             }
           } else {
-            // Multiple — show the confirmation dialog
             _showMultipleReceiptsDialog(context, receipts);
           }
         }
@@ -665,7 +680,7 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               ),
             );
-            if (result == true && context.mounted) {
+            if (result != null && context.mounted) {
               Navigator.pop(context);
             }
           },
@@ -748,7 +763,6 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  // ── Thumbnail widget with proper async file checking ──
   Widget _buildThumbnail(ReceiptModel receipt) {
     final path = receipt.imagePath;
 
@@ -792,7 +806,7 @@ class AddExpenseScreen extends StatelessWidget {
     return Center(
       child: TextButton(
         onPressed: () => context.read<AddExpenseCubit>().viewAll(),
-        child: Text(
+        child: const Text(
           'View All',
           style: TextStyle(
             fontSize: 16,
@@ -961,7 +975,7 @@ class AddExpenseScreen extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Dialogs
+// Dialogs & Root Operations
 // ─────────────────────────────────────────────────────────────────────────────
 
 void _showErrorDialog(BuildContext context, String message) {
@@ -1090,10 +1104,16 @@ Future<void> _processMultipleReceipts(
       ),
     );
 
-    // Add to recent uploads after each one is processed
-    addExpenseCubit.addToRecentUploads(receipt);
+    // Save actual updated data back if structural object is returned
+    if (result != null) {
+      if (result is ReceiptModel) {
+        addExpenseCubit.addToRecentUploads(result);
+      } else {
+        addExpenseCubit.addToRecentUploads(receipt);
+      }
+    }
 
-    if (result == true && i == receipts.length - 1 && context.mounted) {
+    if (result != null && i == receipts.length - 1 && context.mounted) {
       Navigator.pop(context);
     }
   }

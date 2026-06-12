@@ -424,6 +424,21 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
     _receipt = widget.receipt;
   }
 
+  /// Helper to return specific icons for the establishment types
+  IconData _getEstablishmentIcon(String type) {
+    final t = type.toLowerCase();
+    if (t.contains('restaurant') || t.contains('café') || t.contains('cafe')) {
+      return Icons.restaurant_menu;
+    } else if (t.contains('book') || t.contains('stationery')) {
+      return Icons.menu_book;
+    } else if (t.contains('supermarket') || t.contains('convenience')) {
+      return Icons.local_grocery_store;
+    } else if (t.contains('pharmacy') || t.contains('health')) {
+      return Icons.local_pharmacy;
+    }
+    return Icons.storefront;
+  }
+
   @override
   Widget build(BuildContext context) {
     final items = _receipt.items ?? [];
@@ -469,14 +484,39 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
                   ),
                 ),
                 const SizedBox(width: 12),
-                const Expanded(
-                  child: Text(
-                    'Receipt Details',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF1A1A1A),
-                    ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Receipt Details',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      // --- VISUAL UI BADGE FOR SUPERVISOR ---
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          'Detected: ${_receipt.establishmentType}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.blue,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ],
@@ -490,6 +530,15 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  // Establishment Type Row Card
+                  _buildInfoCard(
+                    title: 'Establishment Type',
+                    value: _receipt.establishmentType,
+                    icon: _getEstablishmentIcon(_receipt.establishmentType),
+                    highlightColor: Colors.blue[700],
+                  ),
+                  const SizedBox(height: 12),
+
                   // Merchant
                   _buildInfoCard(
                     title: 'Merchant',
@@ -603,6 +652,7 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
     required String value,
     required IconData icon,
     bool isAmount = false,
+    Color? highlightColor,
   }) {
     return Container(
       padding: const EdgeInsets.all(14),
@@ -613,7 +663,7 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
       ),
       child: Row(
         children: [
-          Icon(icon, size: 24, color: Colors.grey[600]),
+          Icon(icon, size: 24, color: highlightColor ?? Colors.grey[600]),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -628,8 +678,12 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
                   value,
                   style: TextStyle(
                     fontSize: isAmount ? 20 : 16,
-                    fontWeight: isAmount ? FontWeight.bold : FontWeight.normal,
-                    color: isAmount ? const Color(0xFF4CAF50) : Colors.black87,
+                    fontWeight: isAmount || highlightColor != null
+                        ? FontWeight.bold
+                        : FontWeight.normal,
+                    color: isAmount
+                        ? const Color(0xFF4CAF50)
+                        : (highlightColor ?? Colors.black87),
                   ),
                 ),
               ],
