@@ -21,6 +21,7 @@ import 'profile_screen.dart';
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
+  // Precise hex codes extracted from your interface image
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
   static const Color accentGreen = Color(0xFF32BA32);
@@ -54,6 +55,7 @@ class DashboardScreen extends StatelessWidget {
                   Expanded(
                     child: Stack(
                       children: [
+                        // Background Image Layer
                         Positioned(
                           top: -80,
                           right: -40,
@@ -62,6 +64,7 @@ class DashboardScreen extends StatelessWidget {
                             child: Image.asset('assets/FYP2.png', width: 400),
                           ),
                         ),
+                        // Foreground Content
                         _buildMainContent(context, isDarkMode),
                       ],
                     ),
@@ -75,6 +78,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  // FIXED: Extract main content to a separate widget that listens to changes
   Widget _buildMainContent(BuildContext context, bool isDarkMode) {
     return MultiBlocListener(
       listeners: [
@@ -92,6 +96,7 @@ class DashboardScreen extends StatelessWidget {
         builder: (context, expenseState) {
           return BlocBuilder<BudgetCubit, budget_cubit.BudgetState>(
             builder: (context, budgetState) {
+              // Refresh expenses when returning to dashboard
               WidgetsBinding.instance.addPostFrameCallback((_) {
                 context.read<ExpenseCubit>().loadExpenses();
                 context.read<BudgetCubit>().loadBudget(forceRefresh: true);
@@ -99,6 +104,7 @@ class DashboardScreen extends StatelessWidget {
 
               double monthlyBudget = expenseState.budget;
               double totalSpent = expenseState.totalSpending;
+              // Total Balance = Budget + (Total Income - Total Expenses)
               double totalBalanceWithBudget =
                   expenseState.totalBalance + monthlyBudget;
 
@@ -165,26 +171,20 @@ class DashboardScreen extends StatelessWidget {
         shape: const CircleBorder(
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
         ),
-        onPressed: () async {
-          await Navigator.push(
+        onPressed: () {
+          Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => MultiBlocProvider(
-                providers: [
-                  BlocProvider(create: (context) => AddExpenseCubit()),
-                  BlocProvider.value(value: context.read<ExpenseCubit>()),
-                  BlocProvider.value(value: context.read<BudgetCubit>()),
-                  BlocProvider.value(value: context.read<ProfileCubit>()),
-                ],
+              builder: (context) => BlocProvider(
+                create: (context) => AddExpenseCubit(),
                 child: const AddExpenseScreen(),
               ),
             ),
-          );
-
-          if (context.mounted) {
-            await context.read<ExpenseCubit>().refreshExpenses();
-            await context.read<BudgetCubit>().loadBudget(forceRefresh: true);
-          }
+          ).then((_) {
+            // Refresh data when returning from add expense screen
+            context.read<ExpenseCubit>().loadExpenses();
+            context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+          });
         },
         child: const Icon(Icons.add, color: accentGreen, size: 45),
       ),
@@ -262,6 +262,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  // FIXED: Added explicit BlocBuilder to handle state subscription cleanly
   Widget _buildWelcomeSection(BuildContext context, bool isDarkMode) {
     return BlocBuilder<ProfileCubit, ProfileState>(
       builder: (context, state) {
@@ -489,6 +490,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
             ).then((_) {
+              // Refresh data when returning from budget screen
               context.read<ExpenseCubit>().loadExpenses();
               context.read<BudgetCubit>().loadBudget(forceRefresh: true);
             });
@@ -580,6 +582,7 @@ class DashboardScreen extends StatelessWidget {
     BuildContext context,
     bool isDarkMode,
   ) {
+    // Get the 5 most recent expenses (non-income only for display)
     final expensesOnly = state.allExpenses
         .where((e) => !(e.isIncome ?? false))
         .toList();
@@ -624,6 +627,7 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
             ).then((_) {
+              // Refresh data when returning from history screen
               context.read<ExpenseCubit>().loadExpenses();
               context.read<BudgetCubit>().loadBudget(forceRefresh: true);
             });
@@ -637,7 +641,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // FIXED: Safely calls the proper local methods '_getCategoryColor' and '_getCategoryIcon'
   Widget _buildRecentExpensesList(
     List<dynamic> recentExpenses,
     BuildContext context,
@@ -666,6 +669,14 @@ class DashboardScreen extends StatelessWidget {
                   color: isDarkMode ? Colors.white60 : Colors.grey,
                 ),
               ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap the + button to add an expense',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isDarkMode ? Colors.white60 : Colors.grey,
+                ),
+              ),
             ],
           ),
         ),
@@ -678,28 +689,6 @@ class DashboardScreen extends StatelessWidget {
       itemCount: recentExpenses.length,
       itemBuilder: (context, index) {
         final expense = recentExpenses[index];
-
-        String title = '';
-        String category = 'Food';
-        double amount = 0.0;
-        DateTime date = DateTime.now();
-        String itemBreakdown = '';
-
-        try {
-          title = expense.title;
-          category = expense.category;
-          amount = expense.amount;
-          date = expense.date;
-
-          // Safe lookup fallback for dynamic calculation sequences
-          itemBreakdown = (expense as dynamic).itemBreakdown ?? '';
-        } catch (_) {
-          title = expense.title ?? '';
-          category = expense.category ?? 'Food';
-          amount = (expense.amount ?? 0.0).toDouble();
-          date = expense.date ?? DateTime.now();
-        }
-
         return Container(
           margin: const EdgeInsets.only(bottom: 15),
           padding: const EdgeInsets.all(15),
@@ -710,6 +699,15 @@ class DashboardScreen extends StatelessWidget {
               color: isDarkMode ? Colors.grey[800]! : Colors.grey.shade200,
               width: 1,
             ),
+            boxShadow: [
+              BoxShadow(
+                color: isDarkMode
+                    ? Colors.black.withOpacity(0.3)
+                    : Colors.grey.withOpacity(0.05),
+                blurRadius: 5,
+                offset: const Offset(0, 2),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -717,14 +715,12 @@ class DashboardScreen extends StatelessWidget {
                 width: 45,
                 height: 45,
                 decoration: BoxDecoration(
-                  color: _getCategoryColor(category).withOpacity(0.1),
+                  color: _getCategoryColor(expense.category).withOpacity(0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Icon(
-                  _getCategoryIcon(
-                    category,
-                  ), // Fixed method name reference here
-                  color: _getCategoryColor(category),
+                  _getCategoryIcon(expense.category),
+                  color: _getCategoryColor(expense.category),
                   size: 24,
                 ),
               ),
@@ -734,20 +730,19 @@ class DashboardScreen extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      title,
+                      expense.title,
                       style: TextStyle(
                         fontSize: 16,
                         fontWeight: FontWeight.w600,
                         color: isDarkMode ? Colors.white : darkText,
                       ),
                     ),
-                    const SizedBox(height: 2),
+                    const SizedBox(height: 4),
                     Text(
-                      itemBreakdown.isNotEmpty ? itemBreakdown : category,
-                      style: const TextStyle(
+                      expense.category,
+                      style: TextStyle(
                         fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: accentGreen,
+                        color: isDarkMode ? Colors.white60 : Colors.grey[600],
                       ),
                     ),
                   ],
@@ -757,7 +752,7 @@ class DashboardScreen extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    '-RM${amount.toStringAsFixed(2)}',
+                    '-RM${expense.amount.toStringAsFixed(2)}',
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -766,7 +761,7 @@ class DashboardScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    DateFormat('MMM d').format(date),
+                    DateFormat('MMM d').format(expense.date),
                     style: TextStyle(
                       fontSize: 12,
                       color: isDarkMode ? Colors.white60 : Colors.grey[600],
@@ -798,6 +793,7 @@ class DashboardScreen extends StatelessWidget {
               true,
               isDarkMode,
               () {
+                // Already on home screen - refresh data
                 context.read<ExpenseCubit>().loadExpenses();
                 context.read<BudgetCubit>().loadBudget(forceRefresh: true);
               },
@@ -822,6 +818,7 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ).then((_) {
+                  // Refresh data when returning from history screen
                   context.read<ExpenseCubit>().loadExpenses();
                   context.read<BudgetCubit>().loadBudget(forceRefresh: true);
                 });
@@ -848,6 +845,7 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ).then((_) {
+                  // Refresh data when returning from budget screen
                   context.read<ExpenseCubit>().loadExpenses();
                   context.read<BudgetCubit>().loadBudget(forceRefresh: true);
                 });
