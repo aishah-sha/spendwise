@@ -12,8 +12,8 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   final BudgetCubit budgetCubit;
   final NotificationCubit notificationCubit;
   StreamSubscription? _expensesSubscription;
+  bool _isInitialLoad = true;
 
-  // Accept dependency injections here to connect data pipelines
   ExpenseCubit({required this.budgetCubit, required this.notificationCubit})
     : super(ExpenseState.initial()) {
     _listenToExpenses();
@@ -24,6 +24,16 @@ class ExpenseCubit extends Cubit<ExpenseState> {
 
     _expensesSubscription = _supabaseService.getTransactions().listen(
       (transactions) {
+        print('🔄 Real-time update: ${transactions.length} transactions');
+
+        // FIX: Don't override with empty data if we already have data
+        if (transactions.isEmpty &&
+            !_isInitialLoad &&
+            state.allExpenses.isNotEmpty) {
+          print('⚠️ Ignoring empty stream to prevent data loss');
+          return;
+        }
+
         final expenses = transactions.map((tx) {
           return ExpenseModel(
             id: tx['id'] as String,
@@ -37,6 +47,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         }).toList();
 
         _updateStateWithExpenses(expenses);
+        _isInitialLoad = false;
       },
       onError: (error) {
         debugPrint('Error listening to expenses: $error');
@@ -66,23 +77,19 @@ class ExpenseCubit extends Cubit<ExpenseState> {
 
     if (!isClosed) {
       emit(newState);
-      // Trigger budget threshold verification
       _checkThresholds(totalSpending, expenses);
     }
   }
 
-  /// Extracts structured data map variants and evaluates limits automatically
   void _checkThresholds(double totalSpent, List<ExpenseModel> expenses) {
     final budgetState = budgetCubit.state;
     if (budgetState is BudgetLoaded) {
       final budget = budgetState.budget;
 
-      // 1. Build category budgets lookup structure
       final Map<String, double> categoryBudgets = {
         for (var cat in budget.categories) cat.name: cat.amount,
       };
 
-      // 2. Calculate category spent totals on-the-fly out of raw expenses
       final Map<String, double> categorySpent = {};
       for (final exp in expenses) {
         if (!exp.isIncome) {
@@ -91,7 +98,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         }
       }
 
-      // 3. Dispatch calculations to NotificationCubit threshold triggers
       notificationCubit.checkBudgetAndNotify(
         monthlyBudget: budget.monthlyLimit,
         totalSpent: totalSpent,
@@ -114,10 +120,13 @@ class ExpenseCubit extends Cubit<ExpenseState> {
 
   Future<void> loadExpenses() async {
     if (isClosed) return;
+    print('📊 loadExpenses() called');
     emit(state.copyWith(isLoading: true, error: () => null));
 
     try {
-      final transactions = await _supabaseService.getTransactions().first;
+      final transactions = await _supabaseService.fetchTransactions();
+      print('📦 Fetched ${transactions.length} transactions');
+
       final expenses = transactions.map((tx) {
         return ExpenseModel(
           id: tx['id'] as String,
@@ -132,6 +141,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
 
       _updateStateWithExpenses(expenses);
     } catch (e) {
+      print('❌ Error loading expenses: $e');
       if (!isClosed) {
         emit(state.copyWith(error: () => e.toString(), isLoading: false));
       }
@@ -145,16 +155,23 @@ class ExpenseCubit extends Cubit<ExpenseState> {
 
   Future<void> addExpense(ExpenseModel expense) async {
     try {
+      print('📝 Adding expense: ${expense.title} - RM${expense.amount}');
       await _supabaseService.addTransaction(
         amount: expense.amount,
         category: expense.category,
         type: expense.isIncome ? 'income' : 'expense',
         description: expense.title,
+        title: expense.title,
+        note: expense.note,
         date: expense.date,
       );
+      print('✅ Expense added to database');
+
+      // Wait a moment for the database to sync
+      await Future.delayed(const Duration(milliseconds: 500));
       await loadExpenses();
     } catch (e) {
-      debugPrint('Error adding expense: $e');
+      print('❌ Error adding expense: $e');
       if (!isClosed) {
         emit(state.copyWith(error: () => e.toString()));
       }
@@ -169,6 +186,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         category: 'Income',
         type: 'income',
         description: description ?? 'Income Added',
+        title: description ?? 'Income Added',
         date: DateTime.now(),
       );
       await loadExpenses();
@@ -186,6 +204,8 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         'amount': updatedExpense.amount,
         'category': updatedExpense.category,
         'description': updatedExpense.title,
+        'title': updatedExpense.title,
+        'note': updatedExpense.note,
         'type': updatedExpense.isIncome ? 'income' : 'expense',
         'date': updatedExpense.date.toIso8601String(),
       });
@@ -210,16 +230,18 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     }
   }
 
-  // --- METHODS REQUESTED BY HISTORY LAYOUT ---
+  Future<void> refreshExpenses() async {
+    print('🔄 refreshExpenses() called');
+    await loadExpenses();
+    print('✅ refreshExpenses() completed');
+  }
 
-  /// Updates text keyword filters dynamically
   void updateSearchQuery(String query) {
     if (isClosed) return;
     final newState = state.copyWith(searchQuery: query);
     emit(_applyFilters(newState));
   }
 
-  /// Updates explicit category group selections
   void updateCategoryFilter(ExpenseFilter filter) {
     if (isClosed) return;
     final newState = state.copyWith(categoryFilter: filter);
@@ -283,13 +305,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
     emit(state.copyWith(analyticsSelectedDate: date));
   }
 
-  Future<void> refreshExpenses() async {
-    await loadExpenses();
-  }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // UI Aesthetic Color/Icon Mappers (Soft Greens/Warm Palettes)
-  // ─────────────────────────────────────────────────────────────────────────
   IconData getCategoryIcon(String category) {
     switch (category) {
       case 'Food':
@@ -330,7 +345,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   Color getCategoryColor(String categoryName) {
     switch (categoryName) {
       case 'Groceries':
-        return const Color(0xFF4CAF50); // Balanced Sage Green
+        return const Color(0xFF4CAF50);
       case 'Food':
         return const Color(0xFFFF9800);
       case 'Beverages':
@@ -385,7 +400,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
   ExpenseState _applyFilters(ExpenseState state) {
     var filtered = List<ExpenseModel>.from(state.allExpenses);
 
-    // Apply category filter
     if (state.selectedCategory != null &&
         state.selectedCategory != 'All Categories' &&
         state.selectedCategory != 'Income Only' &&
@@ -410,7 +424,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       }
     }
 
-    // Apply search filter
     if (state.searchQuery.isNotEmpty) {
       final query = state.searchQuery.toLowerCase();
       filtered = filtered.where((expense) {
@@ -419,7 +432,6 @@ class ExpenseCubit extends Cubit<ExpenseState> {
       }).toList();
     }
 
-    // Apply date range filter
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
@@ -464,9 +476,7 @@ class ExpenseCubit extends Cubit<ExpenseState> {
         break;
     }
 
-    // Sort by date (newest first)
     filtered.sort((a, b) => b.date.compareTo(a.date));
-
     return state.copyWith(filteredExpenses: filtered);
   }
 

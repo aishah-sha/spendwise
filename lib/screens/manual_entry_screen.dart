@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:intl/intl.dart';
-import 'package:spendwise/widgets/in_app_notification_dialog.dart';
+import 'package:spendwise/cubit/budget_cubit.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../cubit/add_expense_cubit.dart';
@@ -11,7 +11,6 @@ import '../cubit/profile_cubit.dart';
 import '../cubit/profile_state.dart';
 import '../models/receipt_model.dart';
 import '../models/expense_model.dart';
-import 'dashboard_screen.dart';
 
 class ManualEntryScreen extends StatefulWidget {
   final ReceiptModel? receipt;
@@ -48,7 +47,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   List<ReceiptItem> _items = [];
   String _establishmentType = 'General Retail';
 
-  // Available Store Classifications
   final List<String> _establishmentTypes = [
     'General Retail',
     'Supermarket / Grocery',
@@ -87,8 +85,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
   File? _receiptImageFile;
 
-  String? get _currentUserId => Supabase.instance.client.auth.currentUser?.id;
-
   @override
   void initState() {
     super.initState();
@@ -113,7 +109,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
     _amountController = TextEditingController();
     _vendorController = TextEditingController();
-    _selectedDate = DateTime.now();
+    _selectedDate = widget.receipt?.date ?? DateTime.now();
 
     if (widget.receipt != null) {
       if (widget.receipt!.imagePath != null &&
@@ -137,7 +133,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       _vendorController.text = widget.receipt!.merchantName ?? 'Unknown Store';
       _selectedDate = widget.receipt!.date;
 
-      // Ensure fallback if the scanned value isn't in our list definitions
       if (widget.receipt!.establishmentType.isNotEmpty) {
         _establishmentType =
             _establishmentTypes.contains(widget.receipt!.establishmentType)
@@ -392,7 +387,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   }
 
   void _showSuccessSnackbar(String message) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
@@ -413,7 +407,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
   void _showFullScreenImage() {
     if (_receiptImageFile == null) return;
-
     showDialog(
       context: context,
       builder: (context) => Dialog(
@@ -451,13 +444,11 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   @override
   Widget build(BuildContext context) {
     final bool isEditing = widget.isEditing || widget.expenseToEdit != null;
-
     return BlocBuilder<ProfileCubit, ProfileState>(
       builder: (context, profileState) {
         bool isDarkMode = (profileState is ProfileLoaded)
             ? profileState.user.isDarkMode
             : false;
-
         return Theme(
           data: isDarkMode ? ThemeData.dark() : ThemeData.light(),
           child: Scaffold(
@@ -514,7 +505,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                           ),
                           if (widget.receipt != null) ...[
                             const SizedBox(height: 12),
-                            // Interactive Store Type Classification Dropdown
                             _buildModernDropdown(
                               value: _establishmentType,
                               items: _establishmentTypes,
@@ -522,11 +512,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                               icon: Icons.label_important_outline,
                               isDarkMode: isDarkMode,
                               onChanged: (value) {
-                                if (value != null) {
-                                  setState(() {
-                                    _establishmentType = value;
-                                  });
-                                }
+                                if (value != null)
+                                  setState(() => _establishmentType = value);
                               },
                             ),
                           ],
@@ -552,9 +539,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                           shrinkWrap: true,
                           physics: const NeverScrollableScrollPhysics(),
                           itemCount: _items.length,
-                          itemBuilder: (context, index) {
-                            return _buildModernItemCard(index, isDarkMode);
-                          },
+                          itemBuilder: (context, index) =>
+                              _buildModernItemCard(index, isDarkMode),
                         ),
                       const SizedBox(height: 24),
                       _buildSaveButton(isEditing, isDarkMode),
@@ -880,9 +866,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         value: value,
         dropdownColor: isDarkMode ? Colors.grey[850] : Colors.white,
         onChanged: onChanged,
-        items: items.map((String val) {
-          return DropdownMenuItem<String>(value: val, child: Text(val));
-        }).toList(),
+        items: items
+            .map(
+              (String val) =>
+                  DropdownMenuItem<String>(value: val, child: Text(val)),
+            )
+            .toList(),
         decoration: InputDecoration(
           labelText: label,
           labelStyle: TextStyle(
@@ -986,9 +975,8 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
 
   Widget _buildModernItemCard(int index, bool isDarkMode) {
     final item = _items[index];
-
     return Container(
-      key: ValueKey('screenshot_style_item_${index}_${item.hashCode}'),
+      key: ValueKey('item_${index}_${item.hashCode}'),
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -1333,12 +1321,10 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     );
   }
 
-  // FIXED: Complete _saveForm method with proper refresh
   void _saveForm() async {
     final enteredVendor = _vendorController.text.trim();
     final totalAmount = double.tryParse(_amountController.text) ?? 0.0;
 
-    // Validation
     if (enteredVendor.isEmpty) {
       _showSnackbar(
         'Please enter a valid merchant name',
@@ -1346,7 +1332,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       );
       return;
     }
-
     if (totalAmount <= 0) {
       _showSnackbar(
         'Please add at least one valid item with a price',
@@ -1355,20 +1340,6 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       return;
     }
 
-    if (_items.isEmpty || _items.every((item) => item.price <= 0)) {
-      _showSnackbar(
-        'Please add at least one valid item',
-        Theme.of(context).brightness == Brightness.dark,
-      );
-      return;
-    }
-
-    // Determine primary fallback category for the expense
-    final String chosenCategory = _items.isNotEmpty
-        ? _items.first.category
-        : 'Others';
-
-    // Show loading indicator
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Row(
@@ -1387,74 +1358,70 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     );
 
     try {
-      if (widget.isEditing && widget.expenseToEdit != null) {
-        final updatedExpense = widget.expenseToEdit!.copyWith(
-          amount: totalAmount,
-          date: _selectedDate,
-          category: chosenCategory,
-        );
-        await context.read<ExpenseCubit>().updateExpense(updatedExpense);
+      final expenseCubit = context.read<ExpenseCubit>();
+      final addExpenseCubit = context.read<AddExpenseCubit>();
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      final String chosenCategory = _items.isNotEmpty
+          ? _items.first.category
+          : 'Others';
+      final expenseId = const Uuid().v4();
 
-        if (mounted) {
-          _showSuccessSnackbar('Expense updated successfully!');
-        }
-      } else {
-        // Generate the receipt data model for recent local history tracking
-        final generatedReceipt = ReceiptModel(
-          id: widget.receipt?.id ?? const Uuid().v4(),
-          date: _selectedDate,
-          amount: totalAmount,
-          merchantName: enteredVendor,
-          category: chosenCategory,
-          establishmentType: _establishmentType,
-          items: _items,
-          imagePath: widget.receipt?.imagePath,
-          receiptType: widget.receipt?.receiptType ?? 'manual',
-        );
+      if (userId == null) throw Exception('User not logged in');
 
-        // Add to recent uploads if the method exists
-        try {
-          context.read<AddExpenseCubit>().addToRecentUploads(generatedReceipt);
-        } catch (e) {
-          debugPrint('AddExpenseCubit.addToRecentUploads not available: $e');
-        }
+      // Save to transactions table
+      await supabase.from('transactions').insert({
+        'id': expenseId,
+        'user_id': userId,
+        'amount': totalAmount,
+        'category': chosenCategory,
+        'type': 'expense',
+        'description': enteredVendor,
+        'title': enteredVendor,
+        'note': enteredVendor,
+        'date': _selectedDate.toIso8601String(),
+        'created_at': DateTime.now().toIso8601String(),
+      });
 
-        // Commit the receipt data into ExpenseCubit so it writes to Supabase
-        final mappedExpense = ExpenseModel(
-          id: generatedReceipt.id,
-          title: enteredVendor,
-          amount: totalAmount,
-          category: chosenCategory,
-          date: _selectedDate,
-          isIncome: _isIncome,
-        );
+      // Save to receipts table
+      await supabase.from('receipts').insert({
+        'id': expenseId,
+        'user_id': userId,
+        'merchant_name': enteredVendor,
+        'amount': totalAmount,
+        'category': chosenCategory,
+        'date': _selectedDate.toIso8601String(),
+        'receipt_type': widget.receipt?.receiptType ?? 'manual',
+        'image_path': widget.receipt?.imagePath,
+        'items': _items.map((item) => item.toJson()).toList(),
+        'created_at': DateTime.now().toIso8601String(),
+      });
 
-        await context.read<ExpenseCubit>().addExpense(mappedExpense);
+      final generatedReceipt = ReceiptModel(
+        id: expenseId,
+        date: _selectedDate,
+        amount: totalAmount,
+        merchantName: enteredVendor,
+        category: chosenCategory,
+        establishmentType: 'General Retail',
+        items: _items,
+        imagePath: widget.receipt?.imagePath,
+        receiptType: widget.receipt?.receiptType ?? 'manual',
+      );
 
-        if (mounted) {
-          _showSuccessSnackbar('Expense saved successfully!');
-        }
-      }
+      addExpenseCubit.addToRecentUploads(generatedReceipt);
+      await expenseCubit.refreshExpenses();
+      await context.read<BudgetCubit>().loadBudget(forceRefresh: true);
 
-      // CRITICAL FIX: Force refresh the ExpenseCubit to reload from database
-      // This ensures the expense appears immediately in all screens
-      await context.read<ExpenseCubit>().refreshExpenses();
-
-      // Wait a moment for the refresh to complete
+      _showSuccessSnackbar('Expense saved successfully!');
       await Future.delayed(const Duration(milliseconds: 500));
-
-      // Pop with true to indicate success and trigger refresh in previous screen
-      if (mounted) {
-        Navigator.of(context).pop(true);
-      }
+      if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
-      debugPrint('Error saving expense: $e');
-      if (mounted) {
+      if (mounted)
         _showSnackbar(
           'Error saving expense: ${e.toString()}',
           Theme.of(context).brightness == Brightness.dark,
         );
-      }
     }
   }
 

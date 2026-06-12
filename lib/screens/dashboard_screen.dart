@@ -96,12 +96,6 @@ class DashboardScreen extends StatelessWidget {
         builder: (context, expenseState) {
           return BlocBuilder<BudgetCubit, budget_cubit.BudgetState>(
             builder: (context, budgetState) {
-              // Refresh expenses when returning to dashboard
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                context.read<ExpenseCubit>().loadExpenses();
-                context.read<BudgetCubit>().loadBudget(forceRefresh: true);
-              });
-
               double monthlyBudget = expenseState.budget;
               double totalSpent = expenseState.totalSpending;
               // Total Balance = Budget + (Total Income - Total Expenses)
@@ -171,8 +165,8 @@ class DashboardScreen extends StatelessWidget {
         shape: const CircleBorder(
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
         ),
-        onPressed: () {
-          Navigator.push(
+        onPressed: () async {
+          final result = await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => BlocProvider(
@@ -180,11 +174,14 @@ class DashboardScreen extends StatelessWidget {
                 child: const AddExpenseScreen(),
               ),
             ),
-          ).then((_) {
-            // Refresh data when returning from add expense screen
-            context.read<ExpenseCubit>().loadExpenses();
-            context.read<BudgetCubit>().loadBudget(forceRefresh: true);
-          });
+          );
+
+          // CRITICAL FIX: Refresh data when returning from add expense
+          if (result == true && context.mounted) {
+            await context.read<ExpenseCubit>().refreshExpenses();
+            await context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+            // No setState needed - BlocBuilder will rebuild automatically
+          }
         },
         child: const Icon(Icons.add, color: accentGreen, size: 45),
       ),

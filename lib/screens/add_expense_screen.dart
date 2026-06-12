@@ -124,11 +124,8 @@ class AddExpenseScreen extends StatelessWidget {
                                 const SizedBox(height: 30),
                                 _buildRecentUploadsHeader(isDarkMode),
                                 const SizedBox(height: 15),
-                                _buildRecentUploadsList(
-                                  state,
-                                  context,
-                                  isDarkMode,
-                                ),
+                                // CRITICAL FIX: Use BlocBuilder directly, don't pass state
+                                const _RecentUploadsList(),
                                 const SizedBox(height: 20),
                                 _buildViewAllButton(context, isDarkMode),
                               ],
@@ -167,7 +164,24 @@ class AddExpenseScreen extends StatelessWidget {
         shape: const CircleBorder(
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
         ),
-        onPressed: () => debugPrint('FAB tapped'),
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => BlocProvider(
+                create: (context) => AddExpenseCubit(),
+                child: const AddExpenseScreen(),
+              ),
+            ),
+          );
+
+          if (result == true && context.mounted) {
+            await context.read<ExpenseCubit>().refreshExpenses();
+            await context.read<budget_cubit.BudgetCubit>().loadBudget(
+              forceRefresh: true,
+            );
+          }
+        },
         child: const Icon(Icons.add, color: accentGreen, size: 45),
       ),
     );
@@ -176,7 +190,6 @@ class AddExpenseScreen extends StatelessWidget {
   Widget _buildOptionsGrid(BuildContext context, bool isDarkMode) {
     return Column(
       children: [
-        // ── Scan Receipt (camera) ──────────────────────────────────────────
         _buildOptionCard(
           icon: Icons.camera_alt,
           title: 'Scan Receipt',
@@ -200,6 +213,8 @@ class AddExpenseScreen extends StatelessWidget {
             );
 
             if (scannedReceipt != null && context.mounted) {
+              addExpenseCubit.addToRecentUploads(scannedReceipt);
+
               final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -213,22 +228,19 @@ class AddExpenseScreen extends StatelessWidget {
                 ),
               );
 
-              // Update recent uploads if a receipt was confirmed/saved
-              if (result != null) {
-                if (result is ReceiptModel) {
-                  addExpenseCubit.addToRecentUploads(result);
-                } else {
-                  addExpenseCubit.addToRecentUploads(scannedReceipt);
+              if (result != null && context.mounted) {
+                await context.read<ExpenseCubit>().refreshExpenses();
+                await context.read<budget_cubit.BudgetCubit>().loadBudget(
+                  forceRefresh: true,
+                );
+                if (context.mounted) {
+                  Navigator.pop(context, true);
                 }
-                if (context.mounted) Navigator.pop(context);
               }
             }
           },
         ),
-
         const SizedBox(height: 12),
-
-        // ── Upload Single Image ────────────────────────────────────
         _buildOptionCard(
           icon: Icons.photo_library,
           title: 'Upload Image',
@@ -239,10 +251,7 @@ class AddExpenseScreen extends StatelessWidget {
             await _handleUploadSingle(context);
           },
         ),
-
         const SizedBox(height: 12),
-
-        // ── Upload Multiple Images ─────────────────────────────────
         _buildOptionCard(
           icon: Icons.photo_library_outlined,
           title: 'Upload Multiple',
@@ -253,10 +262,7 @@ class AddExpenseScreen extends StatelessWidget {
             await _handleUploadMultiple(context);
           },
         ),
-
         const SizedBox(height: 12),
-
-        // ── Manual Entry ───────────────────────────────────────────────────
         _buildOptionCard(
           icon: Icons.edit_note,
           title: 'Manual Entry',
@@ -292,13 +298,14 @@ class AddExpenseScreen extends StatelessWidget {
               ),
             );
 
-            if (result != null) {
-              if (result is ReceiptModel) {
-                cubit.addToRecentUploads(result);
-              } else if (fallbackReceipt != null) {
-                cubit.addToRecentUploads(fallbackReceipt);
+            if (result != null && context.mounted) {
+              await context.read<ExpenseCubit>().refreshExpenses();
+              await context.read<budget_cubit.BudgetCubit>().loadBudget(
+                forceRefresh: true,
+              );
+              if (context.mounted) {
+                Navigator.pop(context, true);
               }
-              if (context.mounted) Navigator.pop(context);
             }
           },
         ),
@@ -306,9 +313,6 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // UPLOAD SINGLE IMAGE — pick → OCR → parse → ManualEntryScreen
-  // ─────────────────────────────────────────────────────────────────────────
   Future<void> _handleUploadSingle(BuildContext context) async {
     final addExpenseCubit = context.read<AddExpenseCubit>();
     final mlKitService = MLKitService();
@@ -323,9 +327,7 @@ class AddExpenseScreen extends StatelessWidget {
 
     if (pickedFile == null) return;
 
-    if (context.mounted) {
-      addExpenseCubit.setLoading(true);
-    }
+    addExpenseCubit.setLoading(true);
 
     try {
       final receipt = await mlKitService.processReceiptImage(
@@ -333,41 +335,34 @@ class AddExpenseScreen extends StatelessWidget {
         context: context,
       );
 
-      if (context.mounted) {
-        addExpenseCubit.setLoading(false);
+      addExpenseCubit.setLoading(false);
+      addExpenseCubit.addToRecentUploads(receipt);
 
-        final result = await Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => BlocProvider.value(
-              value: addExpenseCubit,
-              child: ManualEntryScreen(receipt: receipt, fromAddExpense: true),
-            ),
+      final result = await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => BlocProvider.value(
+            value: addExpenseCubit,
+            child: ManualEntryScreen(receipt: receipt, fromAddExpense: true),
           ),
-        );
+        ),
+      );
 
-        // Capture confirmed execution and add to UI list state
-        if (result != null) {
-          if (result is ReceiptModel) {
-            addExpenseCubit.addToRecentUploads(result);
-          } else {
-            addExpenseCubit.addToRecentUploads(receipt);
-          }
-          addExpenseCubit.clearScannedReceipt();
-          if (context.mounted) Navigator.pop(context);
+      if (result != null && context.mounted) {
+        await context.read<ExpenseCubit>().refreshExpenses();
+        await context.read<budget_cubit.BudgetCubit>().loadBudget(
+          forceRefresh: true,
+        );
+        if (context.mounted) {
+          Navigator.pop(context, true);
         }
       }
     } catch (e) {
-      if (context.mounted) {
-        addExpenseCubit.setLoading(false);
-        _showErrorDialog(context, 'Failed to process image: $e');
-      }
+      addExpenseCubit.setLoading(false);
+      _showErrorDialog(context, 'Failed to process image: $e');
     }
   }
 
-  // ─────────────────────────────────────────────────────────────────────────
-  // UPLOAD MULTIPLE IMAGES — pick → OCR each → show dialog
-  // ─────────────────────────────────────────────────────────────────────────
   Future<void> _handleUploadMultiple(BuildContext context) async {
     final addExpenseCubit = context.read<AddExpenseCubit>();
     final mlKitService = MLKitService();
@@ -379,63 +374,33 @@ class AddExpenseScreen extends StatelessWidget {
 
     if (pickedFiles.isEmpty) return;
 
-    if (context.mounted) {
-      addExpenseCubit.setLoading(true);
-    }
+    addExpenseCubit.setLoading(true);
 
     try {
-      final List<ReceiptModel> receipts = [];
-
       for (final file in pickedFiles) {
         final receipt = await mlKitService.processReceiptImage(
           File(file.path),
           context: context,
         );
-        receipts.add(receipt);
+        addExpenseCubit.addToRecentUploads(receipt);
       }
 
+      addExpenseCubit.setLoading(false);
+
       if (context.mounted) {
-        addExpenseCubit.setLoading(false);
-
-        if (receipts.isNotEmpty) {
-          if (receipts.length == 1) {
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => BlocProvider.value(
-                  value: addExpenseCubit,
-                  child: ManualEntryScreen(
-                    receipt: receipts.first,
-                    fromAddExpense: true,
-                  ),
-                ),
-              ),
-            );
-
-            if (result != null) {
-              if (result is ReceiptModel) {
-                addExpenseCubit.addToRecentUploads(result);
-              } else {
-                addExpenseCubit.addToRecentUploads(receipts.first);
-              }
-              if (context.mounted) Navigator.pop(context);
-            }
-          } else {
-            _showMultipleReceiptsDialog(context, receipts);
-          }
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('${pickedFiles.length} receipts uploaded!'),
+            backgroundColor: accentGreen,
+          ),
+        );
+        Navigator.pop(context, true);
       }
     } catch (e) {
-      if (context.mounted) {
-        addExpenseCubit.setLoading(false);
-        _showErrorDialog(context, 'Failed to process images: $e');
-      }
+      addExpenseCubit.setLoading(false);
+      _showErrorDialog(context, 'Failed to process images: $e');
     }
   }
-
-  // ─────────────────────────────────────────────────────────────────────────
-  // UI HELPERS
-  // ─────────────────────────────────────────────────────────────────────────
 
   Widget _buildTopHeader(BuildContext context, bool isDarkMode) {
     return Container(
@@ -642,166 +607,6 @@ class AddExpenseScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildRecentUploadsList(
-    AddExpenseState state,
-    BuildContext context,
-    bool isDarkMode,
-  ) {
-    if (state.recentUploads.isEmpty) {
-      return Container(
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: isDarkMode ? Colors.grey[850] : headerColor,
-          borderRadius: BorderRadius.circular(15),
-        ),
-        child: Center(
-          child: Text(
-            'No recent uploads',
-            style: TextStyle(
-              fontSize: 16,
-              color: isDarkMode ? Colors.white60 : Colors.grey,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Column(
-      children: state.recentUploads.map((receipt) {
-        return GestureDetector(
-          onTap: () async {
-            final cubit = context.read<AddExpenseCubit>();
-            final result = await Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (context) => BlocProvider.value(
-                  value: cubit,
-                  child: ManualEntryScreen(receipt: receipt, isEditing: false),
-                ),
-              ),
-            );
-            if (result != null && context.mounted) {
-              Navigator.pop(context);
-            }
-          },
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: isDarkMode ? Colors.grey[850] : Colors.white,
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(
-                color: isDarkMode ? Colors.grey[800]! : Colors.grey.shade200,
-                width: 1,
-              ),
-            ),
-            child: Row(
-              children: [
-                _buildThumbnail(receipt),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        receipt.merchantName ?? 'Unknown Merchant',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: isDarkMode ? Colors.white : darkText,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        receipt.categorySummary,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isDarkMode
-                              ? Colors.white60
-                              : darkText.withOpacity(0.6),
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        receipt.formattedDate,
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: isDarkMode
-                              ? Colors.white38
-                              : darkText.withOpacity(0.4),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      'RM${receipt.amount.toStringAsFixed(2)}',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: accentGreen,
-                      ),
-                    ),
-                    if (receipt.items != null && receipt.items!.isNotEmpty)
-                      Text(
-                        '${receipt.totalItemCount} items',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: darkText.withOpacity(0.4),
-                        ),
-                      ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        );
-      }).toList(),
-    );
-  }
-
-  Widget _buildThumbnail(ReceiptModel receipt) {
-    final path = receipt.imagePath;
-
-    if (path != null) {
-      return FutureBuilder<bool>(
-        future: File(path).exists(),
-        builder: (context, snapshot) {
-          if (snapshot.hasData && snapshot.data == true) {
-            return ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.file(
-                File(path),
-                width: 60,
-                height: 60,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => _thumbnailFallback(),
-              ),
-            );
-          }
-          return _thumbnailFallback();
-        },
-      );
-    }
-
-    return _thumbnailFallback();
-  }
-
-  Widget _thumbnailFallback() {
-    return Container(
-      width: 60,
-      height: 60,
-      decoration: BoxDecoration(
-        color: accentGreen.withOpacity(0.15),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: const Icon(Icons.receipt, color: accentGreen, size: 30),
-    );
-  }
-
   Widget _buildViewAllButton(BuildContext context, bool isDarkMode) {
     return Center(
       child: TextButton(
@@ -974,9 +779,191 @@ class AddExpenseScreen extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Dialogs & Root Operations
-// ─────────────────────────────────────────────────────────────────────────────
+// ============================================================
+// SEPARATE WIDGET FOR RECENT UPLOADS WITH ITS OWN BLOC BUILDER
+// ============================================================
+class _RecentUploadsList extends StatelessWidget {
+  const _RecentUploadsList();
+
+  @override
+  Widget build(BuildContext context) {
+    final isDarkMode = context.watch<ProfileCubit>().state is ProfileLoaded
+        ? (context.read<ProfileCubit>().state as ProfileLoaded).user.isDarkMode
+        : false;
+
+    return BlocBuilder<AddExpenseCubit, AddExpenseState>(
+      builder: (context, state) {
+        print(
+          '🟡 _RecentUploadsList BLOC BUILDER - Count: ${state.recentUploads.length}',
+        );
+
+        if (state.recentUploads.isEmpty) {
+          return Container(
+            padding: const EdgeInsets.all(20),
+            decoration: BoxDecoration(
+              color: isDarkMode
+                  ? Colors.grey[850]
+                  : AddExpenseScreen.headerColor,
+              borderRadius: BorderRadius.circular(15),
+            ),
+            child: Center(
+              child: Text(
+                'No recent uploads',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: isDarkMode ? Colors.white60 : Colors.grey,
+                ),
+              ),
+            ),
+          );
+        }
+
+        return Column(
+          children: state.recentUploads.map((receipt) {
+            return _RecentUploadItem(receipt: receipt, isDarkMode: isDarkMode);
+          }).toList(),
+        );
+      },
+    );
+  }
+}
+
+class _RecentUploadItem extends StatelessWidget {
+  final ReceiptModel receipt;
+  final bool isDarkMode;
+
+  const _RecentUploadItem({required this.receipt, required this.isDarkMode});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: () async {
+        final cubit = context.read<AddExpenseCubit>();
+        final result = await Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => BlocProvider.value(
+              value: cubit,
+              child: ManualEntryScreen(receipt: receipt, isEditing: false),
+            ),
+          ),
+        );
+        if (result != null && context.mounted) {
+          Navigator.pop(context);
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey[850] : Colors.white,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: isDarkMode ? Colors.grey[800]! : Colors.grey.shade200,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            _buildThumbnail(),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    receipt.merchantName ?? 'Unknown Merchant',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: isDarkMode
+                          ? Colors.white
+                          : AddExpenseScreen.darkText,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    receipt.categorySummary,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: isDarkMode
+                          ? Colors.white60
+                          : AddExpenseScreen.darkText.withOpacity(0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    receipt.formattedDate,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isDarkMode
+                          ? Colors.white38
+                          : AddExpenseScreen.darkText.withOpacity(0.4),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  'RM${receipt.amount.toStringAsFixed(2)}',
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: AddExpenseScreen.accentGreen,
+                  ),
+                ),
+                if (receipt.items != null && receipt.items!.isNotEmpty)
+                  Text(
+                    '${receipt.totalItemCount} items',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: AddExpenseScreen.darkText.withOpacity(0.4),
+                    ),
+                  ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildThumbnail() {
+    final path = receipt.imagePath;
+    if (path != null && File(path).existsSync()) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(10),
+        child: Image.file(
+          File(path),
+          width: 60,
+          height: 60,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => _thumbnailFallback(),
+        ),
+      );
+    }
+    return _thumbnailFallback();
+  }
+
+  Widget _thumbnailFallback() {
+    return Container(
+      width: 60,
+      height: 60,
+      decoration: BoxDecoration(
+        color: AddExpenseScreen.accentGreen.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: const Icon(
+        Icons.receipt,
+        color: AddExpenseScreen.accentGreen,
+        size: 30,
+      ),
+    );
+  }
+}
 
 void _showErrorDialog(BuildContext context, String message) {
   showDialog(
@@ -992,129 +979,4 @@ void _showErrorDialog(BuildContext context, String message) {
       ],
     ),
   );
-}
-
-void _showMultipleReceiptsDialog(
-  BuildContext context,
-  List<ReceiptModel> receipts,
-) {
-  const accentGreen = AddExpenseScreen.accentGreen;
-
-  showDialog(
-    context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Multiple Receipts Detected'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Successfully processed ${receipts.length} receipts!',
-            style: const TextStyle(fontSize: 16),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Would you like to:',
-            style: TextStyle(fontWeight: FontWeight.bold),
-          ),
-          const SizedBox(height: 8),
-          ...receipts.map(
-            (receipt) => Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.receipt, size: 16, color: accentGreen),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      receipt.merchantName ?? 'Unknown Merchant',
-                      style: const TextStyle(fontSize: 14),
-                    ),
-                  ),
-                  Text(
-                    'RM${receipt.amount.toStringAsFixed(2)}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: accentGreen,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(
-          onPressed: () {
-            Navigator.pop(dialogContext);
-            final cubit = context.read<AddExpenseCubit>();
-            if (cubit.state.multipleReceipts.isNotEmpty) {
-              cubit.clearScannedReceipt();
-            }
-          },
-          child: const Text('Cancel'),
-        ),
-        ElevatedButton(
-          onPressed: () async {
-            Navigator.pop(dialogContext);
-            await _processMultipleReceipts(context, receipts);
-          },
-          style: ElevatedButton.styleFrom(
-            backgroundColor: accentGreen,
-            foregroundColor: Colors.white,
-          ),
-          child: const Text('Process Now'),
-        ),
-      ],
-    ),
-  );
-}
-
-Future<void> _processMultipleReceipts(
-  BuildContext context,
-  List<ReceiptModel> receipts,
-) async {
-  final addExpenseCubit = context.read<AddExpenseCubit>();
-  const accentGreen = AddExpenseScreen.accentGreen;
-
-  for (int i = 0; i < receipts.length; i++) {
-    final receipt = receipts[i];
-
-    if (receipts.length > 1 && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Processing receipt ${i + 1} of ${receipts.length}...'),
-          duration: const Duration(seconds: 1),
-          backgroundColor: accentGreen,
-        ),
-      );
-    }
-
-    if (!context.mounted) break;
-
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => BlocProvider.value(
-          value: addExpenseCubit,
-          child: ManualEntryScreen(receipt: receipt, fromAddExpense: true),
-        ),
-      ),
-    );
-
-    // Save actual updated data back if structural object is returned
-    if (result != null) {
-      if (result is ReceiptModel) {
-        addExpenseCubit.addToRecentUploads(result);
-      } else {
-        addExpenseCubit.addToRecentUploads(receipt);
-      }
-    }
-
-    if (result != null && i == receipts.length - 1 && context.mounted) {
-      Navigator.pop(context);
-    }
-  }
 }

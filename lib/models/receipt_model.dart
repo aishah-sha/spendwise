@@ -114,8 +114,6 @@ class ReceiptModel extends Equatable {
     return 0.0;
   }
 
-  // ... rest of your model methods (Update toDatabaseJson and copyWith below)
-
   bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
 
   String get formattedDate {

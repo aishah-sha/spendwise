@@ -104,6 +104,7 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
   ) {
     // Add to recent uploads
     cubit.addToRecentUploads(receipt);
+    print('✅ Scanner: Added to recent uploads');
 
     // Show success message
     ScaffoldMessenger.of(context).showSnackBar(
@@ -114,7 +115,7 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
       ),
     );
 
-    // Go back
+    // Go back with the receipt
     Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) Navigator.pop(context, receipt);
     });

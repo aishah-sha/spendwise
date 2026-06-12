@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:spendwise/cubit/budget_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/expense_state.dart';
 import '../cubit/notification_cubit.dart';
@@ -14,13 +15,27 @@ import 'budget_screen.dart';
 import 'dashboard_screen.dart';
 import 'profile_screen.dart';
 
-class ExpenseHistoryScreen extends StatelessWidget {
+class ExpenseHistoryScreen extends StatefulWidget {
   const ExpenseHistoryScreen({super.key});
 
+  @override
+  State<ExpenseHistoryScreen> createState() => _ExpenseHistoryScreenState();
+}
+
+class _ExpenseHistoryScreenState extends State<ExpenseHistoryScreen> {
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
   static const Color accentGreen = Color(0xFF32BA32);
   static const Color darkText = Color(0xFF000000);
+
+  @override
+  void initState() {
+    super.initState();
+    // Load fresh data every time this screen opens
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ExpenseCubit>().loadExpenses();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -886,9 +901,7 @@ class ExpenseHistoryScreen extends StatelessWidget {
               builder: (context) => MultiBlocProvider(
                 providers: [
                   BlocProvider(create: (context) => AddExpenseCubit()),
-                  BlocProvider.value(
-                    value: context.read<budget_cubit.BudgetCubit>(),
-                  ),
+                  BlocProvider.value(value: context.read<BudgetCubit>()),
                   BlocProvider.value(value: context.read<ExpenseCubit>()),
                   BlocProvider.value(value: context.read<ProfileCubit>()),
                 ],
@@ -897,12 +910,12 @@ class ExpenseHistoryScreen extends StatelessWidget {
             ),
           );
 
-          // FIX: Force refresh when returning
-          if (context.mounted) {
+          // CRITICAL FIX: Refresh data when returning
+          if (result == true && mounted) {
             await context.read<ExpenseCubit>().refreshExpenses();
-            await context.read<budget_cubit.BudgetCubit>().loadBudget(
-              forceRefresh: true,
-            );
+            await context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+            // setState works here because this is StatefulWidget
+            setState(() {});
           }
         },
         child: const Icon(Icons.add, color: accentGreen, size: 45),

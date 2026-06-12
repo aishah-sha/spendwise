@@ -2,22 +2,31 @@
 import '../models/receipt_model.dart';
 
 class ReceiptParser {
-  // A clean pattern to extract decimal prices from text segments
   static final _rawPriceCheck = RegExp(r'\d+\.\d{2}');
 
-  // Date patterns (Malaysian formats: DD/MM/YYYY, DD-MM-YYYY)
   static final _dateRe = RegExp(
     r'\b(\d{1,2}[/-]\d{1,2}[/-]\d{2,4})\b',
     caseSensitive: false,
   );
 
-  // Merchant patterns
+  // IMPROVED: Better merchant name patterns
   static final _merchantRe = RegExp(
-    r'^([A-Z][A-Z\s&.]{3,50}(?:SDN\s*BHD|BHD|ENTERPRISE|TRADING|STORE|MART|SUPERMARKET)?)',
+    r'^(?:[A-Z][A-Z\s&.]{2,50}(?:SDN\s*BHD|BHD|ENTERPRISE|TRADING|STORE|MART|SUPERMARKET|RESTAURANT|CAFE|BAKERY|PHARMACY)?)',
     caseSensitive: false,
   );
 
-  // Global metadata filter to ignore receipt text rows entirely
+  // NEW: Patterns that indicate a line is likely a merchant name
+  static final _merchantIndicatorRe = RegExp(
+    r'\b(STORE|MART|SUPERMARKET|RESTAURANT|CAFE|BAKERY|PHARMACY|TRADING|ENTERPRISE|SDN|BHD|SHOP)\b',
+    caseSensitive: false,
+  );
+
+  // NEW: Patterns that should NEVER be merchant names (barcodes, receipt numbers)
+  static final _invalidMerchantRe = RegExp(
+    r'^\d{10,}$|^\d{3,}[- ]?\d{3,}$|^[A-Z]{2}\d{6,}$|^(?:ITEM|QTY|TOTAL|SUBTOTAL|CASH|CHANGE|VISA|MASTER)',
+    caseSensitive: false,
+  );
+
   static final _skipLineRe = RegExp(
     r'\b(CASH|CHANGE|TUNAI|BAKI|TENDER|PAYMENT|CARD|CREDIT|DEBIT|'
     r'CASHIER|KASIR|OPERATOR|RECEIPT|INVOICE|TABLE|ORDER|SERVER|STAFF|'
@@ -31,28 +40,28 @@ class ReceiptParser {
     caseSensitive: false,
   );
 
-  // Formats matching line totals (e.g. Total: RM 25.80)
   static final _totalRe = RegExp(
     r'\b(TOTAL|JUMLAH|GRAND\s*TOTAL|AMOUNT|AMOUNT\s*DUE):?\s*(?:RM|MYR)?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{2})?)',
     caseSensitive: false,
   );
 
-  // Identifies if a string consists entirely of barcode remnants
   static final _isBarcodeRowRe = RegExp(r'^[\d\s\-•*,.@xX#|/]+[A-Z]?\s*$');
 
-  // Establishment recognition categories
   static final _supermarketKeywords = RegExp(
     r'\b(MART|SUPERMARKET|HYPERMARKET|GROCER|GROCERY|MYDIN|AEON|JASON|LOTUS|GIANT|NSK|SPEEDMART|7-ELEVEN|PASAR|COWBOY)\b',
     caseSensitive: false,
   );
+
   static final _bookStoreKeywords = RegExp(
     r'\b(BOOK|BOOKS|STATIONERY|POPULAR|KINOKUNIYA|MPH)\b',
     caseSensitive: false,
   );
+
   static final _restaurantCafeKeywords = RegExp(
     r'\b(RESTAURANT|RESTORAN|CAFE|KOPITIAM|COFFEE|ZUS|TEALIVE|STARBUCKS|MCDONALD|KFC|BURGER|PIZZA|BAKERY)\b',
     caseSensitive: false,
   );
+
   static final _pharmacyKeywords = RegExp(
     r'\b(PHARMACY|FARMASI|WATSONS|GUARDIAN|CARING|CLINIC|MEDICAL)\b',
     caseSensitive: false,
@@ -76,48 +85,73 @@ class ReceiptParser {
         .map((l) => l.trim())
         .where((l) => l.isNotEmpty)
         .toList();
-    final List<ReceiptItem> items = [];
 
+    final List<ReceiptItem> items = [];
     String merchantName = "Unknown Store";
     DateTime? receiptDate;
     double extractedTotal = 0.0;
     double calculatedSubtotal = 0.0;
 
-    // Pass 1: Parse Header Data (Merchant and Date)
-    for (int i = 0; i < lines.length && i < 10; i++) {
+    // IMPROVED: Better merchant name extraction
+    // First, look for lines that look like merchant names
+    for (int i = 0; i < lines.length && i < 15; i++) {
       final line = lines[i];
-      if (merchantName == "Unknown Store") {
-        final merchantMatch = _merchantRe.firstMatch(line);
-        if (merchantMatch != null && line.length > 4) {
-          merchantName = merchantMatch
-              .group(1)!
-              .trim()
-              .replaceAll(RegExp(r'\s+'), ' ');
-        } else if (line.length > 5 &&
-            !_skipLineRe.hasMatch(line) &&
-            !line.contains(
-              '.',
-            ) && // Changed from _rawPriceCheck to avoid skipping headers with items
-            !line.contains(':')) {
-          merchantName = line;
-        }
+
+      // Skip lines that are too short or look like barcodes
+      if (line.length < 3 || _invalidMerchantRe.hasMatch(line)) {
+        continue;
       }
-      if (receiptDate == null) {
-        final dateMatch = _dateRe.firstMatch(line);
-        if (dateMatch != null)
-          receiptDate = _parseMalaysianDate(dateMatch.group(1)!);
+
+      // Check if line contains merchant indicators
+      if (_merchantIndicatorRe.hasMatch(line)) {
+        merchantName = line.replaceAll(RegExp(r'\s+'), ' ').trim();
+        print('📦 Found merchant name from indicator: $merchantName');
+        break;
+      }
+
+      // Try regex match
+      final merchantMatch = _merchantRe.firstMatch(line);
+      if (merchantMatch != null && line.length > 4 && line.length < 50) {
+        merchantName = merchantMatch.group(0)!.trim();
+        print('📦 Found merchant name from regex: $merchantName');
+        break;
       }
     }
 
-    // Dynamic pattern matching for prices supporting dots or commas (e.g., 12.50, 12,50)
+    // If still unknown, try the first non-barcode line
+    if (merchantName == "Unknown Store") {
+      for (int i = 0; i < lines.length && i < 10; i++) {
+        final line = lines[i];
+        if (line.length > 3 &&
+            line.length < 50 &&
+            !_invalidMerchantRe.hasMatch(line) &&
+            !_skipLineRe.hasMatch(line) &&
+            !line.contains('.') &&
+            !line.contains(':')) {
+          merchantName = line.trim();
+          print('📦 Found merchant name from fallback: $merchantName');
+          break;
+        }
+      }
+    }
+
+    // Extract date
+    for (int i = 0; i < lines.length && i < 15; i++) {
+      if (receiptDate == null) {
+        final dateMatch = _dateRe.firstMatch(lines[i]);
+        if (dateMatch != null) {
+          receiptDate = _parseMalaysianDate(dateMatch.group(1)!);
+        }
+      }
+    }
+
     final priceFinderRegExp = RegExp(r'\d+[\.,]\d{2}');
 
-    // Pass 2: Process Line Items Robustly
+    // Process line items
     for (int i = 0; i < lines.length; i++) {
       final line = lines[i];
       final lowerLine = line.toLowerCase();
 
-      // Wipes credit card numbers/metadata lines out immediately
       if (RegExp(
         r'\b(visa|master|amex|card|\d{4}x+)\b',
         caseSensitive: false,
@@ -125,7 +159,6 @@ class ReceiptParser {
         continue;
       }
 
-      // Capture grand total values
       final totalMatch = _totalRe.firstMatch(line);
       if (totalMatch != null) {
         final amountStr = totalMatch.group(2)!.replaceAll(',', '');
@@ -134,7 +167,6 @@ class ReceiptParser {
         continue;
       }
 
-      // Skip structural lines, but don't filter genuine items out just because they match partial terms
       if (lowerLine.contains('subtotal') ||
           lowerLine.contains('grand total') ||
           lowerLine.contains('amount due') ||
@@ -143,7 +175,6 @@ class ReceiptParser {
         continue;
       }
 
-      // Check if this line contains any price signature anywhere
       final Iterable<RegExpMatch> priceMatches = priceFinderRegExp.allMatches(
         line,
       );
@@ -151,21 +182,16 @@ class ReceiptParser {
         continue;
       }
 
-      // Grab the last price pattern instance found on the row line text string
       final lastPriceMatch = priceMatches.last;
       String rawPriceStr = lastPriceMatch.group(0)!;
-
-      // Standardize the parsed value string representation
       double? linePrice = double.tryParse(rawPriceStr.replaceAll(',', '.'));
       if (linePrice == null) continue;
 
-      // Extracted description text block is everything located up to the match offset start sequence
       String itemText = line.substring(0, lastPriceMatch.start).trim();
 
       int quantity = 1;
       double unitPrice = linePrice;
 
-      // Extract explicitly declared multiplier patterns (e.g., 1x2.50 or 2 x 12.90)
       final multiplierMatch = RegExp(
         r'(\d+)\s*[xX@]\s*(\d+[\.,]\d{2})',
       ).firstMatch(line);
@@ -176,7 +202,7 @@ class ReceiptParser {
         itemText = itemText.replaceAll(multiplierMatch.group(0)!, '').trim();
       }
 
-      // Backtracking Engine: If description text block is clean barcode remnants or empty, grab preceding rows
+      // Backtrack for item names
       if (itemText.isEmpty ||
           _isBarcodeRowRe.hasMatch(itemText) ||
           itemText.trim() == '|') {
@@ -196,7 +222,8 @@ class ReceiptParser {
 
           if (!_isBarcodeRowRe.hasMatch(targetLine) &&
               targetLine.trim().isNotEmpty &&
-              targetLine.trim() != '|') {
+              targetLine.trim() != '|' &&
+              !_invalidMerchantRe.hasMatch(targetLine)) {
             accumulatedDescription = targetLine + " " + accumulatedDescription;
             linesCaptured++;
           }
@@ -208,7 +235,7 @@ class ReceiptParser {
         }
       }
 
-      // General string sanitization and trimming
+      // Clean up item text
       itemText = itemText.replaceAll(RegExp(r'^[\s\-•*,.@xX#|/]+'), '').trim();
       itemText = itemText
           .replaceAll(RegExp(r'^\b\d{3,18}\b[\s\-]*'), '')
@@ -218,12 +245,11 @@ class ReceiptParser {
       if (itemText.endsWith(' U') ||
           itemText.endsWith(' X') ||
           itemText.endsWith(' |') ||
-          itemText.endsWith(' S') || // Added to clean out typical tax codes
+          itemText.endsWith(' S') ||
           itemText.endsWith(' Z')) {
         itemText = itemText.substring(0, itemText.length - 2).trim();
       }
 
-      // Validate length and guard against standard subtotal system remnants leaking into items list
       if (itemText.length < 2 ||
           itemText.toLowerCase() == 'total' ||
           itemText.toLowerCase() == 'jumlah') {
@@ -243,6 +269,13 @@ class ReceiptParser {
     }
 
     final establishmentType = detectEstablishmentType(merchantName, rawText);
+
+    print('📋 PARSED RECEIPT:');
+    print('   Merchant: $merchantName');
+    print(
+      '   Amount: ${extractedTotal > 0 ? extractedTotal : calculatedSubtotal}',
+    );
+    print('   Items: ${items.length}');
 
     return ReceiptModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),

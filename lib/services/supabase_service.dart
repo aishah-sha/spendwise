@@ -150,6 +150,12 @@ class SupabaseService {
     if (!isUserLoggedIn) throw Exception('User not logged in');
 
     try {
+      print('💾 Saving to Supabase:');
+      print('   - description: $description');
+      print('   - title: ${title ?? description}');
+      print('   - amount: $amount');
+      print('   - category: $category');
+
       final result = await _supabase
           .from(transactionsTable)
           .insert({
@@ -157,8 +163,8 @@ class SupabaseService {
             'amount': amount,
             'category': category,
             'type': type,
-            'description': description,
-            'title': title ?? description,
+            'description': description, // ← This stores the merchant name
+            'title': title ?? description, // ← This stores the merchant name
             'note': note,
             'image_url': imageUrl ?? '',
             'date': (date ?? DateTime.now()).toIso8601String(),
@@ -167,28 +173,55 @@ class SupabaseService {
           .select()
           .single();
 
-      // Update total spent only for expenses
+      print('✅ Saved successfully with id: ${result['id']}');
+
       if (type == 'expense') {
         await updateTotalSpent(amount, isAdding: true);
       }
 
       return result;
     } catch (e) {
-      print('Error adding transaction: $e');
+      print('❌ Error adding transaction: $e');
       rethrow;
     }
   }
 
-  Stream<List<Map<String, dynamic>>> getTransactions() {
-    if (!isUserLoggedIn) return Stream.value([]);
+  Future<List<Map<String, dynamic>>> fetchTransactions() async {
+    if (!isUserLoggedIn) return [];
 
-    return _supabase
+    final response = await _supabase
         .from(transactionsTable)
         .select()
         .eq('user_id', _currentUserId)
+        .order('date', ascending: false);
+
+    print('DEBUG fetchTransactions: Found ${response.length} transactions');
+    for (var tx in response) {
+      print('DEBUG TX: ${tx['description']} - ${tx['amount']} - ${tx['date']}');
+    }
+
+    return List<Map<String, dynamic>>.from(response);
+  }
+
+  // REAL-TIME stream (for _listenToExpenses)
+  Stream<List<Map<String, dynamic>>> getTransactions() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) {
+      print('⚠️ getTransactions: No user logged in');
+      return Stream.value([]);
+    }
+
+    print('📡 Setting up real-time stream for user: $userId');
+
+    return _supabase
+        .from(transactionsTable)
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId) // Use the captured userId variable
         .order('date', ascending: false)
-        .asStream()
-        .map((event) => List<Map<String, dynamic>>.from(event));
+        .map((event) {
+          print('📡 Stream update: ${event.length} transactions');
+          return List<Map<String, dynamic>>.from(event);
+        });
   }
 
   Future<Map<String, dynamic>?> getTransaction(String transactionId) async {
