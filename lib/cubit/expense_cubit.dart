@@ -120,12 +120,19 @@ class ExpenseCubit extends Cubit<ExpenseState> {
 
   Future<void> loadExpenses() async {
     if (isClosed) return;
-    print('📊 loadExpenses() called');
+    print('📊 loadExpenses() started');
     emit(state.copyWith(isLoading: true, error: () => null));
 
     try {
       final transactions = await _supabaseService.fetchTransactions();
-      print('📦 Fetched ${transactions.length} transactions');
+      print('📦 Fetched ${transactions.length} transactions from Supabase');
+
+      // Print each transaction to see what's being loaded
+      for (var tx in transactions) {
+        print(
+          '   TX: ${tx['title']} - RM${tx['amount']} - ${tx['date']} - Type: ${tx['type']}',
+        );
+      }
 
       final expenses = transactions.map((tx) {
         return ExpenseModel(
@@ -138,6 +145,16 @@ class ExpenseCubit extends Cubit<ExpenseState> {
           note: tx['description'] as String?,
         );
       }).toList();
+
+      print('💰 Converted to ${expenses.length} ExpenseModels');
+
+      // Sort by date (newest first)
+      expenses.sort((a, b) => b.date.compareTo(a.date));
+
+      print('📅 Sorted expenses (newest first):');
+      for (var exp in expenses.take(5)) {
+        print('   - ${exp.title} - ${exp.date.toIso8601String()}');
+      }
 
       _updateStateWithExpenses(expenses);
     } catch (e) {

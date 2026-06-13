@@ -279,7 +279,7 @@ class ReceiptParser {
 
     return ReceiptModel(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
-      date: receiptDate ?? DateTime.now(),
+      date: DateTime.now(),
       amount: extractedTotal > 0 ? extractedTotal : calculatedSubtotal,
       subtotal: calculatedSubtotal,
       tax: 0.0,

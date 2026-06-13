@@ -1,6 +1,10 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:spendwise/cubit/budget_cubit.dart';
+import 'package:spendwise/cubit/expense_cubit.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../cubit/receipt_cubit.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../models/receipt_model.dart';
@@ -87,7 +91,7 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
           onConfirm: () {
             Navigator.pop(sheetContext);
             _sheetOpen = false;
-            // Save the expense
+            // Save the expense to database
             _saveExpense(context, addExpenseCubit, receipt);
           },
         );
@@ -101,24 +105,111 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     BuildContext context,
     AddExpenseCubit cubit,
     ReceiptModel receipt,
-  ) {
-    // Add to recent uploads
-    cubit.addToRecentUploads(receipt);
-    print('✅ Scanner: Added to recent uploads');
-
-    // Show success message
+  ) async {
+    // Show loading indicator
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
-        content: Text('✓ Receipt processed successfully!'),
-        backgroundColor: _green,
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Text('Saving expense...'),
+          ],
+        ),
         duration: Duration(seconds: 2),
       ),
     );
 
-    // Go back with the receipt
-    Future.delayed(const Duration(milliseconds: 500), () {
-      if (mounted) Navigator.pop(context, receipt);
-    });
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+
+      if (userId == null) {
+        throw Exception('User not logged in');
+      }
+
+      final expenseId = const Uuid().v4();
+      final categories =
+          receipt.items?.map((item) => item.category).toList() ?? [];
+      final primaryCategory = categories.isNotEmpty
+          ? categories.first
+          : 'Others';
+
+      // 1. Save to transactions table (this is what Dashboard and History read from!)
+      await supabase.from('transactions').insert({
+        'id': expenseId,
+        'user_id': userId,
+        'amount': receipt.amount,
+        'category': primaryCategory,
+        'type': 'expense',
+        'description': receipt.merchantName ?? 'Unknown Merchant',
+        'title': receipt.merchantName ?? 'Unknown Merchant',
+        'note': receipt.merchantName ?? 'Unknown Merchant',
+        'date': receipt.date.toIso8601String(),
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      print('✅ Saved to transactions table with id: $expenseId');
+
+      // 2. Also save to receipts table for record keeping
+      await supabase.from('receipts').insert({
+        'id': expenseId,
+        'user_id': userId,
+        'merchant_name': receipt.merchantName,
+        'amount': receipt.amount,
+        'category': primaryCategory,
+        'date': receipt.date.toIso8601String(),
+        'receipt_type': 'scanned',
+        'image_path': receipt.imagePath,
+        'items': receipt.items?.map((i) => i.toJson()).toList() ?? [],
+        'created_at': DateTime.now().toIso8601String(),
+      });
+
+      print('✅ Saved to receipts table');
+
+      // 3. Add to recent uploads in cubit
+      cubit.addToRecentUploads(receipt);
+
+      // 4. Refresh the ExpenseCubit to update Dashboard and History
+      final expenseCubit = context.read<ExpenseCubit>();
+      await expenseCubit.refreshExpenses();
+
+      // 5. Refresh BudgetCubit to update budget tracking
+      final budgetCubit = context.read<BudgetCubit>();
+      await budgetCubit.loadBudget(forceRefresh: true);
+
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✓ Expense saved successfully!'),
+            backgroundColor: Color(0xFF32BA32),
+            duration: Duration(seconds: 2),
+          ),
+        );
+
+        // Go back with the receipt as success signal
+        Future.delayed(const Duration(milliseconds: 500), () {
+          if (context.mounted) Navigator.pop(context, receipt);
+        });
+      }
+    } catch (e) {
+      print('❌ Error saving expense: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving expense: $e'),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    }
   }
 
   void _goToManualEntry(

@@ -643,6 +643,14 @@ class DashboardScreen extends StatelessWidget {
     BuildContext context,
     bool isDarkMode,
   ) {
+    print('🏠 DASHBOARD: Building recent expenses list');
+    print('🏠 DASHBOARD: Number of expenses: ${recentExpenses.length}');
+
+    for (var exp in recentExpenses) {
+      print(
+        '🏠 DASHBOARD Expense: ${exp.title} - RM${exp.amount} - Date: ${exp.date}',
+      );
+    }
     if (recentExpenses.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),

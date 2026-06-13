@@ -2,6 +2,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:spendwise/cubit/budget_cubit.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:uuid/uuid.dart';
 import '../cubit/add_expense_cubit.dart';
 import '../cubit/expense_cubit.dart';
 import '../cubit/notification_cubit.dart';
@@ -335,9 +338,52 @@ class AddExpenseScreen extends StatelessWidget {
         context: context,
       );
 
+      print(
+        '📸 Receipt processed: ${receipt.merchantName} - RM${receipt.amount}',
+      );
+
+      // CRITICAL: Save to database immediately
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+
+      if (userId != null) {
+        final expenseId = const Uuid().v4();
+
+        // Save to receipts table
+        await supabase.from('receipts').insert({
+          'id': expenseId,
+          'user_id': userId,
+          'merchant_name': receipt.merchantName,
+          'amount': receipt.amount,
+          'category': receipt.category,
+          'date': receipt.date.toIso8601String(),
+          'receipt_type': 'image',
+          'image_path': receipt.imagePath,
+          'items': receipt.items?.map((i) => i.toJson()).toList() ?? [],
+          'created_at': DateTime.now().toIso8601String(),
+        });
+
+        // ALSO save to transactions table so it appears in Dashboard
+        await supabase.from('transactions').insert({
+          'id': expenseId,
+          'user_id': userId,
+          'amount': receipt.amount,
+          'category': receipt.category,
+          'type': 'expense',
+          'description': receipt.merchantName,
+          'title': receipt.merchantName,
+          'note': receipt.merchantName,
+          'date': receipt.date.toIso8601String(),
+          'created_at': DateTime.now().toIso8601String(),
+        });
+
+        print('✅ Auto-saved to both tables');
+      }
+
       addExpenseCubit.setLoading(false);
       addExpenseCubit.addToRecentUploads(receipt);
 
+      // Navigate to manual entry for editing
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
@@ -350,14 +396,13 @@ class AddExpenseScreen extends StatelessWidget {
 
       if (result != null && context.mounted) {
         await context.read<ExpenseCubit>().refreshExpenses();
-        await context.read<budget_cubit.BudgetCubit>().loadBudget(
-          forceRefresh: true,
-        );
+        await context.read<BudgetCubit>().loadBudget(forceRefresh: true);
         if (context.mounted) {
           Navigator.pop(context, true);
         }
       }
     } catch (e) {
+      print('❌ Error: $e');
       addExpenseCubit.setLoading(false);
       _showErrorDialog(context, 'Failed to process image: $e');
     }
