@@ -973,124 +973,180 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     );
   }
 
+  // IMPROVED ITEM CARD WITH BETTER EDITING
   Widget _buildModernItemCard(int index, bool isDarkMode) {
     final item = _items[index];
+
     return Container(
       key: ValueKey('item_${index}_${item.hashCode}'),
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 16),
       decoration: BoxDecoration(
         color: isDarkMode ? const Color(0xFF262626) : Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        boxShadow: isDarkMode
-            ? []
-            : [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.04),
-                  blurRadius: 8,
-                  offset: const Offset(0, 2),
-                ),
-              ],
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: _getCategoryColor(item.category),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(
-                  _getCategoryIcon(item.category),
-                  color: Colors.white,
-                  size: 24,
-                ),
+          // Header with category and delete
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 12, 12, 8),
+            decoration: BoxDecoration(
+              color: _getCategoryColor(item.category).withOpacity(0.1),
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      item.name.isEmpty ? 'New Item' : item.name,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        color: isDarkMode ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
+            ),
+            child: Row(
+              children: [
+                Container(
+                  width: 4,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: _getCategoryColor(item.category),
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    decoration: BoxDecoration(
+                      color: isDarkMode ? Colors.grey[800] : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
                         color: _getCategoryColor(
                           item.category,
-                        ).withOpacity(0.15),
-                        borderRadius: BorderRadius.circular(12),
+                        ).withOpacity(0.5),
+                        width: 1,
                       ),
-                      child: Text(
-                        item.category,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<String>(
+                        value: _categories.contains(item.category)
+                            ? item.category
+                            : 'Others',
+                        isExpanded: true,
+                        icon: Icon(
+                          Icons.arrow_drop_down,
                           color: _getCategoryColor(item.category),
                         ),
+                        dropdownColor: isDarkMode
+                            ? Colors.grey[850]
+                            : Colors.white,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: isDarkMode ? Colors.white : Colors.black87,
+                        ),
+                        onChanged: (String? newCategory) {
+                          if (newCategory != null) {
+                            setState(() {
+                              _items[index] = ReceiptItem(
+                                name: item.name,
+                                price: item.price,
+                                quantity: item.quantity,
+                                category: newCategory,
+                                unitPrice: item.unitPrice,
+                              );
+                            });
+                            _updateTotal();
+                          }
+                        },
+                        items: _categories.map<DropdownMenuItem<String>>((
+                          String value,
+                        ) {
+                          return DropdownMenuItem<String>(
+                            value: value,
+                            child: Row(
+                              children: [
+                                Icon(
+                                  _getCategoryIcon(value),
+                                  size: 18,
+                                  color: _getCategoryColor(value),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(value),
+                              ],
+                            ),
+                          );
+                        }).toList(),
                       ),
                     ),
-                  ],
-                ),
-              ),
-              Text(
-                'RM ${(item.price * item.quantity).toStringAsFixed(2)}',
-                style: const TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: accentGreen,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Row(
-            children: [
-              Expanded(
-                flex: 3,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
                   ),
+                ),
+                const SizedBox(width: 8),
+                Container(
                   decoration: BoxDecoration(
-                    color: isDarkMode
-                        ? const Color(0xFF333333)
-                        : Colors.grey[100],
+                    color: Colors.red.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: IconButton(
+                    padding: const EdgeInsets.all(8),
+                    icon: const Icon(
+                      Icons.delete_outline,
+                      color: Colors.redAccent,
+                      size: 20,
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _items.removeAt(index);
+                        _updateTotal();
+                      });
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Item name and price row
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Item Name field
+                Container(
+                  decoration: BoxDecoration(
+                    color: isDarkMode ? Colors.grey[850] : Colors.grey[50],
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                      color: isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
-                      width: 0.8,
+                      color: isDarkMode ? Colors.grey[800]! : Colors.grey[200]!,
                     ),
                   ),
-                  child: TextFormField(
-                    initialValue: item.name,
+                  child: TextField(
+                    controller: TextEditingController(text: item.name)
+                      ..selection = TextSelection.collapsed(
+                        offset: item.name.length,
+                      ),
                     style: TextStyle(
-                      fontSize: 14,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w500,
                       color: isDarkMode ? Colors.white : Colors.black87,
                     ),
-                    decoration: const InputDecoration(
-                      hintText: 'Item Name',
+                    decoration: InputDecoration(
+                      hintText: 'Item name (e.g., Chicken Rice)',
+                      hintStyle: TextStyle(
+                        color: isDarkMode ? Colors.white38 : Colors.grey[400],
+                        fontSize: 14,
+                      ),
+                      prefixIcon: Icon(
+                        Icons.shopping_bag_outlined,
+                        size: 20,
+                        color: accentGreen,
+                      ),
                       border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
                     ),
                     onChanged: (newName) {
                       setState(() {
@@ -1105,215 +1161,187 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
                     },
                   ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDarkMode
-                        ? const Color(0xFF333333)
-                        : Colors.grey[100],
-                    borderRadius: BorderRadius.circular(14),
-                    border: Border.all(
-                      color: isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
-                      width: 0.8,
-                    ),
-                  ),
-                  child: TextFormField(
-                    initialValue: item.price > 0
-                        ? item.price.toStringAsFixed(2)
-                        : '',
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: isDarkMode ? Colors.white60 : Colors.grey[700],
-                    ),
-                    decoration: const InputDecoration(
-                      prefixText: 'RM',
-                      prefixStyle: TextStyle(fontSize: 12, color: Colors.grey),
-                      hintText: '0.00',
-                      border: InputBorder.none,
-                      isDense: true,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                    onChanged: (val) {
-                      final parsedPrice = double.tryParse(val) ?? 0.0;
-                      setState(() {
-                        _items[index] = ReceiptItem(
-                          name: item.name,
-                          price: parsedPrice,
-                          quantity: item.quantity,
-                          category: item.category,
-                          unitPrice: item.unitPrice,
-                        );
-                        _updateTotal();
-                      });
-                    },
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                decoration: BoxDecoration(
-                  color: isDarkMode
-                      ? const Color(0xFF333333)
-                      : Colors.grey[100],
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
-                    width: 0.8,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
+
+                const SizedBox(height: 12),
+
+                // Price and Quantity row
+                Row(
                   children: [
-                    IconButton(
-                      icon: const Icon(Icons.remove, size: 14),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 28,
-                        minHeight: 28,
+                    // Price field
+                    Expanded(
+                      flex: 2,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isDarkMode
+                              ? Colors.grey[850]
+                              : Colors.grey[50],
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isDarkMode
+                                ? Colors.grey[800]!
+                                : Colors.grey[200]!,
+                          ),
+                        ),
+                        child: TextField(
+                          controller: TextEditingController(
+                            text: item.price > 0
+                                ? item.price.toStringAsFixed(2)
+                                : '',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w600,
+                            color: accentGreen,
+                          ),
+                          textAlign: TextAlign.center,
+                          decoration: InputDecoration(
+                            prefixText: 'RM ',
+                            prefixStyle: TextStyle(
+                              fontSize: 14,
+                              color: isDarkMode
+                                  ? Colors.white54
+                                  : Colors.grey[600],
+                            ),
+                            hintText: '0.00',
+                            hintStyle: TextStyle(
+                              color: isDarkMode
+                                  ? Colors.white38
+                                  : Colors.grey[400],
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 14,
+                            ),
+                          ),
+                          onChanged: (val) {
+                            final parsedPrice = double.tryParse(val) ?? 0.0;
+                            setState(() {
+                              _items[index] = ReceiptItem(
+                                name: item.name,
+                                price: parsedPrice,
+                                quantity: item.quantity,
+                                category: item.category,
+                                unitPrice: item.unitPrice,
+                              );
+                              _updateTotal();
+                            });
+                          },
+                        ),
                       ),
-                      onPressed: item.quantity <= 1
-                          ? null
-                          : () {
-                              setState(() {
-                                _items[index] = ReceiptItem(
-                                  name: item.name,
-                                  price: item.price,
-                                  quantity: item.quantity - 1,
-                                  category: item.category,
-                                  unitPrice: item.unitPrice,
-                                );
-                                _updateTotal();
-                              });
-                            },
                     ),
-                    Text(
-                      '${item.quantity}',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: isDarkMode ? Colors.white : Colors.black87,
+
+                    const SizedBox(width: 12),
+
+                    // Quantity controls
+                    Expanded(
+                      flex: 1,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: isDarkMode
+                              ? Colors.grey[850]
+                              : Colors.grey[50],
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: isDarkMode
+                                ? Colors.grey[800]!
+                                : Colors.grey[200]!,
+                          ),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                          children: [
+                            GestureDetector(
+                              onTap: () {
+                                if (item.quantity > 1) {
+                                  setState(() {
+                                    _items[index] = ReceiptItem(
+                                      name: item.name,
+                                      price: item.price,
+                                      quantity: item.quantity - 1,
+                                      category: item.category,
+                                      unitPrice: item.unitPrice,
+                                    );
+                                    _updateTotal();
+                                  });
+                                }
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.withOpacity(0.1),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.remove,
+                                  size: 18,
+                                  color: Colors.grey,
+                                ),
+                              ),
+                            ),
+                            Text(
+                              '${item.quantity}',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isDarkMode
+                                    ? Colors.white
+                                    : Colors.black87,
+                              ),
+                            ),
+                            GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _items[index] = ReceiptItem(
+                                    name: item.name,
+                                    price: item.price,
+                                    quantity: item.quantity + 1,
+                                    category: item.category,
+                                    unitPrice: item.unitPrice,
+                                  );
+                                  _updateTotal();
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: accentGreen.withOpacity(0.2),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.add,
+                                  size: 18,
+                                  color: accentGreen,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.add, size: 14, color: accentGreen),
-                      padding: EdgeInsets.zero,
-                      constraints: const BoxConstraints(
-                        minWidth: 28,
-                        minHeight: 28,
-                      ),
-                      onPressed: () {
-                        setState(() {
-                          _items[index] = ReceiptItem(
-                            name: item.name,
-                            price: item.price,
-                            quantity: item.quantity + 1,
-                            category: item.category,
-                            unitPrice: item.unitPrice,
-                          );
-                          _updateTotal();
-                        });
-                      },
                     ),
                   ],
                 ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isDarkMode ? const Color(0xFF3d2323) : Colors.red[50],
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: IconButton(
-                  padding: EdgeInsets.zero,
-                  icon: const Icon(
-                    Icons.delete_outline,
-                    color: Colors.redAccent,
-                    size: 20,
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _items.removeAt(index);
-                      _updateTotal();
-                    });
-                  },
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            decoration: BoxDecoration(
-              color: isDarkMode ? Colors.grey[850] : Colors.grey[50],
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: isDarkMode ? Colors.grey[800]! : Colors.grey[300]!,
-                width: 0.8,
-              ),
-            ),
-            child: DropdownButtonHideUnderline(
-              child: DropdownButton<String>(
-                value: _categories.contains(item.category)
-                    ? item.category
-                    : 'Others',
-                isDense: true,
-                isExpanded: true,
-                icon: Icon(
-                  Icons.arrow_drop_down,
-                  size: 20,
-                  color: isDarkMode ? Colors.white54 : Colors.grey[600],
-                ),
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: isDarkMode ? Colors.white70 : Colors.grey[700],
-                ),
-                dropdownColor: isDarkMode ? Colors.grey[850] : Colors.white,
-                onChanged: (String? newCategory) {
-                  if (newCategory != null) {
-                    setState(() {
-                      _items[index] = ReceiptItem(
-                        name: item.name,
-                        price: item.price,
-                        quantity: item.quantity,
-                        category: newCategory,
-                        unitPrice: item.unitPrice,
-                      );
-                    });
-                  }
-                },
-                items: _categories.map<DropdownMenuItem<String>>((
-                  String value,
-                ) {
-                  return DropdownMenuItem<String>(
-                    value: value,
-                    child: Row(
-                      children: [
-                        Icon(
-                          _getCategoryIcon(value),
-                          size: 16,
-                          color: _getCategoryColor(value),
+
+                // Subtotal display
+                if (item.quantity > 1)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'Subtotal: RM ${(item.price * item.quantity).toStringAsFixed(2)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDarkMode ? Colors.white54 : Colors.grey[600],
+                          fontStyle: FontStyle.italic,
                         ),
-                        const SizedBox(width: 8),
-                        Text(value),
-                      ],
+                      ),
                     ),
-                  );
-                }).toList(),
-              ),
+                  ),
+              ],
             ),
           ),
         ],
