@@ -1,5 +1,8 @@
 // cubit/profile_cubit.dart
+import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import 'dart:io';
@@ -13,174 +16,96 @@ class ProfileCubit extends Cubit<ProfileState> {
   final SupabaseClient _supabase = Supabase.instance.client;
   static const String _userStorageKey = 'user_data';
   bool _isLoading = false;
-
-  // Cache the last loaded user
   UserModel? _cachedUser;
 
   ProfileCubit() : super(ProfileInitial()) {
-    _autoLoadProfile();
+    _loadProfileDirect();
   }
 
-  Future<void> _autoLoadProfile() async {
-    await Future.delayed(const Duration(milliseconds: 100));
-    loadProfile(forceRefresh: false);
+  // NEW: Direct load - shows UI immediately
+  Future<void> _loadProfileDirect() async {
+    // Try to load from cache first
+    final cachedUser = await _loadCachedUser();
+    if (cachedUser != null) {
+      _cachedUser = cachedUser;
+      emit(ProfileLoaded(user: cachedUser, isEditing: false));
+      print('✅ Profile loaded from cache');
+    } else {
+      // If no cache, create default user immediately
+      final defaultUser = UserModel.defaultUser();
+      _cachedUser = defaultUser;
+      await _saveUser(defaultUser);
+      emit(ProfileLoaded(user: defaultUser, isEditing: false));
+      print('✅ Default profile created');
+    }
+
+    // Then update from network in background (with timeout)
+    _updateFromNetwork();
   }
 
+  Future<void> _updateFromNetwork() async {
+    try {
+      if (!_supabaseService.isUserLoggedIn) return;
+
+      final profileData = await _supabaseService.getUserProfile().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () => null,
+      );
+
+      if (profileData != null &&
+          profileData.isNotEmpty &&
+          state is ProfileLoaded) {
+        final currentState = state as ProfileLoaded;
+        final networkUser = UserModel.fromJson(profileData);
+
+        // Preserve local image if it exists
+        String finalImageUrl = currentState.user.profileImageUrl;
+        if (currentState.user.profileImageUrl.isNotEmpty &&
+            currentState.user.hasLocalImage) {
+          finalImageUrl = currentState.user.profileImageUrl;
+        } else {
+          finalImageUrl = networkUser.profileImageUrl;
+        }
+
+        final updatedUser = currentState.user.copyWith(
+          fullName: networkUser.fullName,
+          email: networkUser.email,
+          currency: networkUser.currency,
+          isDarkMode: networkUser.isDarkMode,
+          pushNotificationsEnabled: networkUser.pushNotificationsEnabled,
+          totalSpent: networkUser.totalSpent,
+          totalBudget: networkUser.totalBudget,
+          profileImageUrl: finalImageUrl,
+        );
+
+        _cachedUser = updatedUser;
+        await _saveUser(updatedUser);
+        emit(ProfileLoaded(user: updatedUser, isEditing: false));
+        print('✅ Profile updated from network');
+      }
+    } catch (e) {
+      print('Network update failed: $e');
+    }
+  }
+
+  // Keep existing loadProfile for compatibility
   Future<void> loadProfile({bool forceRefresh = false}) async {
     if (_isLoading) return;
     _isLoading = true;
-
-    if (!forceRefresh && _cachedUser != null) {
-      emit(ProfileLoaded(user: _cachedUser!, isEditing: false));
-      _isLoading = false;
-      _refreshProfileInBackground();
-      return;
-    }
 
     final cachedUser = await _loadCachedUser();
     if (cachedUser != null && !forceRefresh) {
       _cachedUser = cachedUser;
       emit(ProfileLoaded(user: cachedUser, isEditing: false));
       _isLoading = false;
-      _refreshProfileInBackground();
       return;
     }
 
-    await _loadProfileFromNetwork();
+    final defaultUser = UserModel.defaultUser();
+    _cachedUser = defaultUser;
+    await _saveUser(defaultUser);
+    emit(ProfileLoaded(user: defaultUser, isEditing: false));
     _isLoading = false;
-  }
-
-  Future<void> _refreshProfileInBackground() async {
-    try {
-      if (!_supabaseService.isUserLoggedIn) {
-        return;
-      }
-
-      final profileData = await _supabaseService.getUserProfile();
-      if (profileData != null && profileData.isNotEmpty) {
-        final user = UserModel.fromJson(profileData);
-
-        // Preserve local image if it exists
-        UserModel finalUser = user;
-        if (_cachedUser != null && _cachedUser!.profileImageUrl.isNotEmpty) {
-          final localPath = _cachedUser!.profileImageUrl;
-          if (_isLocalPath(localPath)) {
-            String cleanPath = localPath.replaceFirst('file://', '');
-            if (File(cleanPath).existsSync()) {
-              finalUser = user.copyWith(profileImageUrl: localPath);
-            }
-          }
-        }
-
-        if (_cachedUser != finalUser) {
-          _cachedUser = finalUser;
-          await _saveUser(finalUser);
-          if (state is ProfileLoaded) {
-            emit(ProfileLoaded(user: finalUser, isEditing: false));
-          }
-        }
-      }
-    } catch (e) {
-      print('Background refresh failed: $e');
-    }
-  }
-
-  Future<void> _loadProfileFromNetwork() async {
-    emit(ProfileLoading());
-
-    try {
-      if (!_supabaseService.isUserLoggedIn) {
-        emit(ProfileUnauthenticated());
-        return;
-      }
-
-      final profileData = await _supabaseService.getUserProfile();
-
-      if (profileData != null && profileData.isNotEmpty) {
-        UserModel user = UserModel.fromJson(profileData);
-
-        // Check if we have a local image
-        final cachedUser = await _loadCachedUser();
-        if (cachedUser != null && cachedUser.profileImageUrl.isNotEmpty) {
-          final localPath = cachedUser.profileImageUrl;
-          if (_isLocalPath(localPath)) {
-            String cleanPath = localPath.replaceFirst('file://', '');
-            if (File(cleanPath).existsSync()) {
-              user = user.copyWith(profileImageUrl: localPath);
-            }
-          }
-        }
-
-        _cachedUser = user;
-        await _saveUser(user);
-        emit(ProfileLoaded(user: user, isEditing: false));
-        print(
-          '✅ Profile loaded: ${user.fullName}, Image: ${user.profileImageUrl}',
-        );
-      } else {
-        await _createMissingProfile();
-      }
-    } catch (e) {
-      print('Error loading profile: $e');
-      await _createMissingProfile();
-    }
-  }
-
-  Future<void> _createMissingProfile() async {
-    try {
-      final user = _supabase.auth.currentUser;
-      if (user != null) {
-        String userName = 'User';
-
-        if (user.userMetadata != null) {
-          userName =
-              user.userMetadata!['full_name'] ??
-              user.userMetadata!['name'] ??
-              user.userMetadata!['fullName'] ??
-              'User';
-        }
-
-        if (userName == 'User' && user.email != null) {
-          userName = user.email!.split('@').first;
-        }
-
-        print('Creating profile for user: ${user.id}');
-
-        await _supabaseService.createUserProfile(
-          userId: user.id,
-          email: user.email ?? '',
-          name: userName,
-        );
-
-        final profileData = await _supabaseService.getUserProfile();
-        if (profileData != null) {
-          final newUser = UserModel.fromJson(profileData);
-          _cachedUser = newUser;
-          await _saveUser(newUser);
-          emit(ProfileLoaded(user: newUser, isEditing: false));
-        } else {
-          final defaultUser = UserModel.defaultUser().copyWith(
-            id: user.id,
-            email: user.email ?? '',
-            fullName: userName,
-          );
-          _cachedUser = defaultUser;
-          await _saveUser(defaultUser);
-          emit(ProfileLoaded(user: defaultUser, isEditing: false));
-        }
-      } else {
-        final defaultUser = UserModel.defaultUser();
-        _cachedUser = defaultUser;
-        await _saveUser(defaultUser);
-        emit(ProfileLoaded(user: defaultUser, isEditing: false));
-      }
-    } catch (e) {
-      print('Error creating profile: $e');
-      final defaultUser = UserModel.defaultUser();
-      _cachedUser = defaultUser;
-      await _saveUser(defaultUser);
-      emit(ProfileLoaded(user: defaultUser, isEditing: false));
-    }
   }
 
   Future<UserModel?> _loadCachedUser() async {
@@ -201,7 +126,6 @@ class ProfileCubit extends Cubit<ProfileState> {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString(_userStorageKey, json.encode(user.toJson()));
-      print('✅ User saved to cache with image: ${user.profileImageUrl}');
     } catch (e) {
       print('Error saving user: $e');
     }
@@ -211,81 +135,38 @@ class ProfileCubit extends Cubit<ProfileState> {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;
 
-      print('📸 Updating profile image to: $imagePath');
+      debugPrint('📸 Updating profile image to: $imagePath');
 
-      // Verify the image exists locally
-      if (imagePath.isNotEmpty && _isLocalPath(imagePath)) {
-        String cleanPath = imagePath.replaceFirst('file://', '');
-        if (!File(cleanPath).existsSync()) {
-          print('❌ Image file does not exist: $cleanPath');
-          emit(ProfileError(message: 'Image file not found'));
+      // Verify the image exists before updating
+      if (imagePath.isNotEmpty) {
+        final file = File(imagePath);
+        final exists = await file.exists();
+        if (!exists) {
+          debugPrint('❌ Image file does not exist: $imagePath');
+          emit(ProfileError(message: 'Failed to load image'));
           return;
         }
+        debugPrint('✅ Image file verified, size: ${await file.length()} bytes');
       }
 
-      // Delete old local image if it exists and is different
-      final oldImageUrl = currentState.user.profileImageUrl;
-      if (oldImageUrl.isNotEmpty && _isLocalPath(oldImageUrl)) {
-        try {
-          String cleanOldPath = oldImageUrl.replaceFirst('file://', '');
-          if (File(cleanOldPath).existsSync() && imagePath != oldImageUrl) {
-            await File(cleanOldPath).delete();
-            print('🗑️ Deleted old profile image: $cleanOldPath');
-          }
-        } catch (e) {
-          print('Error deleting old image: $e');
-        }
-      }
-
-      // 1. Create the updated user model
       final updatedUser = currentState.user.copyWith(
         profileImageUrl: imagePath,
       );
 
-      // 2. Update memory cache and SharedPreferences
       _cachedUser = updatedUser;
       await _saveUser(updatedUser);
 
-      // 3. Emit the updated state immediately so the UI changes instantly
+      // Force a complete rebuild by emitting a new state
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
-      emit(ProfileImageUpdated(imageUrl: imagePath));
 
-      // 4. ✨ SYNC TO BACKEND: Tell Supabase about your new profile image path!
-      try {
-        await _supabaseService.updateUserProfile(profileImageUrl: imagePath);
-        print('✅ Profile image path synchronized with Supabase');
-      } catch (e) {
-        print('❌ Failed to update profile image path in Supabase: $e');
+      if (imagePath.isEmpty) {
+        emit(ProfileUpdateSuccess(message: 'Profile photo removed'));
+      } else {
+        emit(ProfileUpdateSuccess(message: 'Profile photo updated!'));
       }
-    }
-  }
 
-  // Helper to check if path is local
-  bool _isLocalPath(String path) {
-    return path.isNotEmpty &&
-        (path.startsWith('/') ||
-            path.startsWith('file://') ||
-            path.contains('/storage/') ||
-            path.contains('/data/'));
-  }
-
-  Future<void> saveUser(UserModel user) async {
-    try {
-      await _supabaseService.updateUserProfile(
-        fullName: user.fullName,
-        currency: user.currency,
-        isDarkMode: user.isDarkMode,
-        pushNotificationsEnabled: user.pushNotificationsEnabled,
-        biometricEnabled: user.biometricEnabled,
-        smallExpensesLimit: user.smallExpensesLimit,
-        profileImageUrl: user.profileImageUrl,
-      );
-      _cachedUser = user;
-      await _saveUser(user);
-      emit(ProfileLoaded(user: user, isEditing: false));
-      emit(ProfileUpdateSuccess(message: 'Profile saved successfully'));
-    } catch (e) {
-      emit(ProfileError(message: 'Failed to save profile: ${e.toString()}'));
+      // Sync to backend in background
+      _supabaseService.updateUserProfile(profileImageUrl: imagePath);
     }
   }
 
@@ -314,45 +195,6 @@ class ProfileCubit extends Cubit<ProfileState> {
       emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
       _saveUser(updatedUser);
       _supabaseService.updateUserProfile(isDarkMode: updatedUser.isDarkMode);
-    }
-  }
-
-  void toggleBiometric() {
-    if (state is ProfileLoaded) {
-      final currentState = state as ProfileLoaded;
-      final updatedUser = currentState.user.copyWith(
-        biometricEnabled: !currentState.user.biometricEnabled,
-      );
-      _cachedUser = updatedUser;
-      emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
-      _saveUser(updatedUser);
-      _supabaseService.updateUserProfile(
-        biometricEnabled: updatedUser.biometricEnabled,
-      );
-    }
-  }
-
-  void toggleEditMode() {
-    if (state is ProfileLoaded) {
-      final currentState = state as ProfileLoaded;
-      emit(
-        ProfileLoaded(
-          user: currentState.user,
-          isEditing: !currentState.isEditing,
-        ),
-      );
-    }
-  }
-
-  void updateCurrency(String currency) {
-    if (state is ProfileLoaded) {
-      final currentState = state as ProfileLoaded;
-      final updatedUser = currentState.user.copyWith(currency: currency);
-      _cachedUser = updatedUser;
-      emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
-      emit(ProfileUpdateSuccess(message: 'Currency updated to $currency'));
-      _saveUser(updatedUser);
-      _supabaseService.updateUserProfile(currency: currency);
     }
   }
 
@@ -404,10 +246,6 @@ class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
-  void changePassword() {
-    emit(ProfilePasswordChanged());
-  }
-
   void clearLocalProfileData() {
     _cachedUser = null;
     SharedPreferences.getInstance()
@@ -415,45 +253,7 @@ class ProfileCubit extends Cubit<ProfileState> {
         .catchError((e) {});
   }
 
-  Future<void> resetToDefault() async {
-    final defaultUser = UserModel.defaultUser();
-    _cachedUser = defaultUser;
-    await _saveUser(defaultUser);
-    emit(ProfileLoaded(user: defaultUser, isEditing: false));
-    emit(ProfileUpdateSuccess(message: 'Profile reset to default'));
-  }
-
-  void clearError() {
-    if (state is ProfileError) {
-      if (state is ProfileLoaded) {
-        final currentState = state as ProfileLoaded;
-        emit(
-          ProfileLoaded(
-            user: currentState.user,
-            isEditing: currentState.isEditing,
-          ),
-        );
-      } else if (state is ProfileInitial) {
-        emit(ProfileInitial());
-      }
-    }
-  }
-
-  void clearSuccess() {
-    if (state is ProfileUpdateSuccess) {
-      if (state is ProfileLoaded) {
-        final currentState = state as ProfileLoaded;
-        emit(
-          ProfileLoaded(
-            user: currentState.user,
-            isEditing: currentState.isEditing,
-          ),
-        );
-      }
-    }
-  }
-
   Future<void> forceRefreshProfile() async {
-    await loadProfile(forceRefresh: true);
+    await _updateFromNetwork();
   }
 }

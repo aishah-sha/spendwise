@@ -9,6 +9,7 @@ import '../cubit/add_expense_cubit.dart';
 import '../cubit/notification_cubit.dart';
 import '../widgets/notification_badge.dart';
 import 'add_expense_screen.dart';
+import 'add_budget_screen.dart'; // ADD THIS IMPORT
 import 'budget_screen.dart';
 import 'expense_history_screen.dart';
 import 'analytics_screen.dart';
@@ -21,7 +22,6 @@ import 'profile_screen.dart';
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
-  // Precise hex codes extracted from your interface image
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
   static const Color accentGreen = Color(0xFF32BA32);
@@ -55,7 +55,6 @@ class DashboardScreen extends StatelessWidget {
                   Expanded(
                     child: Stack(
                       children: [
-                        // Background Image Layer
                         Positioned(
                           top: -80,
                           right: -40,
@@ -64,7 +63,6 @@ class DashboardScreen extends StatelessWidget {
                             child: Image.asset('assets/FYP2.png', width: 400),
                           ),
                         ),
-                        // Foreground Content
                         _buildMainContent(context, isDarkMode),
                       ],
                     ),
@@ -78,7 +76,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // FIXED: Extract main content to a separate widget that listens to changes
   Widget _buildMainContent(BuildContext context, bool isDarkMode) {
     return MultiBlocListener(
       listeners: [
@@ -98,7 +95,6 @@ class DashboardScreen extends StatelessWidget {
             builder: (context, budgetState) {
               double monthlyBudget = expenseState.budget;
               double totalSpent = expenseState.totalSpending;
-              // Total Balance = Budget + (Total Income - Total Expenses)
               double totalBalanceWithBudget =
                   expenseState.totalBalance + monthlyBudget;
 
@@ -154,6 +150,7 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
+  // FIXED: FAB now opens Add Budget screen, not Add Money dialog
   Widget _buildFab(BuildContext context, bool isDarkMode) {
     return Container(
       margin: const EdgeInsets.only(top: 30),
@@ -166,6 +163,7 @@ class DashboardScreen extends StatelessWidget {
           side: BorderSide(color: Color(0xFFD4E5B0), width: 4),
         ),
         onPressed: () async {
+          // FAB opens Add Expense Screen
           final result = await Navigator.push(
             context,
             MaterialPageRoute(
@@ -176,11 +174,10 @@ class DashboardScreen extends StatelessWidget {
             ),
           );
 
-          // CRITICAL FIX: Refresh data when returning from add expense
+          // Refresh data when returning from add expense
           if (result == true && context.mounted) {
             await context.read<ExpenseCubit>().refreshExpenses();
             await context.read<BudgetCubit>().loadBudget(forceRefresh: true);
-            // No setState needed - BlocBuilder will rebuild automatically
           }
         },
         child: const Icon(Icons.add, color: accentGreen, size: 45),
@@ -259,7 +256,6 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  // FIXED: Added explicit BlocBuilder to handle state subscription cleanly
   Widget _buildWelcomeSection(BuildContext context, bool isDarkMode) {
     return BlocBuilder<ProfileCubit, ProfileState>(
       builder: (context, state) {
@@ -351,15 +347,61 @@ class DashboardScreen extends StatelessWidget {
                   color: Colors.white,
                 ),
               ),
+              // FIXED: This + button now opens Add Budget screen
               GestureDetector(
-                onTap: () {
-                  _showAddMoneyDialog(context, isDarkMode);
+                onTap: () async {
+                  // Get current budget state to determine if we're adding or setting
+                  final budgetState = context.read<BudgetCubit>().state;
+                  bool isAdding = false;
+
+                  if (budgetState is budget_cubit.BudgetLoaded) {
+                    isAdding = budgetState.budget.monthlyLimit > 0;
+                  }
+
+                  // Navigate to Add Budget Screen
+                  final result = await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => MultiBlocProvider(
+                        providers: [
+                          BlocProvider.value(
+                            value: context.read<BudgetCubit>(),
+                          ),
+                          BlocProvider.value(
+                            value: context.read<ExpenseCubit>(),
+                          ),
+                          BlocProvider.value(
+                            value: context.read<ProfileCubit>(),
+                          ),
+                        ],
+                        child: AddBudgetScreen(isAdding: isAdding),
+                      ),
+                    ),
+                  );
+
+                  // Refresh data when returning from add budget
+                  if (result == true && context.mounted) {
+                    await context.read<ExpenseCubit>().refreshExpenses();
+                    await context.read<BudgetCubit>().loadBudget(
+                      forceRefresh: true,
+                    );
+
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Budget updated successfully!'),
+                          backgroundColor: accentGreen,
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  }
                 },
                 child: Container(
                   width: 45,
                   height: 45,
                   decoration: BoxDecoration(
-                    color: accentGreen,
+                    color: Colors.white.withOpacity(0.2),
                     borderRadius: BorderRadius.circular(15),
                   ),
                   child: const Icon(Icons.add, color: Colors.white, size: 30),
@@ -487,7 +529,6 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
             ).then((_) {
-              // Refresh data when returning from budget screen
               context.read<ExpenseCubit>().loadExpenses();
               context.read<BudgetCubit>().loadBudget(forceRefresh: true);
             });
@@ -579,7 +620,6 @@ class DashboardScreen extends StatelessWidget {
     BuildContext context,
     bool isDarkMode,
   ) {
-    // Get the 5 most recent expenses (non-income only for display)
     final expensesOnly = state.allExpenses
         .where((e) => !(e.isIncome ?? false))
         .toList();
@@ -624,7 +664,6 @@ class DashboardScreen extends StatelessWidget {
                 ),
               ),
             ).then((_) {
-              // Refresh data when returning from history screen
               context.read<ExpenseCubit>().loadExpenses();
               context.read<BudgetCubit>().loadBudget(forceRefresh: true);
             });
@@ -643,14 +682,6 @@ class DashboardScreen extends StatelessWidget {
     BuildContext context,
     bool isDarkMode,
   ) {
-    print('🏠 DASHBOARD: Building recent expenses list');
-    print('🏠 DASHBOARD: Number of expenses: ${recentExpenses.length}');
-
-    for (var exp in recentExpenses) {
-      print(
-        '🏠 DASHBOARD Expense: ${exp.title} - RM${exp.amount} - Date: ${exp.date}',
-      );
-    }
     if (recentExpenses.isEmpty) {
       return Container(
         padding: const EdgeInsets.all(20),
@@ -798,7 +829,6 @@ class DashboardScreen extends StatelessWidget {
               true,
               isDarkMode,
               () {
-                // Already on home screen - refresh data
                 context.read<ExpenseCubit>().loadExpenses();
                 context.read<BudgetCubit>().loadBudget(forceRefresh: true);
               },
@@ -823,7 +853,6 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ).then((_) {
-                  // Refresh data when returning from history screen
                   context.read<ExpenseCubit>().loadExpenses();
                   context.read<BudgetCubit>().loadBudget(forceRefresh: true);
                 });
@@ -850,7 +879,6 @@ class DashboardScreen extends StatelessWidget {
                     ),
                   ),
                 ).then((_) {
-                  // Refresh data when returning from budget screen
                   context.read<ExpenseCubit>().loadExpenses();
                   context.read<BudgetCubit>().loadBudget(forceRefresh: true);
                 });
@@ -913,100 +941,6 @@ class DashboardScreen extends StatelessWidget {
                   ? accentGreen
                   : (isDarkMode ? Colors.white70 : Colors.black54),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showAddMoneyDialog(BuildContext context, bool isDarkMode) {
-    final TextEditingController amountController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: isDarkMode ? Colors.grey[850] : Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Add Money',
-          style: TextStyle(color: isDarkMode ? Colors.white : darkText),
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: amountController,
-              keyboardType: TextInputType.number,
-              style: TextStyle(color: isDarkMode ? Colors.white : darkText),
-              decoration: InputDecoration(
-                prefixText: 'RM ',
-                hintText: '0.00',
-                hintStyle: TextStyle(
-                  color: isDarkMode ? Colors.white60 : Colors.grey,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: accentGreen, width: 2),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                    color: isDarkMode ? Colors.grey[700]! : Colors.grey,
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: TextStyle(
-                color: isDarkMode ? Colors.white70 : Colors.grey,
-              ),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              if (amountController.text.isNotEmpty) {
-                final amount = double.tryParse(amountController.text);
-                if (amount != null && amount > 0) {
-                  Navigator.pop(context);
-                  await context.read<ExpenseCubit>().addIncome(amount);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text(
-                          'Added RM${amount.toStringAsFixed(2)} to balance',
-                        ),
-                        backgroundColor: accentGreen,
-                        duration: const Duration(seconds: 2),
-                      ),
-                    );
-                  }
-                } else {
-                  Navigator.pop(context);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Please enter a valid amount'),
-                        backgroundColor: Colors.red,
-                      ),
-                    );
-                  }
-                }
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: accentGreen,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Add'),
           ),
         ],
       ),

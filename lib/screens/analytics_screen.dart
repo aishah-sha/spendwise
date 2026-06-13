@@ -10,7 +10,6 @@ import '../cubit/profile_cubit.dart';
 import '../cubit/profile_state.dart';
 import '../cubit/budget_cubit.dart' as budget_cubit;
 import '../widgets/total_spent_card.dart';
-import '../widgets/category_legend.dart';
 import '../widgets/notification_badge.dart';
 import 'dashboard_screen.dart';
 import 'expense_history_screen.dart';
@@ -23,7 +22,6 @@ const Color accentGreen = Color(0xFF32BA32);
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key});
 
-  // --- THEME COLORS ---
   static const Color bgColor = Color(0xFFE8F7CB);
   static const Color headerColor = Color(0xFFC5D997);
   static const Color darkText = Color(0xFF000000);
@@ -94,7 +92,6 @@ class AnalyticsScreen extends StatelessWidget {
                               isDarkMode,
                             ),
                             const SizedBox(height: 16),
-                            CategoryLegend(isDarkMode: isDarkMode),
                             const SizedBox(height: 20),
                           ],
                         ),
@@ -113,6 +110,141 @@ class AnalyticsScreen extends StatelessWidget {
       },
     );
   }
+
+  // ============ HELPER METHODS FOR CATEGORY COLORS AND ICONS ============
+
+  Color _getCategoryChartColor(String categoryName) {
+    switch (categoryName.toLowerCase()) {
+      case 'groceries':
+      case 'grocery':
+      case 'household/groceries':
+      case 'household':
+        return const Color(0xFF4CAF50); // Green
+      case 'food':
+      case 'dining':
+      case 'restaurant':
+        return const Color(0xFFFF9800); // Orange
+      case 'beverages':
+      case 'beverage':
+      case 'drinks':
+        return const Color(0xFF2196F3); // Blue
+      case 'clothes':
+      case 'clothing':
+      case 'fashion':
+        return const Color(0xFF9C27B0); // Purple
+      case 'stationery':
+        return const Color(0xFF009688); // Teal
+      case 'transport':
+      case 'transportation':
+      case 'travel':
+        return const Color(0xFF795548); // Brown
+      case 'entertainment':
+      case 'fun':
+        return const Color(0xFFE91E63); // Pink
+      case 'shopping':
+      case 'retail':
+        return const Color(0xFFFF5722); // Deep Orange
+      case 'pet food':
+      case 'pet supplies':
+      case 'pets':
+        return const Color(0xFF8BC34A); // Light Green
+      case 'health':
+      case 'healthcare':
+      case 'medical':
+        return const Color(0xFFF44336); // Red
+      case 'snacks & desserts':
+      case 'snacks':
+      case 'desserts':
+        return const Color(0xFFFF6B6B); // Light Red
+      case 'cooking ingredients':
+        return const Color(0xFFFFA726); // Light Orange
+      case 'baking':
+        return const Color(0xFFFFB74D); // Golden
+      case 'education':
+      case 'learning':
+        return const Color(0xFF673AB7); // Deep Purple
+      case 'bills':
+      case 'utilities':
+        return const Color(0xFF607D8B); // Blue Grey
+      case 'others':
+      case 'other':
+      case 'misc':
+        return const Color(0xFF9E9E9E); // Grey
+      default:
+        return accentGreen;
+    }
+  }
+
+  IconData _getCategoryIconForChart(String categoryName) {
+    switch (categoryName.toLowerCase()) {
+      case 'groceries':
+      case 'grocery':
+      case 'household/groceries':
+      case 'household':
+        return Icons.shopping_cart_outlined;
+      case 'food':
+      case 'dining':
+      case 'restaurant':
+        return Icons.restaurant_outlined;
+      case 'beverages':
+      case 'beverage':
+        return Icons.local_cafe_outlined;
+      case 'clothes':
+      case 'clothing':
+        return Icons.checkroom_outlined;
+      case 'stationery':
+        return Icons.edit_note_outlined;
+      case 'transport':
+      case 'transportation':
+        return Icons.directions_car_outlined;
+      case 'entertainment':
+        return Icons.movie_outlined;
+      case 'shopping':
+        return Icons.shopping_bag_outlined;
+      case 'pet food':
+      case 'pet supplies':
+        return Icons.pets_outlined;
+      case 'health':
+      case 'healthcare':
+        return Icons.favorite_outlined;
+      case 'snacks & desserts':
+        return Icons.icecream_outlined;
+      case 'education':
+        return Icons.school_outlined;
+      case 'bills':
+      case 'utilities':
+        return Icons.receipt_outlined;
+      case 'others':
+        return Icons.category_outlined;
+      default:
+        return Icons.label_outlined;
+    }
+  }
+
+  String _standardizeCategoryName(String category) {
+    final Map<String, String> categoryMap = {
+      'Grocery': 'Groceries',
+      'Groceries': 'Groceries',
+      'Household/Groceries': 'Groceries',
+      'Household': 'Groceries',
+      'Supermarket': 'Groceries',
+      'Food': 'Food',
+      'Foods': 'Food',
+      'Dining': 'Food',
+      'Restaurant': 'Food',
+      'Beverage': 'Beverages',
+      'Beverages': 'Beverages',
+      'Drink': 'Beverages',
+      'Pet Food': 'Pet Supplies',
+      'Pet Supplies': 'Pet Supplies',
+      'Pets': 'Pet Supplies',
+      'Other': 'Others',
+      'Misc': 'Others',
+    };
+    return categoryMap[category] ?? category;
+  }
+
+  // ============ BUILD METHODS ============
 
   Widget _buildFab(BuildContext context, bool isDarkMode) {
     return Container(
@@ -282,7 +414,6 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  // --- SPENDING INSIGHTS HEADER ---
   Widget _buildSpendingInsightsHeader(
     BuildContext context,
     ExpenseState state,
@@ -376,7 +507,6 @@ class AnalyticsScreen extends StatelessWidget {
     return dailySpending;
   }
 
-  // --- ENHANCED DAILY SPENDING TREND ---
   Widget _buildEnhancedDailySpendingTrend(
     BuildContext context,
     ExpenseState state,
@@ -439,7 +569,6 @@ class AnalyticsScreen extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Stats row
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: Row(
@@ -469,13 +598,11 @@ class AnalyticsScreen extends StatelessWidget {
               ],
             ),
           ),
-          // Chart
           SizedBox(
             height: 200,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Y-axis labels
                 Container(
                   width: 40,
                   margin: const EdgeInsets.only(right: 8),
@@ -506,7 +633,6 @@ class AnalyticsScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                // Bars
                 Expanded(
                   child: ListView.builder(
                     scrollDirection: Axis.horizontal,
@@ -527,7 +653,6 @@ class AnalyticsScreen extends StatelessWidget {
                         child: Column(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
-                            // Amount label
                             if (amount > 0)
                               Padding(
                                 padding: const EdgeInsets.only(bottom: 4),
@@ -546,7 +671,6 @@ class AnalyticsScreen extends StatelessWidget {
                                   ),
                                 ),
                               ),
-                            // Bar
                             Container(
                               height: height,
                               decoration: BoxDecoration(
@@ -566,7 +690,6 @@ class AnalyticsScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(height: 8),
-                            // Date label
                             Text(
                               _getDateLabel(date, period),
                               style: TextStyle(
@@ -641,16 +764,29 @@ class AnalyticsScreen extends StatelessWidget {
     }
   }
 
-  // --- CATEGORY CIRCLE CHART ---
+  // UPDATED: Category Circle Chart with standardization and colors
   Widget _buildCategoryCircleChart(
     BuildContext context,
     ExpenseState state,
     bool isDarkMode,
   ) {
-    final Map<String, double> categoriesMap = state.sortedCategoryTotals;
-    final double total = state.totalSpent;
+    // Standardize category names before processing
+    final Map<String, double> standardizedCategories = {};
+    final rawCategories = state.sortedCategoryTotals;
 
-    if (categoriesMap.isEmpty || total == 0) {
+    for (var entry in rawCategories.entries) {
+      final standardName = _standardizeCategoryName(entry.key);
+      standardizedCategories[standardName] =
+          (standardizedCategories[standardName] ?? 0) + entry.value;
+    }
+
+    // Sort again after standardization
+    final sortedEntries = standardizedCategories.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    final double total = sortedEntries.fold(0.0, (sum, e) => sum + e.value);
+
+    if (sortedEntries.isEmpty || total == 0) {
       return Container(
         padding: const EdgeInsets.all(40),
         decoration: BoxDecoration(
@@ -687,8 +823,7 @@ class AnalyticsScreen extends StatelessWidget {
       );
     }
 
-    final List<MapEntry<String, double>> categoryEntries = categoriesMap.entries
-        .toList();
+    final List<MapEntry<String, double>> categoryEntries = sortedEntries;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -716,42 +851,60 @@ class AnalyticsScreen extends StatelessWidget {
           const SizedBox(height: 16),
           ...categoryEntries.take(5).map((entry) {
             final percentage = (entry.value / total) * 100;
+            final categoryColor = _getCategoryChartColor(entry.key);
+            final categoryIcon = _getCategoryIconForChart(entry.key);
+
             return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: Row(
                 children: [
                   Container(
-                    width: 12,
-                    height: 12,
+                    width: 28,
+                    height: 28,
                     decoration: BoxDecoration(
-                      color: context.read<ExpenseCubit>().getCategoryColor(
-                        entry.key,
-                      ),
-                      shape: BoxShape.circle,
+                      color: categoryColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(8),
                     ),
+                    child: Icon(categoryIcon, size: 16, color: categoryColor),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 12),
                   Expanded(
+                    flex: 2,
                     child: Text(
                       entry.key,
                       style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
                         color: isDarkMode ? Colors.white : darkText,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: categoryColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Text(
+                      '${percentage.toStringAsFixed(1)}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: categoryColor,
                       ),
                     ),
                   ),
-                  Text(
-                    '${percentage.toStringAsFixed(1)}%',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: isDarkMode ? Colors.white : darkText,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
+                  const SizedBox(width: 12),
                   Text(
                     'RM${entry.value.toStringAsFixed(0)}',
-                    style: const TextStyle(
-                      color: accentGreen,
+                    style: TextStyle(
+                      fontSize: 14,
                       fontWeight: FontWeight.bold,
+                      color: categoryColor,
                     ),
                   ),
                 ],
@@ -774,7 +927,6 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
-  // --- BOTTOM NAVIGATION ---
   Widget _buildBottomNavigation(BuildContext context, bool isDarkMode) {
     return BottomAppBar(
       color: isDarkMode ? Colors.grey[900] : headerColor,
@@ -933,12 +1085,33 @@ class AnalyticsScreen extends StatelessWidget {
   }
 }
 
-// Custom Painter
+// Custom Painter for Pie Chart
 class CategoryCirclePainter extends CustomPainter {
   final List<MapEntry<String, double>> categories;
   final double total;
   final ExpenseCubit cubit;
   final bool isDarkMode;
+
+  // Predefined vibrant colors for categories
+  static const List<Color> _vibrantColors = [
+    Color(0xFFE91E63), // Pink
+    Color(0xFF9C27B0), // Purple
+    Color(0xFF673AB7), // Deep Purple
+    Color(0xFF3F51B5), // Indigo
+    Color(0xFF2196F3), // Blue
+    Color(0xFF03A9F4), // Light Blue
+    Color(0xFF00BCD4), // Cyan
+    Color(0xFF009688), // Teal
+    Color(0xFF4CAF50), // Green
+    Color(0xFF8BC34A), // Light Green
+    Color(0xFFCDDC39), // Lime
+    Color(0xFFFFEB3B), // Yellow
+    Color(0xFFFFC107), // Amber
+    Color(0xFFFF9800), // Orange
+    Color(0xFFFF5722), // Deep Orange
+    Color(0xFF795548), // Brown
+    Color(0xFF607D8B), // Blue Grey
+  ];
 
   CategoryCirclePainter({
     required this.categories,
@@ -947,32 +1120,80 @@ class CategoryCirclePainter extends CustomPainter {
     this.isDarkMode = false,
   });
 
+  Color _getColorForCategory(String categoryName, int index) {
+    switch (categoryName.toLowerCase()) {
+      case 'groceries':
+      case 'grocery':
+      case 'household/groceries':
+      case 'household':
+        return const Color(0xFF4CAF50);
+      case 'food':
+      case 'dining':
+      case 'restaurant':
+        return const Color(0xFFFF9800);
+      case 'beverages':
+      case 'beverage':
+        return const Color(0xFF2196F3);
+      case 'clothes':
+      case 'clothing':
+        return const Color(0xFF9C27B0);
+      case 'stationery':
+        return const Color(0xFF009688);
+      case 'transport':
+      case 'transportation':
+        return const Color(0xFF795548);
+      case 'entertainment':
+        return const Color(0xFFE91E63);
+      case 'shopping':
+        return const Color(0xFFFF5722);
+      case 'pet food':
+      case 'pet supplies':
+        return const Color(0xFF8BC34A);
+      case 'health':
+      case 'healthcare':
+        return const Color(0xFFF44336);
+      case 'snacks & desserts':
+        return const Color(0xFFFF6B6B);
+      case 'others':
+        return const Color(0xFF9E9E9E);
+      default:
+        return _vibrantColors[index % _vibrantColors.length];
+    }
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     if (categories.isEmpty || total == 0) return;
+
     final center = Offset(size.width / 2, size.height / 2);
     final radius = size.width / 2.5;
     final rect = Rect.fromCircle(center: center, radius: radius);
     double startAngle = -90 * (3.14159 / 180);
 
-    for (var entry in categories) {
+    for (int i = 0; i < categories.length; i++) {
+      final entry = categories[i];
       final sweepAngle = (entry.value / total) * 360 * (3.14159 / 180);
+
+      final color = _getColorForCategory(entry.key, i);
+
       canvas.drawArc(
         rect,
         startAngle,
         sweepAngle,
         true,
-        Paint()..color = cubit.getCategoryColor(entry.key),
+        Paint()..color = color,
       );
       startAngle += sweepAngle;
     }
 
+    // Draw inner circle (donut hole)
     canvas.drawCircle(
       center,
       radius * 0.6,
       Paint()..color = isDarkMode ? Colors.grey[850]! : Colors.white,
     );
 
+    // Draw center text
     final textPainter = TextPainter(
       text: TextSpan(
         text: '${categories.length}',

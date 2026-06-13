@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:spendwise/services/image_picker_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Cubits
 import '../cubit/budget_cubit.dart';
@@ -11,7 +13,7 @@ import '../cubit/notification_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import '../cubit/profile_state.dart';
 import '../cubit/add_expense_cubit.dart';
-import '../cubit/auth_cubit.dart';
+import '../cubit/auth_cubit.dart' as auth_cubit;
 
 // Screens
 import '../widgets/notification_badge.dart';
@@ -37,9 +39,9 @@ class ProfileScreen extends StatelessWidget {
       context.read<ProfileCubit>().loadProfile();
     });
 
-    return BlocListener<AuthCubit, AuthState>(
+    return BlocListener<auth_cubit.AuthCubit, auth_cubit.AuthState>(
       listener: (context, state) {
-        if (state is Unauthenticated) {
+        if (state is auth_cubit.Unauthenticated) {
           Navigator.of(context).pushAndRemoveUntil(
             MaterialPageRoute(builder: (context) => const WelcomeScreen()),
             (route) => false,
@@ -294,8 +296,8 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-// Custom ProfileImageWidget for better image handling
-class ProfileImageWidget extends StatelessWidget {
+// FIXED ProfileImageWidget
+class ProfileImageWidget extends StatefulWidget {
   final String imageUrl;
   final double radius;
   final bool isDarkMode;
@@ -307,70 +309,144 @@ class ProfileImageWidget extends StatelessWidget {
     required this.isDarkMode,
   });
 
-  ImageProvider _getProfileImage(String imageUrl) {
+  @override
+  State<ProfileImageWidget> createState() => _ProfileImageWidgetState();
+}
+
+class _ProfileImageWidgetState extends State<ProfileImageWidget> {
+  ImageProvider? _imageProvider;
+  bool _isLoading = true;
+  bool _hasError = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadImage();
+  }
+
+  @override
+  void didUpdateWidget(ProfileImageWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _loadImage();
+    }
+  }
+
+  Future<void> _loadImage() async {
+    final imageUrl = widget.imageUrl;
+
+    debugPrint('🖼️ ProfileImageWidget loading: $imageUrl');
+
+    setState(() {
+      _isLoading = true;
+      _hasError = false;
+      _imageProvider = null;
+    });
+
     if (imageUrl.isEmpty) {
-      return const NetworkImage(
-        'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y',
-      );
+      debugPrint('📷 Empty URL, showing placeholder');
+      setState(() {
+        _isLoading = false;
+      });
+      return;
     }
 
-    // Handle local file paths
-    if (imageUrl.startsWith('file://')) {
-      final file = File(imageUrl.replaceFirst('file://', ''));
-      if (file.existsSync()) {
-        return FileImage(file);
+    try {
+      // Clean the path
+      String cleanPath = imageUrl;
+      if (cleanPath.startsWith('file://')) {
+        cleanPath = cleanPath.substring(7);
       }
-    } else if (imageUrl.startsWith('/')) {
-      // Direct file path
-      final file = File(imageUrl);
-      if (file.existsSync()) {
-        return FileImage(file);
-      }
-    } else if (imageUrl.startsWith('http://') ||
-        imageUrl.startsWith('https://')) {
-      return NetworkImage(imageUrl);
-    }
 
-    // Fallback to default avatar
-    return const NetworkImage(
-      'https://www.gravatar.com/avatar/00000000000000000000000000000000?d=mp&f=y',
-    );
+      final file = File(cleanPath);
+      final exists = await file.exists();
+
+      debugPrint('📁 File exists: $exists at path: $cleanPath');
+
+      if (exists && mounted) {
+        // Read file size to verify it's valid
+        final fileSize = await file.length();
+        if (fileSize > 0) {
+          setState(() {
+            _imageProvider = FileImage(file);
+            _isLoading = false;
+          });
+          debugPrint('✅ Image loaded successfully, size: $fileSize bytes');
+        } else {
+          debugPrint('⚠️ File is empty (0 bytes)');
+          setState(() {
+            _isLoading = false;
+            _hasError = true;
+          });
+        }
+      } else {
+        debugPrint('⚠️ File not found');
+        if (mounted) {
+          setState(() {
+            _isLoading = false;
+            _hasError = true;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Error loading image: $e');
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+        });
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isLoading) {
+      return Container(
+        width: widget.radius * 2,
+        height: widget.radius * 2,
+        decoration: BoxDecoration(
+          color: widget.isDarkMode ? Colors.grey[800] : Colors.grey[300],
+          shape: BoxShape.circle,
+        ),
+        child: Center(
+          child: SizedBox(
+            width: widget.radius * 0.5,
+            height: widget.radius * 0.5,
+            child: const CircularProgressIndicator(
+              strokeWidth: 2,
+              valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF32BA32)),
+            ),
+          ),
+        ),
+      );
+    }
+
+    if (_imageProvider != null && !_hasError) {
+      return CircleAvatar(
+        radius: widget.radius,
+        backgroundColor: widget.isDarkMode
+            ? Colors.grey[800]
+            : Colors.grey[300],
+        backgroundImage: _imageProvider,
+        onBackgroundImageError: (exception, stackTrace) {
+          debugPrint('❌ Background image error: $exception');
+          setState(() {
+            _hasError = true;
+            _imageProvider = null;
+          });
+        },
+      );
+    }
+
+    // Fallback to placeholder
     return CircleAvatar(
-      radius: radius,
-      backgroundColor: isDarkMode ? Colors.grey[800] : Colors.grey[300],
-      child: ClipOval(
-        child: imageUrl.isNotEmpty
-            ? Image(
-                image: _getProfileImage(imageUrl),
-                width: radius * 2,
-                height: radius * 2,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  print('Error loading image: $error');
-                  return Icon(
-                    Icons.person,
-                    size: radius,
-                    color: isDarkMode ? Colors.grey[600] : Colors.grey[500],
-                  );
-                },
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Center(
-                    child: CircularProgressIndicator(
-                      color: ProfileScreen.accentGreen,
-                    ),
-                  );
-                },
-              )
-            : Icon(
-                Icons.person,
-                size: radius,
-                color: isDarkMode ? Colors.grey[600] : Colors.grey[500],
-              ),
+      radius: widget.radius,
+      backgroundColor: widget.isDarkMode ? Colors.grey[800] : Colors.grey[300],
+      child: Icon(
+        Icons.person,
+        size: widget.radius,
+        color: widget.isDarkMode ? Colors.grey[600] : Colors.grey[500],
       ),
     );
   }
@@ -396,6 +472,7 @@ class _ProfileContent extends StatelessWidget {
             SnackBar(
               content: Text(state.message),
               backgroundColor: ProfileScreen.accentGreen,
+              duration: const Duration(seconds: 2),
             ),
           );
         }
@@ -434,18 +511,6 @@ class _ProfileContent extends StatelessWidget {
                       context.read<ProfileCubit>().toggleDarkMode();
                     },
                   ),
-                  _buildSwitchTile(
-                    icon: Icons.fingerprint,
-                    title: 'Biometric Login',
-                    value: state.user.biometricEnabled,
-                    onChanged: (value) {
-                      context.read<ProfileCubit>().toggleBiometric();
-                    },
-                  ),
-                ]),
-                const SizedBox(height: 25),
-                _buildSection('CURRENCY SETTINGS', [
-                  _buildCurrencySelector(context, state),
                 ]),
                 const SizedBox(height: 25),
                 _buildSection('EXPENSE SETTINGS', [
@@ -485,6 +550,9 @@ class _ProfileContent extends StatelessWidget {
                   ),
                 ),
                 child: ProfileImageWidget(
+                  key: ValueKey(
+                    'profile_image_${state.user.profileImageUrl}_${DateTime.now().millisecondsSinceEpoch}',
+                  ),
                   imageUrl: state.user.profileImageUrl,
                   radius: 56,
                   isDarkMode: isDarkMode,
@@ -549,10 +617,10 @@ class _ProfileContent extends StatelessWidget {
     BuildContext context,
     ProfileLoaded state,
   ) async {
-    showModalBottomSheet(
+    await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
+      builder: (sheetContext) => Container(
         decoration: BoxDecoration(
           color: isDarkMode ? Colors.grey[900] : Colors.white,
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
@@ -578,8 +646,8 @@ class _ProfileContent extends StatelessWidget {
                 ),
                 title: const Text('Choose from Gallery'),
                 onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.gallery, context, state);
+                  Navigator.pop(sheetContext);
+                  _pickImageFromGallery(context, state);
                 },
               ),
               ListTile(
@@ -589,8 +657,8 @@ class _ProfileContent extends StatelessWidget {
                 ),
                 title: const Text('Take a Photo'),
                 onTap: () {
-                  Navigator.pop(context);
-                  _pickImage(ImageSource.camera, context, state);
+                  Navigator.pop(sheetContext);
+                  _pickImageFromCamera(context, state);
                 },
               ),
               if (state.user.profileImageUrl.isNotEmpty)
@@ -601,7 +669,7 @@ class _ProfileContent extends StatelessWidget {
                   ),
                   title: const Text('Remove Photo'),
                   onTap: () {
-                    Navigator.pop(context);
+                    Navigator.pop(sheetContext);
                     _showRemoveConfirmation(context, state);
                   },
                 ),
@@ -613,59 +681,62 @@ class _ProfileContent extends StatelessWidget {
     );
   }
 
-  Future<void> _pickImage(
-    ImageSource source,
+  Future<void> _pickImageFromGallery(
     BuildContext context,
     ProfileLoaded state,
   ) async {
+    if (!context.mounted) return;
+
     try {
-      final ImagePicker picker = ImagePicker();
-      final XFile? image = await picker.pickImage(
-        source: source,
-        maxWidth: 512,
-        maxHeight: 512,
-        imageQuality: 85,
+      // Use ImagePickerService instead of direct ImagePicker
+      final imagePickerService = ImagePickerService();
+      final imagePath = await imagePickerService.pickProfileImageFromGallery(
+        quality: 60,
+        maxSize: 300,
       );
 
-      if (image != null) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Saving profile photo...'),
-              duration: Duration(seconds: 1),
-            ),
-          );
-        }
-
-        final Directory appDocDir = await getApplicationDocumentsDirectory();
-        final String fileName =
-            'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
-        final String permanentPath = '${appDocDir.path}/$fileName';
-
-        final File tempFile = File(image.path);
-        final File permanentFile = await tempFile.copy(permanentPath);
-
-        // Update profile image - this will automatically update the UI
-        await context.read<ProfileCubit>().updateProfileImage(
-          permanentFile.path,
-        );
-
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Profile photo updated!'),
-              backgroundColor: ProfileScreen.accentGreen,
-              duration: Duration(seconds: 2),
-            ),
-          );
-        }
+      if (imagePath != null && context.mounted) {
+        // Update profile image directly - the service already saved it permanently
+        context.read<ProfileCubit>().updateProfileImage(imagePath);
       }
     } catch (e) {
+      print('❌ Error picking from gallery: $e');
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: ${e.toString()}'),
-            backgroundColor: Colors.redAccent,
+          const SnackBar(
+            content: Text('Failed to pick image'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Future<void> _pickImageFromCamera(
+    BuildContext context,
+    ProfileLoaded state,
+  ) async {
+    if (!context.mounted) return;
+
+    try {
+      // Use ImagePickerService instead of direct ImagePicker
+      final imagePickerService = ImagePickerService();
+      final imagePath = await imagePickerService.pickProfileImageFromCamera(
+        quality: 60,
+        maxSize: 300,
+      );
+
+      if (imagePath != null && context.mounted) {
+        // Update profile image directly - the service already saved it permanently
+        context.read<ProfileCubit>().updateProfileImage(imagePath);
+      }
+    } catch (e) {
+      print('❌ Error picking from camera: $e');
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to take photo'),
+            backgroundColor: Colors.red,
           ),
         );
       }
@@ -675,29 +746,21 @@ class _ProfileContent extends StatelessWidget {
   void _showRemoveConfirmation(BuildContext context, ProfileLoaded state) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Remove Photo'),
         content: const Text(
           'Are you sure you want to remove your profile photo?',
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
+            onPressed: () => Navigator.pop(dialogContext),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () async {
-              Navigator.pop(context);
-              await context.read<ProfileCubit>().updateProfileImage('');
-              if (context.mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Profile photo removed'),
-                    backgroundColor: ProfileScreen.accentGreen,
-                    duration: Duration(seconds: 2),
-                  ),
-                );
-              }
+            onPressed: () {
+              Navigator.pop(dialogContext);
+              // Remove immediately - NO LOADING
+              context.read<ProfileCubit>().updateProfileImage('');
             },
             child: const Text(
               'Remove',
@@ -734,46 +797,6 @@ class _ProfileContent extends StatelessWidget {
       value: value,
       activeThumbColor: ProfileScreen.accentGreen,
       onChanged: onChanged,
-    );
-  }
-
-  Widget _buildCurrencySelector(BuildContext context, ProfileLoaded state) {
-    final List<String> currencies = ['RM', 'USD', 'EUR', 'GBP', 'SGD'];
-
-    return Column(
-      children: currencies.map((currency) {
-        return RadioListTile<String>(
-          title: Text(
-            currency,
-            style: TextStyle(
-              color: isDarkMode ? Colors.white : ProfileScreen.darkText,
-            ),
-          ),
-          value: currency,
-          groupValue: state.user.currency,
-          activeColor: ProfileScreen.accentGreen,
-          onChanged: (value) {
-            if (value != null) {
-              context.read<ProfileCubit>().updateCurrency(value);
-            }
-          },
-          secondary: Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: ProfileScreen.accentGreen.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Text(
-              currency,
-              style: TextStyle(
-                color: ProfileScreen.accentGreen,
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
-              ),
-            ),
-          ),
-        );
-      }).toList(),
     );
   }
 
@@ -815,7 +838,7 @@ class _ProfileContent extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              '${state.user.currency} ${state.user.smallExpensesLimit.toStringAsFixed(0)}',
+              'RM ${state.user.smallExpensesLimit.toStringAsFixed(0)}',
               style: const TextStyle(
                 color: ProfileScreen.accentGreen,
                 fontWeight: FontWeight.bold,
@@ -891,7 +914,7 @@ class _ProfileContent extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: Text(
-                      '${state.user.currency} ${currentLimit.toStringAsFixed(0)}',
+                      'RM ${currentLimit.toStringAsFixed(0)}',
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -1268,7 +1291,7 @@ class _ProfileContent extends StatelessWidget {
                     duration: Duration(milliseconds: 500),
                   ),
                 );
-                await context.read<AuthCubit>().signOut();
+                await context.read<auth_cubit.AuthCubit>().signOut();
                 if (context.mounted) {
                   Navigator.of(context).pushAndRemoveUntil(
                     MaterialPageRoute(
