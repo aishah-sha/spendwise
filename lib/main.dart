@@ -196,12 +196,12 @@ class AppHomeGateway extends StatelessWidget {
             return const OnboardingScreen(nextRoute: '/dashboard');
           }
           return const DashboardScreen();
-        } 
-        
+        }
         // 3. USER IS NOT LOGGED IN (Unauthenticated State)
         else {
-          // If they haven't seen the initial onboarding run, show it before registration/welcome
-          if (!hasSeenOnboarding) {
+          // FIX: Change this conditional rule to look at 'showOnboardingEveryLaunch'
+          // so it acts exactly like the dashboard, appearing on every app launch.
+          if (showOnboardingEveryLaunch) {
             return const OnboardingScreen(nextRoute: '/welcome');
           }
           return const WelcomeScreen();

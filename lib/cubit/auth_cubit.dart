@@ -2,10 +2,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:firebase_messaging/firebase_messaging.dart'; // Firebase Messaging Package
+import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/supabase_service.dart';
-
-// Import OAuth provider
 
 // ============ STATES ============
 abstract class AuthState {}
@@ -33,7 +31,6 @@ class AuthFailure extends AuthState {
 
 // ============ CUBIT ============
 class AuthCubit extends Cubit<AuthState> {
-  // ─── CRITICAL BLOC FIX: Static instance setup for main.dart to reference ───
   static AuthCubit? _instance;
   static AuthCubit? get instance => _instance;
 
@@ -42,31 +39,36 @@ class AuthCubit extends Cubit<AuthState> {
   late final GoogleSignIn _googleSignIn;
 
   AuthCubit() : super(AuthInitial()) {
-    _instance =
-        this; // Capture running provider context instance upon initialization
+    _instance = this;
     _initialize();
     _setupGoogleSignIn();
   }
 
   void _setupGoogleSignIn() {
-    // FIX: Double check package matching constructor syntax initialization explicitly
     _googleSignIn = GoogleSignIn(scopes: ['email', 'profile']);
   }
 
   Future<void> _initialize() async {
-    // Listen to auth state changes dynamically
     _supabase.auth.onAuthStateChange.listen((data) async {
       if (!isClosed) {
         final session = data.session;
+        final currentState = state;
 
-        // ─── CRITICAL FIX: If a valid session exists, immediately authenticate! ───
-        // Removing onboarding check locks here avoids loops where user stays stuck on Welcome Screen
+        // Skip state changes during signup flow
+        if (currentState is AuthSuccess || currentState is AuthLoading) {
+          print('⏸️ Skipping auth state change during signup flow');
+          return;
+        }
+
         if (session != null) {
-          emit(Authenticated(session.user));
-          // Sync token immediately on positive session hook detection
-          await syncDeviceNotificationToken();
+          if (currentState is! Authenticated) {
+            emit(Authenticated(session.user));
+            await syncDeviceNotificationToken();
+          }
         } else {
-          emit(Unauthenticated());
+          if (currentState is! Unauthenticated) {
+            emit(Unauthenticated());
+          }
         }
       }
     });
@@ -76,19 +78,26 @@ class AuthCubit extends Cubit<AuthState> {
   void checkAuthStatus() async {
     if (isClosed) return;
 
-    // ─── CRITICAL FIX: Check authentication state natively on launch ───
+    final currentState = state;
+    if (currentState is AuthSuccess || currentState is AuthLoading) {
+      print('⏸️ Skipping auth status check during signup flow');
+      return;
+    }
+
     final user = _supabase.auth.currentUser;
 
     if (user != null) {
-      emit(Authenticated(user));
-      // Sync token if user is already logged in on application launch
-      await syncDeviceNotificationToken();
+      if (currentState is! Authenticated) {
+        emit(Authenticated(user));
+        await syncDeviceNotificationToken();
+      }
     } else {
-      emit(Unauthenticated());
+      if (currentState is! Unauthenticated) {
+        emit(Unauthenticated());
+      }
     }
   }
 
-  // ─── STREAM HOOK METHODS REQUIRED BY MAIN.DART ───
   void emitAuthenticated(User user) {
     if (!isClosed) emit(Authenticated(user));
   }
@@ -102,10 +111,7 @@ class AuthCubit extends Cubit<AuthState> {
       final userId = _supabase.auth.currentUser?.id;
       if (userId == null) return;
 
-      // FIX: Initialize Firebase Messaging first
       await FirebaseMessaging.instance.requestPermission();
-
-      // Extract raw Firebase Push routing address key from mobile OS hardware stack
       String? fcmToken = await FirebaseMessaging.instance.getToken();
 
       if (fcmToken != null) {
@@ -133,7 +139,6 @@ class AuthCubit extends Cubit<AuthState> {
       );
       if (!isClosed) {
         emit(Authenticated(response.user));
-        // Sync token right after successful manual email login
         await syncDeviceNotificationToken();
       }
     } catch (e) {
@@ -143,7 +148,7 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
-  // SIGN UP with Email
+  // SIGN UP with Email - FIXED
   Future<void> signUpWithEmail(
     String email,
     String password,
@@ -160,17 +165,38 @@ class AuthCubit extends Cubit<AuthState> {
       );
 
       if (response.user != null) {
-        await _supabaseService.createUserProfile(
-          userId: response.user!.id,
-          email: email.trim(),
-          name: name,
-        );
+        // Try to create profile, but don't fail if it already exists
+        try {
+          await _supabaseService.createUserProfile(
+            userId: response.user!.id,
+            email: email.trim(),
+            name: name,
+          );
+        } catch (profileError) {
+          // Profile might already exist from Supabase trigger
+          print('Profile creation note: $profileError');
+          // Continue with signup success - this isn't critical
+        }
 
-        print('fake account profile synced: ${response.user!.id}');
-        await _supabase.auth.signOut();
+        print('✅ User signed up: ${response.user!.id}');
 
         if (!isClosed) {
-          emit(AuthSuccess(message: 'Account created! Please login.'));
+          final requiresConfirmation = response.user?.confirmedAt == null;
+
+          if (requiresConfirmation) {
+            emit(
+              AuthSuccess(
+                message:
+                    'Account created! Please check your email to confirm your account before logging in.',
+              ),
+            );
+          } else {
+            emit(
+              AuthSuccess(
+                message: 'Account created successfully! You can now log in.',
+              ),
+            );
+          }
         }
       } else {
         if (!isClosed) {
@@ -178,9 +204,21 @@ class AuthCubit extends Cubit<AuthState> {
         }
       }
     } catch (e) {
-      print('Sign up error: $e');
+      print('❌ Sign up error: $e');
       if (!isClosed) {
-        emit(AuthFailure(error: _getErrorMessage(e)));
+        // Check if it's just a profile duplicate error
+        if (e.toString().contains('duplicate key')) {
+          // This means auth succeeded but profile creation failed due to duplicate
+          // The user might still be created, so show success message
+          emit(
+            AuthSuccess(
+              message:
+                  'Account created! Please check your email to confirm your account.',
+            ),
+          );
+        } else {
+          emit(AuthFailure(error: _getErrorMessage(e)));
+        }
       }
     }
   }
@@ -191,10 +229,8 @@ class AuthCubit extends Cubit<AuthState> {
 
     emit(AuthLoading());
     try {
-      // Force sign out to ensure fresh login
       await _googleSignIn.signOut();
 
-      // Add timeout
       final googleUser = await _googleSignIn.signIn().timeout(
         const Duration(seconds: 30),
         onTimeout: () {
@@ -276,7 +312,6 @@ class AuthCubit extends Cubit<AuthState> {
         await prefs.remove('saved_budget_$currentUserId');
         await prefs.remove('user_data');
 
-        // Safety design: Remove token entry from Supabase on sign out
         try {
           await _supabase
               .from('user_tokens')
@@ -317,6 +352,29 @@ class AuthCubit extends Cubit<AuthState> {
     }
   }
 
+  Future<void> resendConfirmationEmail(String email) async {
+    if (isClosed) return;
+
+    emit(AuthLoading());
+    try {
+      await _supabase.auth.signInWithOtp(
+        email: email.trim(),
+        shouldCreateUser: false,
+      );
+      if (!isClosed) {
+        emit(
+          AuthSuccess(
+            message: 'Confirmation email resent! Please check your inbox.',
+          ),
+        );
+      }
+    } catch (e) {
+      if (!isClosed) {
+        emit(AuthFailure(error: _getErrorMessage(e)));
+      }
+    }
+  }
+
   String _getErrorMessage(dynamic error) {
     final errorStr = error.toString().toLowerCase();
     if (errorStr.contains('email') && errorStr.contains('already')) {
@@ -329,6 +387,8 @@ class AuthCubit extends Cubit<AuthState> {
       return 'No account found with this email. Please sign up first.';
     } else if (errorStr.contains('network')) {
       return 'Network error. Please check your internet connection.';
+    } else if (errorStr.contains('email not confirmed')) {
+      return 'Please confirm your email address before logging in. Check your inbox.';
     }
     return 'An error occurred. Please try again.';
   }

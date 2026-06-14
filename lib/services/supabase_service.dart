@@ -31,6 +31,31 @@ class SupabaseService {
     required String name,
   }) async {
     try {
+      // Check if profile already exists
+      final existingProfile = await _supabase
+          .from(profilesTable)
+          .select()
+          .eq('id', userId)
+          .maybeSingle();
+
+      if (existingProfile != null) {
+        print('ℹ️ Profile already exists for user: $userId');
+        // Update only necessary fields if needed
+        await _supabase
+            .from(profilesTable)
+            .update({
+              'email': email,
+              'full_name': name,
+              'name': name,
+              'updated_at': DateTime.now().toIso8601String(),
+            })
+            .eq('id', userId);
+        print('✅ Updated existing profile for: $userId');
+        return;
+      }
+
+      // Create new profile
+      final now = DateTime.now().toIso8601String();
       await _supabase.from(profilesTable).insert({
         'id': userId,
         'email': email,
@@ -44,11 +69,15 @@ class SupabaseService {
         'profile_image_url': '',
         'total_spent': 0.0,
         'total_budget': 0.0,
-        'created_at': DateTime.now().toIso8601String(),
+        'created_at': now,
+        'updated_at': now,
       });
+
+      print('✅ User profile created successfully: $userId');
     } catch (e) {
-      print('Error creating user profile: $e');
-      rethrow;
+      // Log but don't rethrow - profile creation shouldn't block signup
+      print('⚠️ Note: User profile creation issue: $e');
+      // The user can still log in; profile might be created by a trigger
     }
   }
 
@@ -163,8 +192,8 @@ class SupabaseService {
             'amount': amount,
             'category': category,
             'type': type,
-            'description': description, // ← This stores the merchant name
-            'title': title ?? description, // ← This stores the merchant name
+            'description': description,
+            'title': title ?? description,
             'note': note,
             'image_url': imageUrl ?? '',
             'date': (date ?? DateTime.now()).toIso8601String(),
@@ -216,7 +245,7 @@ class SupabaseService {
     return _supabase
         .from(transactionsTable)
         .stream(primaryKey: ['id'])
-        .eq('user_id', userId) // Use the captured userId variable
+        .eq('user_id', userId)
         .order('date', ascending: false)
         .map((event) {
           print('📡 Stream update: ${event.length} transactions');

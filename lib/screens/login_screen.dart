@@ -26,6 +26,7 @@ class _LoginViewState extends State<LoginView> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
+  bool _isNavigating = false; // Add navigation flag
 
   @override
   void dispose() {
@@ -57,26 +58,37 @@ class _LoginViewState extends State<LoginView> {
   Widget build(BuildContext context) {
     return BlocListener<AuthCubit, AuthState>(
       listener: (context, state) {
-        if (state is AuthSuccess) {
+        // Handle navigation only once
+        if (_isNavigating) return;
+
+        if (state is Authenticated && !_isNavigating) {
+          _isNavigating = true;
+          // Clear any existing navigation and go to dashboard
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) {
+              Navigator.of(
+                context,
+              ).pushNamedAndRemoveUntil('/dashboard', (route) => false);
+            }
+          });
+        } else if (state is AuthSuccess && !_isNavigating) {
+          // Don't auto-navigate for AuthSuccess - just show message
+          // This prevents automatic navigation after signup
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(state.message),
               backgroundColor: Colors.green,
+              duration: const Duration(seconds: 3),
             ),
           );
-          // Only navigate if it's login success (not password reset)
-          if (state.message.contains('login') ||
-              state.message.contains('Account created')) {
-            Future.delayed(const Duration(milliseconds: 100), () {
-              Navigator.pushReplacementNamed(context, '/dashboard');
-            });
-          }
         } else if (state is AuthFailure) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.error), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text(state.error),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
           );
-        } else if (state is Authenticated) {
-          Navigator.pushReplacementNamed(context, '/dashboard');
         }
       },
       child: BlocBuilder<AuthCubit, AuthState>(
@@ -124,7 +136,7 @@ class _LoginViewState extends State<LoginView> {
                             ),
                             const SizedBox(height: 8),
                             const Text(
-                              "Let's us manage your financial!",
+                              "Let's manage your finances!",
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 fontSize: 15,
@@ -224,7 +236,7 @@ class _LoginViewState extends State<LoginView> {
                                   padding: EdgeInsets.zero,
                                 ),
                                 child: const Text(
-                                  'Forgot Password ?',
+                                  'Forgot Password?',
                                   style: TextStyle(
                                     color: Colors.black,
                                     fontSize: 12,
@@ -306,7 +318,9 @@ class _LoginViewState extends State<LoginView> {
                     color: Colors.black.withOpacity(0.3),
                     child: const Center(
                       child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                          Color(0xFF178E4B),
+                        ),
                       ),
                     ),
                   ),
@@ -380,7 +394,6 @@ class _LoginViewState extends State<LoginView> {
               final email = emailController.text.trim();
               if (email.isNotEmpty && email.contains('@')) {
                 Navigator.pop(dialogContext);
-
                 // Call the resetPassword method from AuthCubit
                 context.read<AuthCubit>().resetPassword(email);
               } else {

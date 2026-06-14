@@ -90,22 +90,29 @@ class _SignUpViewState extends State<SignUpView> {
             SnackBar(
               content: Text(state.message),
               backgroundColor: Colors.green,
-              duration: const Duration(seconds: 2),
+              duration: const Duration(seconds: 4),
             ),
           );
 
-          // Navigate to Login Screen
-          Future.delayed(const Duration(milliseconds: 100), () {
+          // Navigate to Login Screen after a longer delay
+          Future.delayed(const Duration(milliseconds: 2000), () {
             if (mounted) {
-              Navigator.of(context).pushAndRemoveUntil(
+              // Use pushReplacement to avoid back navigation to signup
+              Navigator.of(context).pushReplacement(
                 MaterialPageRoute(builder: (context) => const LoginScreen()),
-                (route) => false,
               );
             }
           });
-        } else if (state is AuthFailure) {
+        } else if (state is AuthFailure && !_isNavigating) {
+          // Reset navigating flag on failure so user can try again
+          _isNavigating = false;
+
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.error), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text(state.error),
+              backgroundColor: Colors.red,
+              duration: const Duration(seconds: 3),
+            ),
           );
         }
       },
