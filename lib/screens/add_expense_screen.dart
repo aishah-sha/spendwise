@@ -342,48 +342,11 @@ class AddExpenseScreen extends StatelessWidget {
         '📸 Receipt processed: ${receipt.merchantName} - RM${receipt.amount}',
       );
 
-      // CRITICAL: Save to database immediately
-      final supabase = Supabase.instance.client;
-      final userId = supabase.auth.currentUser?.id;
-
-      if (userId != null) {
-        final expenseId = const Uuid().v4();
-
-        // Save to receipts table
-        await supabase.from('receipts').insert({
-          'id': expenseId,
-          'user_id': userId,
-          'merchant_name': receipt.merchantName,
-          'amount': receipt.amount,
-          'category': receipt.category,
-          'date': receipt.date.toIso8601String(),
-          'receipt_type': 'image',
-          'image_path': receipt.imagePath,
-          'items': receipt.items?.map((i) => i.toJson()).toList() ?? [],
-          'created_at': DateTime.now().toIso8601String(),
-        });
-
-        // ALSO save to transactions table so it appears in Dashboard
-        await supabase.from('transactions').insert({
-          'id': expenseId,
-          'user_id': userId,
-          'amount': receipt.amount,
-          'category': receipt.category,
-          'type': 'expense',
-          'description': receipt.merchantName,
-          'title': receipt.merchantName,
-          'note': receipt.merchantName,
-          'date': receipt.date.toIso8601String(),
-          'created_at': DateTime.now().toIso8601String(),
-        });
-
-        print('✅ Auto-saved to both tables');
-      }
-
+      // FIXED: NO AUTO-SAVE - just add to recent uploads and navigate to manual entry
       addExpenseCubit.setLoading(false);
       addExpenseCubit.addToRecentUploads(receipt);
 
-      // Navigate to manual entry for editing
+      // Navigate to manual entry for editing WITHOUT saving
       final result = await Navigator.push(
         context,
         MaterialPageRoute(
@@ -422,6 +385,7 @@ class AddExpenseScreen extends StatelessWidget {
     addExpenseCubit.setLoading(true);
 
     try {
+      // FIXED: NO AUTO-SAVE - just process and add to recent uploads
       for (final file in pickedFiles) {
         final receipt = await mlKitService.processReceiptImage(
           File(file.path),
@@ -439,6 +403,7 @@ class AddExpenseScreen extends StatelessWidget {
             backgroundColor: accentGreen,
           ),
         );
+        // Return true to indicate success
         Navigator.pop(context, true);
       }
     } catch (e) {

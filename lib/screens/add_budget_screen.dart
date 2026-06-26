@@ -1,3 +1,5 @@
+// screens/add_budget_screen.dart - COMPLETE FIXED VERSION
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:spendwise/models/budget_model.dart';
@@ -17,7 +19,6 @@ class AddBudgetScreen extends StatefulWidget {
 class _AddBudgetScreenState extends State<AddBudgetScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // Theme-aware colors
   static const Color lightBgColor = Color(0xFFE8F7CB);
   static const Color darkBgColor = Color(0xFF121212);
   static const Color lightSurfaceColor = Colors.white;
@@ -37,6 +38,12 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
   final _newCategoryAmountController = TextEditingController();
 
   bool _isFirstLoad = true;
+
+  // Date range controllers
+  DateTime? _startDate;
+  DateTime? _endDate;
+  bool _hasDateRange = true;
+  String? _budgetPeriodLabel;
 
   final List<String> _predefinedCategories = [
     'Groceries',
@@ -58,9 +65,33 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _startDate = DateTime(now.year, now.month, 1);
+    _endDate = DateTime(now.year, now.month + 1, 0);
+    _hasDateRange = true;
+    _budgetPeriodLabel = '${_monthName(now)} ${now.year}';
+
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<BudgetCubit>().loadBudget(forceRefresh: true);
     });
+  }
+
+  String _monthName(DateTime date) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[date.month - 1];
   }
 
   @override
@@ -74,7 +105,6 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     super.dispose();
   }
 
-  // Helper to get current theme mode
   bool _isDarkMode(BuildContext context) {
     final profileState = context.watch<ProfileCubit>().state;
     if (profileState is ProfileLoaded) {
@@ -83,7 +113,6 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     return false;
   }
 
-  // Theme-aware color getters
   Color _getBgColor(BuildContext context) =>
       _isDarkMode(context) ? darkBgColor : lightBgColor;
 
@@ -101,6 +130,14 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     if (!widget.isAdding && budget.monthlyLimit > 0) {
       _monthlyBudgetController.text = budget.monthlyLimit.toStringAsFixed(2);
       _categoryBudgets.clear();
+
+      if (budget.hasDateRange) {
+        _startDate = budget.startDate;
+        _endDate = budget.endDate;
+        _hasDateRange = true;
+        _budgetPeriodLabel = budget.budgetPeriodLabel;
+      }
+
       for (var category in budget.categories) {
         _originalSpentAmounts[category.name] = category.spent;
         _categoryBudgets.add({
@@ -119,7 +156,6 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
   Widget build(BuildContext context) {
     return BlocListener<ProfileCubit, ProfileState>(
       listenWhen: (previous, current) {
-        // Rebuild when dark mode changes
         if (previous is ProfileLoaded && current is ProfileLoaded) {
           return previous.user.isDarkMode != current.user.isDarkMode;
         }
@@ -198,6 +234,8 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
+                    _buildDateRangeCard(context),
+                    const SizedBox(height: 20),
                     _buildCard(
                       context,
                       title: widget.isAdding
@@ -470,6 +508,222 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
         ),
       ),
     );
+  }
+
+  // Date Range Card Widget
+  Widget _buildDateRangeCard(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: _getSurfaceColor(context),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: _getTextColor(context).withOpacity(0.03),
+            offset: const Offset(0, 10),
+            blurRadius: 20,
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'BUDGET PERIOD',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 13,
+              color: primaryGreen,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Set the date range for this budget',
+            style: TextStyle(
+              color: _getMutedTextColor(context),
+              fontSize: 13,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Expanded(
+                child: _buildDatePickerField(
+                  context: context,
+                  label: 'Start Date',
+                  date: _startDate,
+                  onTap: () => _selectStartDate(),
+                  isDarkMode: _isDarkMode(context),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: _buildDatePickerField(
+                  context: context,
+                  label: 'End Date',
+                  date: _endDate,
+                  onTap: () => _selectEndDate(),
+                  isDarkMode: _isDarkMode(context),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          if (_hasDateRange && _startDate != null && _endDate != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: primaryGreen.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: primaryGreen.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_outline, size: 16, color: primaryGreen),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      '${_budgetPeriodLabel ?? ''} · ${_getDaysBetween()} days',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: primaryGreen,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // Date picker field - FIXED: removed duplicate context parameter
+  Widget _buildDatePickerField({
+    required BuildContext context,
+    required String label,
+    required DateTime? date,
+    required VoidCallback onTap,
+    required bool isDarkMode,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isDarkMode ? Colors.grey[850] : Colors.grey[50],
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDarkMode ? Colors.grey[800]! : Colors.grey[200]!,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.calendar_today, size: 16, color: primaryGreen),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: isDarkMode ? Colors.white54 : Colors.grey[600],
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    date != null
+                        ? '${date.day}/${date.month}/${date.year}'
+                        : 'Select',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: date != null
+                          ? (isDarkMode ? Colors.white : Colors.black87)
+                          : (isDarkMode ? Colors.white54 : Colors.grey[400]),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.arrow_drop_down,
+              color: isDarkMode ? Colors.white54 : Colors.grey[400],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // FIXED: Start date picker - NO parameters, uses context from widget
+  Future<void> _selectStartDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _startDate ?? DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _startDate = picked;
+        _hasDateRange = true;
+        _updatePeriodLabel();
+        if (_endDate != null && _endDate!.isBefore(picked)) {
+          _endDate = picked.add(const Duration(days: 30));
+        }
+      });
+    }
+  }
+
+  // FIXED: End date picker - NO parameters, uses context from widget
+  Future<void> _selectEndDate() async {
+    final DateTime? picked = await showDatePicker(
+      context: context,
+      initialDate: _endDate ?? DateTime.now().add(const Duration(days: 30)),
+      firstDate: _startDate ?? DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+
+    if (picked != null && mounted) {
+      setState(() {
+        _endDate = picked;
+        _hasDateRange = true;
+        _updatePeriodLabel();
+      });
+    }
+  }
+
+  void _updatePeriodLabel() {
+    if (_startDate != null && _endDate != null) {
+      final start = _startDate!;
+      final end = _endDate!;
+      if (start.month == end.month && start.year == end.year) {
+        _budgetPeriodLabel = '${_monthName(start)} ${start.year}';
+      } else if (start.year == end.year) {
+        _budgetPeriodLabel =
+            '${_monthName(start)} - ${_monthName(end)} ${start.year}';
+      } else {
+        _budgetPeriodLabel = '${start.year} - ${end.year}';
+      }
+    }
+  }
+
+  int _getDaysBetween() {
+    if (_startDate == null || _endDate == null) return 0;
+    final start = DateTime(
+      _startDate!.year,
+      _startDate!.month,
+      _startDate!.day,
+    );
+    final end = DateTime(_endDate!.year, _endDate!.month, _endDate!.day);
+    return end.difference(start).inDays + 1;
   }
 
   Widget _buildCard(
@@ -816,7 +1070,7 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
       }
 
       double absoluteTotalCategoryAmount = categoryBudgets.values.fold(
-        0,
+        0.0,
         (sum, item) => sum + item,
       );
 
@@ -879,10 +1133,14 @@ class _AddBudgetScreenState extends State<AddBudgetScreen> {
     if (widget.isAdding && monthlyAmount <= 0 && categoryBudgets.isEmpty) {
       return;
     }
+
     context.read<BudgetCubit>().saveBudget(
       monthlyLimit: monthlyAmount,
       categoryBudgets: categoryBudgets,
       isAdditional: widget.isAdding,
+      startDate: _hasDateRange ? _startDate : null,
+      endDate: _hasDateRange ? _endDate : null,
+      budgetPeriodLabel: _hasDateRange ? _budgetPeriodLabel : null,
     );
   }
 }

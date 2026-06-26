@@ -1368,6 +1368,14 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       return;
     }
 
+    // Check if this is editing an existing expense
+    if (widget.isEditing && widget.expenseToEdit != null) {
+      // UPDATE existing expense
+      await _updateExistingExpense();
+      return;
+    }
+
+    // NEW: Save only when button is pressed
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Row(
@@ -1448,6 +1456,83 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       if (mounted)
         _showSnackbar(
           'Error saving expense: ${e.toString()}',
+          Theme.of(context).brightness == Brightness.dark,
+        );
+    }
+  }
+
+  // NEW: Method to update existing expense
+  Future<void> _updateExistingExpense() async {
+    final enteredVendor = _vendorController.text.trim();
+    final totalAmount = double.tryParse(_amountController.text) ?? 0.0;
+    final expenseId = widget.expenseToEdit!.id;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Row(
+          children: [
+            SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+            SizedBox(width: 12),
+            Text('Updating expense...'),
+          ],
+        ),
+        duration: Duration(seconds: 1),
+      ),
+    );
+
+    try {
+      final expenseCubit = context.read<ExpenseCubit>();
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      final String chosenCategory = _items.isNotEmpty
+          ? _items.first.category
+          : 'Others';
+
+      if (userId == null) throw Exception('User not logged in');
+
+      // Update transactions table
+      await supabase
+          .from('transactions')
+          .update({
+            'amount': totalAmount,
+            'category': chosenCategory,
+            'description': enteredVendor,
+            'title': enteredVendor,
+            'note': enteredVendor,
+            'date': _selectedDate.toIso8601String(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', expenseId)
+          .eq('user_id', userId);
+
+      // Update receipts table
+      await supabase
+          .from('receipts')
+          .update({
+            'merchant_name': enteredVendor,
+            'amount': totalAmount,
+            'category': chosenCategory,
+            'date': _selectedDate.toIso8601String(),
+            'items': _items.map((item) => item.toJson()).toList(),
+            'updated_at': DateTime.now().toIso8601String(),
+          })
+          .eq('id', expenseId)
+          .eq('user_id', userId);
+
+      await expenseCubit.refreshExpenses();
+      await context.read<BudgetCubit>().loadBudget(forceRefresh: true);
+
+      _showSuccessSnackbar('Expense updated successfully!');
+      await Future.delayed(const Duration(milliseconds: 500));
+      if (mounted) Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted)
+        _showSnackbar(
+          'Error updating expense: ${e.toString()}',
           Theme.of(context).brightness == Brightness.dark,
         );
     }

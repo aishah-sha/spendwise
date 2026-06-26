@@ -32,11 +32,16 @@ class BudgetStorageService {
               },
             )
             .toList(),
+        // NEW: Date range fields
+        'startDate': budget.startDate?.toIso8601String(),
+        'endDate': budget.endDate?.toIso8601String(),
+        'budgetPeriodLabel': budget.budgetPeriodLabel,
       };
 
       final budgetString = jsonEncode(budgetJson);
       await prefs.setString(budgetKey, budgetString);
       print('Budget saved successfully for user');
+      print('  Period: ${budget.budgetPeriodLabel ?? "No date range"}');
     } catch (e) {
       print('Error saving budget: $e');
       rethrow;
@@ -67,13 +72,27 @@ class BudgetStorageService {
         );
       }).toList();
 
+      // NEW: Parse date range
+      DateTime? startDate;
+      DateTime? endDate;
+      if (budgetJson['startDate'] != null) {
+        startDate = DateTime.parse(budgetJson['startDate'] as String);
+      }
+      if (budgetJson['endDate'] != null) {
+        endDate = DateTime.parse(budgetJson['endDate'] as String);
+      }
+
       final budget = Budget(
         monthlyLimit: (budgetJson['monthlyLimit'] as num).toDouble(),
         totalSpent: (budgetJson['totalSpent'] as num).toDouble(),
         categories: categories,
+        startDate: startDate,
+        endDate: endDate,
+        budgetPeriodLabel: budgetJson['budgetPeriodLabel'] as String?,
       );
 
       print('Budget loaded successfully for user: RM${budget.monthlyLimit}');
+      print('  Period: ${budget.budgetPeriodLabel ?? "No date range"}');
       return budget;
     } catch (e) {
       print('Error loading budget: $e');

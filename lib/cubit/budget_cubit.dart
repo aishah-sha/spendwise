@@ -1,4 +1,4 @@
-import 'dart:async'; // Add this import for StreamSubscription
+import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -109,10 +109,14 @@ class BudgetCubit extends Cubit<BudgetState> {
     }
   }
 
+  // NEW: Save budget with date range
   Future<void> saveBudget({
     required double monthlyLimit,
     required Map<String, double> categoryBudgets,
     bool isAdditional = false,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? budgetPeriodLabel,
   }) async {
     emit(BudgetLoading());
 
@@ -122,6 +126,20 @@ class BudgetCubit extends Cubit<BudgetState> {
         currentBudget = (state as BudgetLoaded).budget;
       } else {
         currentBudget = await _storageService.loadBudget();
+      }
+
+      // Determine date range
+      DateTime effectiveStartDate = startDate ?? DateTime.now();
+      DateTime effectiveEndDate =
+          endDate ?? DateTime.now().add(const Duration(days: 30));
+
+      // If no date range provided, default to current month
+      if (startDate == null && endDate == null) {
+        final now = DateTime.now();
+        effectiveStartDate = DateTime(now.year, now.month, 1);
+        effectiveEndDate = DateTime(now.year, now.month + 1, 0);
+        budgetPeriodLabel =
+            '${_monthName(effectiveStartDate)} ${effectiveStartDate.year}';
       }
 
       if (isAdditional &&
@@ -161,6 +179,10 @@ class BudgetCubit extends Cubit<BudgetState> {
           monthlyLimit: newMonthlyLimit,
           totalSpent: totalSpent,
           categories: updatedCategories,
+          startDate: currentBudget.startDate ?? effectiveStartDate,
+          endDate: currentBudget.endDate ?? effectiveEndDate,
+          budgetPeriodLabel:
+              currentBudget.budgetPeriodLabel ?? budgetPeriodLabel,
         );
 
         await _storageService.saveBudget(newBudget);
@@ -200,6 +222,9 @@ class BudgetCubit extends Cubit<BudgetState> {
           monthlyLimit: monthlyLimit,
           totalSpent: totalSpent,
           categories: categories,
+          startDate: effectiveStartDate,
+          endDate: effectiveEndDate,
+          budgetPeriodLabel: budgetPeriodLabel,
         );
 
         await _storageService.saveBudget(newBudget);
@@ -210,6 +235,24 @@ class BudgetCubit extends Cubit<BudgetState> {
     } catch (e) {
       emit(BudgetError(message: 'Failed to save budget: ${e.toString()}'));
     }
+  }
+
+  String _monthName(DateTime date) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[date.month - 1];
   }
 
   void updateCategorySpent(String categoryName, double spentAmount) {
@@ -237,6 +280,9 @@ class BudgetCubit extends Cubit<BudgetState> {
         monthlyLimit: currentBudget.monthlyLimit,
         totalSpent: totalSpent,
         categories: updatedCategories,
+        startDate: currentBudget.startDate,
+        endDate: currentBudget.endDate,
+        budgetPeriodLabel: currentBudget.budgetPeriodLabel,
       );
 
       _storageService.saveBudget(updatedBudget);
@@ -247,12 +293,18 @@ class BudgetCubit extends Cubit<BudgetState> {
   Future<void> addToBudget({
     required double additionalAmount,
     Map<String, double>? additionalCategoryBudgets,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? budgetPeriodLabel,
   }) async {
     if (state is BudgetLoaded) {
       await saveBudget(
         monthlyLimit: additionalAmount,
         categoryBudgets: additionalCategoryBudgets ?? {},
         isAdditional: true,
+        startDate: startDate,
+        endDate: endDate,
+        budgetPeriodLabel: budgetPeriodLabel,
       );
     }
   }

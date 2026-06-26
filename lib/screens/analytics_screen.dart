@@ -9,6 +9,7 @@ import '../cubit/notification_cubit.dart';
 import '../cubit/profile_cubit.dart';
 import '../cubit/profile_state.dart';
 import '../cubit/budget_cubit.dart' as budget_cubit;
+import '../models/budget_model.dart'; // ADD THIS IMPORT
 import '../widgets/total_spent_card.dart';
 import '../widgets/notification_badge.dart';
 import 'dashboard_screen.dart';
@@ -64,7 +65,10 @@ class AnalyticsScreen extends StatelessWidget {
                             _buildPeriodSelector(context, state, isDarkMode),
                             const SizedBox(height: 20),
                             TotalSpentCard(isDarkMode: isDarkMode),
-                            const SizedBox(height: 24),
+                            const SizedBox(height: 16),
+                            // Budget period info from BudgetCubit
+                            _buildBudgetPeriodInfo(context, isDarkMode),
+                            const SizedBox(height: 16),
                             Text(
                               'Spending by Category',
                               style: TextStyle(
@@ -111,6 +115,181 @@ class AnalyticsScreen extends StatelessWidget {
     );
   }
 
+  // Budget period info widget
+  Widget _buildBudgetPeriodInfo(BuildContext context, bool isDarkMode) {
+    return BlocBuilder<budget_cubit.BudgetCubit, budget_cubit.BudgetState>(
+      builder: (context, budgetState) {
+        if (budgetState is budget_cubit.BudgetLoaded &&
+            budgetState.budget.hasDateRange) {
+          final budget = budgetState.budget;
+          final isOnTrack = budget.isOnTrack;
+          final remainingDays = budget.remainingDays;
+          final daysElapsed = budget.daysElapsed;
+          final totalDays = budget.totalDays;
+
+          return Container(
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: isDarkMode ? Colors.grey[850] : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isDarkMode ? Colors.grey[700]! : Colors.grey.shade200,
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: isDarkMode
+                      ? Colors.black.withOpacity(0.3)
+                      : Colors.grey.withOpacity(0.05),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: isOnTrack
+                            ? accentGreen.withOpacity(0.15)
+                            : Colors.orange.withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Icon(
+                        isOnTrack
+                            ? Icons.check_circle_outline
+                            : Icons.warning_amber_rounded,
+                        size: 20,
+                        color: isOnTrack ? accentGreen : Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Text(
+                                budget.budgetPeriodLabel ?? 'Budget Period',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w600,
+                                  color: isDarkMode ? Colors.white : darkText,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 2,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: isOnTrack
+                                      ? accentGreen.withOpacity(0.15)
+                                      : Colors.orange.withOpacity(0.15),
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: Text(
+                                  isOnTrack ? 'On Track' : 'Behind',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: isOnTrack
+                                        ? accentGreen
+                                        : Colors.orange,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            budget.formattedDateRange,
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDarkMode
+                                  ? Colors.white60
+                                  : Colors.grey.shade600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _buildPeriodStat(
+                      'Days Left',
+                      '${remainingDays > 0 ? remainingDays : 0}',
+                      Colors.blue,
+                      isDarkMode,
+                    ),
+                    _buildPeriodStat(
+                      'Elapsed',
+                      '$daysElapsed/$totalDays',
+                      accentGreen,
+                      isDarkMode,
+                    ),
+                    _buildPeriodStat(
+                      'Daily Budget',
+                      'RM${budget.dailyBudgetTarget.toStringAsFixed(2)}',
+                      Colors.purple,
+                      isDarkMode,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        }
+        return const SizedBox.shrink();
+      },
+    );
+  }
+
+  Widget _buildPeriodStat(
+    String label,
+    String value,
+    Color color,
+    bool isDarkMode,
+  ) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        decoration: BoxDecoration(
+          color: color.withOpacity(isDarkMode ? 0.15 : 0.08),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          children: [
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: color,
+              ),
+            ),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 10,
+                color: isDarkMode ? Colors.white60 : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ============ HELPER METHODS FOR CATEGORY COLORS AND ICONS ============
 
   Color _getCategoryChartColor(String categoryName) {
@@ -119,57 +298,57 @@ class AnalyticsScreen extends StatelessWidget {
       case 'grocery':
       case 'household/groceries':
       case 'household':
-        return const Color(0xFF4CAF50); // Green
+        return const Color(0xFF4CAF50);
       case 'food':
       case 'dining':
       case 'restaurant':
-        return const Color(0xFFFF9800); // Orange
+        return const Color(0xFFFF9800);
       case 'beverages':
       case 'beverage':
       case 'drinks':
-        return const Color(0xFF2196F3); // Blue
+        return const Color(0xFF2196F3);
       case 'clothes':
       case 'clothing':
       case 'fashion':
-        return const Color(0xFF9C27B0); // Purple
+        return const Color(0xFF9C27B0);
       case 'stationery':
-        return const Color(0xFF009688); // Teal
+        return const Color(0xFF009688);
       case 'transport':
       case 'transportation':
       case 'travel':
-        return const Color(0xFF795548); // Brown
+        return const Color(0xFF795548);
       case 'entertainment':
       case 'fun':
-        return const Color(0xFFE91E63); // Pink
+        return const Color(0xFFE91E63);
       case 'shopping':
       case 'retail':
-        return const Color(0xFFFF5722); // Deep Orange
+        return const Color(0xFFFF5722);
       case 'pet food':
       case 'pet supplies':
       case 'pets':
-        return const Color(0xFF8BC34A); // Light Green
+        return const Color(0xFF8BC34A);
       case 'health':
       case 'healthcare':
       case 'medical':
-        return const Color(0xFFF44336); // Red
+        return const Color(0xFFF44336);
       case 'snacks & desserts':
       case 'snacks':
       case 'desserts':
-        return const Color(0xFFFF6B6B); // Light Red
+        return const Color(0xFFFF6B6B);
       case 'cooking ingredients':
-        return const Color(0xFFFFA726); // Light Orange
+        return const Color(0xFFFFA726);
       case 'baking':
-        return const Color(0xFFFFB74D); // Golden
+        return const Color(0xFFFFB74D);
       case 'education':
       case 'learning':
-        return const Color(0xFF673AB7); // Deep Purple
+        return const Color(0xFF673AB7);
       case 'bills':
       case 'utilities':
-        return const Color(0xFF607D8B); // Blue Grey
+        return const Color(0xFF607D8B);
       case 'others':
       case 'other':
       case 'misc':
-        return const Color(0xFF9E9E9E); // Grey
+        return const Color(0xFF9E9E9E);
       default:
         return accentGreen;
     }
@@ -764,7 +943,6 @@ class AnalyticsScreen extends StatelessWidget {
     }
   }
 
-  // UPDATED: Category Circle Chart with standardization and colors
   Widget _buildCategoryCircleChart(
     BuildContext context,
     ExpenseState state,
@@ -773,6 +951,17 @@ class AnalyticsScreen extends StatelessWidget {
     // Standardize category names before processing
     final Map<String, double> standardizedCategories = {};
     final rawCategories = state.sortedCategoryTotals;
+
+    // Check if budget has date range and filter expenses accordingly
+    final budgetState = context.read<budget_cubit.BudgetCubit>().state;
+    if (budgetState is budget_cubit.BudgetLoaded) {
+      final budget = budgetState.budget;
+      if (budget.hasDateRange) {
+        // Only include expenses within the budget date range
+        // The state already filters by date range if set in ExpenseCubit
+        // This is just a safeguard
+      }
+    }
 
     for (var entry in rawCategories.entries) {
       final standardName = _standardizeCategoryName(entry.key);
@@ -1092,25 +1281,24 @@ class CategoryCirclePainter extends CustomPainter {
   final ExpenseCubit cubit;
   final bool isDarkMode;
 
-  // Predefined vibrant colors for categories
   static const List<Color> _vibrantColors = [
-    Color(0xFFE91E63), // Pink
-    Color(0xFF9C27B0), // Purple
-    Color(0xFF673AB7), // Deep Purple
-    Color(0xFF3F51B5), // Indigo
-    Color(0xFF2196F3), // Blue
-    Color(0xFF03A9F4), // Light Blue
-    Color(0xFF00BCD4), // Cyan
-    Color(0xFF009688), // Teal
-    Color(0xFF4CAF50), // Green
-    Color(0xFF8BC34A), // Light Green
-    Color(0xFFCDDC39), // Lime
-    Color(0xFFFFEB3B), // Yellow
-    Color(0xFFFFC107), // Amber
-    Color(0xFFFF9800), // Orange
-    Color(0xFFFF5722), // Deep Orange
-    Color(0xFF795548), // Brown
-    Color(0xFF607D8B), // Blue Grey
+    Color(0xFFE91E63),
+    Color(0xFF9C27B0),
+    Color(0xFF673AB7),
+    Color(0xFF3F51B5),
+    Color(0xFF2196F3),
+    Color(0xFF03A9F4),
+    Color(0xFF00BCD4),
+    Color(0xFF009688),
+    Color(0xFF4CAF50),
+    Color(0xFF8BC34A),
+    Color(0xFFCDDC39),
+    Color(0xFFFFEB3B),
+    Color(0xFFFFC107),
+    Color(0xFFFF9800),
+    Color(0xFFFF5722),
+    Color(0xFF795548),
+    Color(0xFF607D8B),
   ];
 
   CategoryCirclePainter({
@@ -1186,14 +1374,12 @@ class CategoryCirclePainter extends CustomPainter {
       startAngle += sweepAngle;
     }
 
-    // Draw inner circle (donut hole)
     canvas.drawCircle(
       center,
       radius * 0.6,
       Paint()..color = isDarkMode ? Colors.grey[850]! : Colors.white,
     );
 
-    // Draw center text
     final textPainter = TextPainter(
       text: TextSpan(
         text: '${categories.length}',

@@ -34,7 +34,6 @@ class BudgetScreen extends StatelessWidget {
         BlocProvider.value(value: context.read<BudgetCubit>()),
         BlocProvider.value(value: context.read<ExpenseCubit>()),
         BlocProvider(create: (context) => NotificationCubit()),
-        // FIXED: Use existing ProfileCubit, don't create a new one
         BlocProvider.value(value: context.read<ProfileCubit>()),
       ],
       child: BlocBuilder<ProfileCubit, ProfileState>(
@@ -160,7 +159,6 @@ class BudgetScreen extends StatelessWidget {
               isDarkMode,
               activeColor,
               () {
-                // FIXED: Use existing ProfileCubit, don't create a new one
                 Navigator.push(
                   context,
                   MaterialPageRoute(
@@ -232,7 +230,6 @@ class BudgetView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
-    final screenHeight = MediaQuery.of(context).size.height;
 
     final profileState = context.watch<ProfileCubit>().state;
     final bool isDarkMode = (profileState is ProfileLoaded)
@@ -285,14 +282,21 @@ class BudgetView extends StatelessWidget {
           return BlocBuilder<ExpenseCubit, ExpenseState>(
             builder: (context, expenseState) {
               final Map<String, double> categorySpending = {};
-              double totalSpending = 0;
+              double totalSpending = 0.0;
 
+              // Only count expenses within the budget date range if set
               for (var expense in expenseState.allExpenses) {
                 if (!expense.isIncome) {
+                  // Check if expense is within budget date range
+                  if (budget.hasDateRange &&
+                      !budget.isDateInRange(expense.date)) {
+                    continue; // Skip expenses outside the budget period
+                  }
+
                   String categoryName = expense.category;
                   categoryName = _standardizeCategoryName(categoryName);
                   categorySpending[categoryName] =
-                      (categorySpending[categoryName] ?? 0) + expense.amount;
+                      (categorySpending[categoryName] ?? 0.0) + expense.amount;
                   totalSpending += expense.amount;
                 }
               }
@@ -308,6 +312,9 @@ class BudgetView extends StatelessWidget {
                         children: [
                           _buildHeaderRow(context, isDarkMode),
                           const SizedBox(height: 16),
+                          // Budget period indicator
+                          _buildBudgetPeriodIndicator(budget, isDarkMode),
+                          const SizedBox(height: 16),
                           _buildMonthlyBudgetSection(
                             budget,
                             totalSpending,
@@ -318,7 +325,6 @@ class BudgetView extends StatelessWidget {
                           const SizedBox(height: 20),
                           _buildCategoryHeader(isDarkMode),
                           const SizedBox(height: 12),
-                          // FIXED: Removed ConstrainedBox to allow full height scrolling
                           _buildCategoryList(
                             budget,
                             categorySpending,
@@ -369,6 +375,94 @@ class BudgetView extends StatelessWidget {
       'Miscellaneous': 'Other',
     };
     return categoryMap[category] ?? category;
+  }
+
+  // Budget period indicator widget
+  Widget _buildBudgetPeriodIndicator(Budget budget, bool isDarkMode) {
+    if (!budget.hasDateRange) {
+      return const SizedBox.shrink();
+    }
+
+    final remainingDays = budget.remainingDays;
+    final totalDays = budget.totalDays;
+    final progress = totalDays > 0
+        ? (totalDays - remainingDays) / totalDays
+        : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isDarkMode ? Colors.grey[850] : Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDarkMode ? Colors.grey[800]! : Colors.grey.shade200,
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.date_range, size: 16, color: accentGreen),
+              const SizedBox(width: 8),
+              Text(
+                budget.budgetPeriodLabel ?? 'Budget Period',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: isDarkMode ? Colors.white : darkText,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: remainingDays <= 3
+                      ? Colors.red.withOpacity(0.15)
+                      : accentGreen.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Text(
+                  '${remainingDays > 0 ? remainingDays : 0} days left',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: remainingDays <= 3 ? Colors.red : accentGreen,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            budget.formattedDateRange,
+            style: TextStyle(
+              fontSize: 12,
+              color: isDarkMode ? Colors.white60 : Colors.grey.shade600,
+            ),
+          ),
+          const SizedBox(height: 6),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: progress.clamp(0.0, 1.0),
+              backgroundColor: isDarkMode
+                  ? Colors.grey[800]
+                  : Colors.grey.shade200,
+              valueColor: AlwaysStoppedAnimation<Color>(
+                progress >= 0.9
+                    ? Colors.red
+                    : progress >= 0.7
+                    ? Colors.orange
+                    : accentGreen,
+              ),
+              minHeight: 4,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   Widget _buildHeaderRow(BuildContext context, bool isDarkMode) {
@@ -478,9 +572,21 @@ class BudgetView extends StatelessWidget {
 
     final double progress = budget.monthlyLimit > 0
         ? totalSpending / budget.monthlyLimit
-        : 0;
+        : 0.0;
     final double remaining = budget.monthlyLimit - totalSpending;
     final double percentage = progress * 100;
+
+    // Calculate projected spending if date range is set
+    String? projectedText;
+    Color? projectedColor;
+    if (budget.hasDateRange) {
+      final projected = budget.projectedTotal;
+      final isOnTrack = budget.isOnTrack;
+      projectedText = isOnTrack
+          ? 'On Track: RM${projected.toStringAsFixed(2)}'
+          : 'Projected: RM${projected.toStringAsFixed(2)}';
+      projectedColor = isOnTrack ? accentGreen : Colors.orange;
+    }
 
     String statusText;
     Color progressColor;
@@ -665,6 +771,28 @@ class BudgetView extends StatelessWidget {
                     ),
                 ],
               ),
+              // Projected spending info
+              if (budget.hasDateRange && projectedText != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    projectedText,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: projectedColor ?? Colors.white70,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ],
@@ -716,7 +844,6 @@ class BudgetView extends StatelessWidget {
     );
   }
 
-  // FIXED: Updated method with proper scrolling - removed ConstrainedBox
   Widget _buildCategoryList(
     Budget budget,
     Map<String, double> categorySpending,
@@ -798,20 +925,19 @@ class BudgetView extends StatelessWidget {
       );
     }
 
-    // FIXED: Using ListView with NeverScrollableScrollPhysics since parent SingleChildScrollView handles scrolling
     return ListView.builder(
       shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(), // Parent handles scrolling
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: activeCategories.length,
       itemBuilder: (context, index) {
         final category = activeCategories[index];
         final standardCategoryName = _standardizeCategoryName(category.name);
-        double spent = 0;
+        double spent = 0.0;
 
         if (categorySpending.containsKey(standardCategoryName)) {
-          spent = categorySpending[standardCategoryName] ?? 0;
+          spent = categorySpending[standardCategoryName] ?? 0.0;
         } else if (categorySpending.containsKey(category.name)) {
-          spent = categorySpending[category.name] ?? 0;
+          spent = categorySpending[category.name] ?? 0.0;
         } else {
           for (var entry in categorySpending.entries) {
             if (_standardizeCategoryName(entry.key) == standardCategoryName) {

@@ -19,18 +19,14 @@ class NotificationModel {
   final Map<String, dynamic>? data;
 
   NotificationModel({
-    String? id, // optional — auto-generates a UUID if not provided
+    String? id,
     required this.title,
     required this.message,
     required this.timestamp,
     required this.type,
     this.isRead = false,
     this.data,
-  }) : id = id ?? const Uuid().v4(); // generates UUID matching your table's UUID column
-
-  // ─── Supabase (matches your exact table schema) ──────────────────────────
-  // Fields: id, user_id, title, message, type, is_read, created_at
-  // Note: user_id is added by the cubit (not stored in the model)
+  }) : id = id ?? const Uuid().v4();
 
   Map<String, dynamic> toDatabaseJson() {
     return {
@@ -54,8 +50,6 @@ class NotificationModel {
       data: null,
     );
   }
-
-  // ─── Type helpers (match your table's CHECK constraint exactly) ──────────
 
   static String _typeToString(NotificationType type) {
     switch (type) {

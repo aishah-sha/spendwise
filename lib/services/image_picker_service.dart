@@ -1,4 +1,5 @@
-// lib/services/image_picker_service.dart
+// services/image_picker_service.dart - FULL OPTIMIZED VERSION
+
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -59,6 +60,86 @@ class ImagePickerService {
     }
   }
 
+  // ============ FAST PROFILE IMAGE METHODS ============
+
+  /// FAST: Pick profile image from gallery with optimized size
+  Future<String?> pickProfileImageFromGalleryFast({
+    int quality = 50,
+    double maxSize = 200.0,
+  }) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.gallery,
+        maxWidth: maxSize,
+        maxHeight: maxSize,
+        imageQuality: quality,
+      );
+
+      if (image == null) return null;
+
+      // Use a simpler path for faster saving
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final Directory imagesDir = Directory('${appDocDir.path}/images');
+
+      if (!await imagesDir.exists()) {
+        await imagesDir.create(recursive: true);
+      }
+
+      final String fileName =
+          'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final String permanentPath = '${imagesDir.path}/$fileName';
+
+      final File tempFile = File(image.path);
+      final File permanentFile = await tempFile.copy(permanentPath);
+
+      debugPrint('✅ Profile image saved fast: $permanentPath');
+      return permanentFile.path;
+    } catch (e) {
+      debugPrint('❌ Error picking profile image from gallery: $e');
+      return null;
+    }
+  }
+
+  /// FAST: Pick profile image from camera with optimized size
+  Future<String?> pickProfileImageFromCameraFast({
+    int quality = 50,
+    double maxSize = 200.0,
+  }) async {
+    try {
+      final XFile? image = await _picker.pickImage(
+        source: ImageSource.camera,
+        maxWidth: maxSize,
+        maxHeight: maxSize,
+        imageQuality: quality,
+      );
+
+      if (image == null) return null;
+
+      // Use a simpler path for faster saving
+      final Directory appDocDir = await getApplicationDocumentsDirectory();
+      final Directory imagesDir = Directory('${appDocDir.path}/images');
+
+      if (!await imagesDir.exists()) {
+        await imagesDir.create(recursive: true);
+      }
+
+      final String fileName =
+          'profile_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final String permanentPath = '${imagesDir.path}/$fileName';
+
+      final File tempFile = File(image.path);
+      final File permanentFile = await tempFile.copy(permanentPath);
+
+      debugPrint('✅ Profile image saved fast: $permanentPath');
+      return permanentFile.path;
+    } catch (e) {
+      debugPrint('❌ Error picking profile image from camera: $e');
+      return null;
+    }
+  }
+
+  // ============ REGULAR PROFILE IMAGE METHODS (Slower, larger) ============
+
   /// Pick profile image from gallery (with permanent storage)
   Future<String?> pickProfileImageFromGallery({
     int quality = 60,
@@ -74,10 +155,8 @@ class ImagePickerService {
 
       if (image == null) return null;
 
-      // Wait a moment to ensure file is ready
       await Future.delayed(const Duration(milliseconds: 100));
 
-      // Save to permanent storage
       final savedFile = await _saveImageToPermanentStorage(image);
 
       if (savedFile != null && await savedFile.exists()) {
@@ -107,10 +186,8 @@ class ImagePickerService {
 
       if (image == null) return null;
 
-      // Wait a moment to ensure file is ready
       await Future.delayed(const Duration(milliseconds: 100));
 
-      // Save to permanent storage
       final savedFile = await _saveImageToPermanentStorage(image);
 
       if (savedFile != null && await savedFile.exists()) {
@@ -430,7 +507,7 @@ class ImagePickerService {
                 ),
                 onTap: () async {
                   Navigator.pop(context);
-                  selectedPath = await pickProfileImageFromCamera();
+                  selectedPath = await pickProfileImageFromCameraFast();
                   if (context.mounted && selectedPath != null) {
                     Navigator.pop(context, selectedPath);
                   }
@@ -452,7 +529,7 @@ class ImagePickerService {
                 ),
                 onTap: () async {
                   Navigator.pop(context);
-                  selectedPath = await pickProfileImageFromGallery();
+                  selectedPath = await pickProfileImageFromGalleryFast();
                   if (context.mounted && selectedPath != null) {
                     Navigator.pop(context, selectedPath);
                   }

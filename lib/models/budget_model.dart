@@ -44,7 +44,6 @@ class BudgetCategory {
     );
   }
 
-  // Convert to JSON for Supabase storage
   Map<String, dynamic> toJson() {
     return {
       'name': name,
@@ -55,7 +54,6 @@ class BudgetCategory {
     };
   }
 
-  // Create from Supabase JSON
   factory BudgetCategory.fromJson(Map<String, dynamic> json) {
     return BudgetCategory(
       name: json['name'] as String,
@@ -93,6 +91,11 @@ class Budget {
   final DateTime? updatedAt;
   final String? currency;
 
+  // NEW: Date range fields
+  final DateTime? startDate;
+  final DateTime? endDate;
+  final String? budgetPeriodLabel;
+
   const Budget({
     required this.monthlyLimit,
     required this.totalSpent,
@@ -100,7 +103,100 @@ class Budget {
     this.createdAt,
     this.updatedAt,
     this.currency = 'RM',
+    this.startDate,
+    this.endDate,
+    this.budgetPeriodLabel,
   });
+
+  // Helper getters for date range
+  bool get hasDateRange => startDate != null && endDate != null;
+
+  String get formattedDateRange {
+    if (!hasDateRange) return 'No date range set';
+    return '${_formatDate(startDate!)} - ${_formatDate(endDate!)}';
+  }
+
+  String get shortDateRange {
+    if (!hasDateRange) return '';
+    return '${_formatShortDate(startDate!)} - ${_formatShortDate(endDate!)}';
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  String _formatShortDate(DateTime date) {
+    return '${date.day}/${date.month}';
+  }
+
+  // Check if a date falls within the budget period
+  bool isDateInRange(DateTime date) {
+    if (!hasDateRange) return true;
+    final dateOnly = DateTime(date.year, date.month, date.day);
+    final startOnly = DateTime(
+      startDate!.year,
+      startDate!.month,
+      startDate!.day,
+    );
+    final endOnly = DateTime(endDate!.year, endDate!.month, endDate!.day);
+    return dateOnly.isAfter(startOnly.subtract(const Duration(days: 1))) &&
+        dateOnly.isBefore(endOnly.add(const Duration(days: 1)));
+  }
+
+  // Get remaining days in the budget period
+  int get remainingDays {
+    if (!hasDateRange) return 0;
+    final now = DateTime.now();
+    final endOnly = DateTime(endDate!.year, endDate!.month, endDate!.day);
+    final difference = endOnly.difference(now);
+    return difference.inDays + 1;
+  }
+
+  // Get total days in the budget period
+  int get totalDays {
+    if (!hasDateRange) return 0;
+    final startOnly = DateTime(
+      startDate!.year,
+      startDate!.month,
+      startDate!.day,
+    );
+    final endOnly = DateTime(endDate!.year, endDate!.month, endDate!.day);
+    return endOnly.difference(startOnly).inDays + 1;
+  }
+
+  // Get days elapsed in the budget period
+  int get daysElapsed {
+    if (!hasDateRange) return 0;
+    final now = DateTime.now();
+    final startOnly = DateTime(
+      startDate!.year,
+      startDate!.month,
+      startDate!.day,
+    );
+    final difference = now.difference(startOnly);
+    return difference.inDays + 1;
+  }
+
+  // Calculate daily budget target
+  double get dailyBudgetTarget {
+    if (!hasDateRange || totalDays == 0)
+      return monthlyLimit / 30; // fallback to 30 days
+    return monthlyLimit / totalDays;
+  }
+
+  // Calculate projected total spending based on current pace
+  double get projectedTotal {
+    if (!hasDateRange || daysElapsed == 0) return totalSpent;
+    final dailyRate = totalSpent / daysElapsed;
+    return dailyRate * totalDays;
+  }
+
+  // Check if on track to meet budget
+  bool get isOnTrack {
+    if (!hasDateRange || totalDays == 0) return true;
+    final projected = projectedTotal;
+    return projected <= monthlyLimit;
+  }
 
   double get remainingBudget => monthlyLimit - totalSpent;
   double get spentPercentage =>
@@ -219,7 +315,6 @@ class Budget {
     );
   }
 
-  // Convert to JSON for Supabase storage
   Map<String, dynamic> toJson() {
     return {
       'monthly_limit': monthlyLimit,
@@ -228,10 +323,13 @@ class Budget {
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updated_at': updatedAt!.toIso8601String(),
       'currency': currency,
+      // NEW: Date range fields
+      if (startDate != null) 'start_date': startDate!.toIso8601String(),
+      if (endDate != null) 'end_date': endDate!.toIso8601String(),
+      if (budgetPeriodLabel != null) 'budget_period_label': budgetPeriodLabel,
     };
   }
 
-  // Create from Supabase JSON
   factory Budget.fromJson(Map<String, dynamic> json) {
     return Budget(
       monthlyLimit: (json['monthly_limit'] as num).toDouble(),
@@ -246,6 +344,14 @@ class Budget {
           ? DateTime.parse(json['updated_at'] as String)
           : null,
       currency: json['currency'] as String? ?? 'RM',
+      // NEW: Date range fields
+      startDate: json['start_date'] != null
+          ? DateTime.parse(json['start_date'] as String)
+          : null,
+      endDate: json['end_date'] != null
+          ? DateTime.parse(json['end_date'] as String)
+          : null,
+      budgetPeriodLabel: json['budget_period_label'] as String?,
     );
   }
 
@@ -256,6 +362,9 @@ class Budget {
     DateTime? createdAt,
     DateTime? updatedAt,
     String? currency,
+    DateTime? startDate,
+    DateTime? endDate,
+    String? budgetPeriodLabel,
   }) {
     return Budget(
       monthlyLimit: monthlyLimit ?? this.monthlyLimit,
@@ -264,6 +373,9 @@ class Budget {
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       currency: currency ?? this.currency,
+      startDate: startDate ?? this.startDate,
+      endDate: endDate ?? this.endDate,
+      budgetPeriodLabel: budgetPeriodLabel ?? this.budgetPeriodLabel,
     );
   }
 
@@ -276,7 +388,10 @@ class Budget {
         listEquals(other.categories, categories) &&
         other.createdAt == createdAt &&
         other.updatedAt == updatedAt &&
-        other.currency == currency;
+        other.currency == currency &&
+        other.startDate == startDate &&
+        other.endDate == endDate &&
+        other.budgetPeriodLabel == budgetPeriodLabel;
   }
 
   @override
@@ -287,12 +402,16 @@ class Budget {
     createdAt,
     updatedAt,
     currency,
+    startDate,
+    endDate,
+    budgetPeriodLabel,
   );
 
   @override
   String toString() {
     return 'Budget(monthlyLimit: $monthlyLimit, totalSpent: $totalSpent, '
-        'categories: $categoryCount, remaining: $remainingBudget)';
+        'categories: $categoryCount, remaining: $remainingBudget, '
+        'period: ${budgetPeriodLabel ?? "No date range"})';
   }
 }
 

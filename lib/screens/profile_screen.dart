@@ -1,10 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:spendwise/services/image_picker_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 // Cubits
 import '../cubit/budget_cubit.dart';
@@ -296,7 +293,10 @@ class ProfileScreen extends StatelessWidget {
   }
 }
 
-// FIXED ProfileImageWidget
+// ============================================================
+// OPTIMIZED PROFILE IMAGE WIDGET - FAST LOADING
+// ============================================================
+
 class ProfileImageWidget extends StatefulWidget {
   final String imageUrl;
   final double radius;
@@ -317,6 +317,11 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
   ImageProvider? _imageProvider;
   bool _isLoading = true;
   bool _hasError = false;
+  bool _isImageLoaded = false;
+
+  // FIXED: Track loading state to prevent infinite loops
+  bool _isLoadingImage = false;
+  String? _lastLoadedUrl;
 
   @override
   void initState() {
@@ -327,7 +332,10 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
   @override
   void didUpdateWidget(ProfileImageWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) {
+    // FIXED: Only reload if URL actually changed
+    if (oldWidget.imageUrl != widget.imageUrl && widget.imageUrl.isNotEmpty) {
+      _isImageLoaded = false;
+      _lastLoadedUrl = null;
       _loadImage();
     }
   }
@@ -335,24 +343,61 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
   Future<void> _loadImage() async {
     final imageUrl = widget.imageUrl;
 
+    // FIXED: Prevent duplicate loads
+    if (_isLoadingImage || _lastLoadedUrl == imageUrl) {
+      debugPrint('⏭️ Skipping duplicate load for: $imageUrl');
+      return;
+    }
+
     debugPrint('🖼️ ProfileImageWidget loading: $imageUrl');
 
     setState(() {
       _isLoading = true;
       _hasError = false;
       _imageProvider = null;
+      _isImageLoaded = false;
+      _isLoadingImage = true;
     });
 
     if (imageUrl.isEmpty) {
       debugPrint('📷 Empty URL, showing placeholder');
       setState(() {
         _isLoading = false;
+        _isImageLoaded = false;
+        _isLoadingImage = false;
+        _lastLoadedUrl = '';
       });
       return;
     }
 
+    // Check if image is already cached
+    if (ProfileCubit.isImageCached(imageUrl)) {
+      debugPrint('📷 Image found in cache: $imageUrl');
+      try {
+        final file = File(imageUrl);
+        if (await file.exists()) {
+          if (mounted) {
+            setState(() {
+              _imageProvider = FileImage(file);
+              _isLoading = false;
+              _isImageLoaded = true;
+              _isLoadingImage = false;
+              _lastLoadedUrl = imageUrl;
+            });
+          }
+          debugPrint('✅ Image loaded from cache');
+          return;
+        } else {
+          ProfileCubit.clearImageCache(imageUrl);
+        }
+      } catch (e) {
+        debugPrint('⚠️ Cache load error: $e');
+        ProfileCubit.clearImageCache(imageUrl);
+      }
+    }
+
+    // Try to load from file directly
     try {
-      // Clean the path
       String cleanPath = imageUrl;
       if (cleanPath.startsWith('file://')) {
         cleanPath = cleanPath.substring(7);
@@ -364,20 +409,31 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
       debugPrint('📁 File exists: $exists at path: $cleanPath');
 
       if (exists && mounted) {
-        // Read file size to verify it's valid
         final fileSize = await file.length();
         if (fileSize > 0) {
-          setState(() {
-            _imageProvider = FileImage(file);
-            _isLoading = false;
-          });
+          ProfileCubit.imageCache[imageUrl] = imageUrl;
+
+          if (mounted) {
+            setState(() {
+              _imageProvider = FileImage(file);
+              _isLoading = false;
+              _isImageLoaded = true;
+              _isLoadingImage = false;
+              _lastLoadedUrl = imageUrl;
+            });
+          }
           debugPrint('✅ Image loaded successfully, size: $fileSize bytes');
         } else {
           debugPrint('⚠️ File is empty (0 bytes)');
-          setState(() {
-            _isLoading = false;
-            _hasError = true;
-          });
+          if (mounted) {
+            setState(() {
+              _isLoading = false;
+              _hasError = true;
+              _isImageLoaded = false;
+              _isLoadingImage = false;
+              _lastLoadedUrl = imageUrl;
+            });
+          }
         }
       } else {
         debugPrint('⚠️ File not found');
@@ -385,6 +441,9 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
           setState(() {
             _isLoading = false;
             _hasError = true;
+            _isImageLoaded = false;
+            _isLoadingImage = false;
+            _lastLoadedUrl = imageUrl;
           });
         }
       }
@@ -394,6 +453,9 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
         setState(() {
           _isLoading = false;
           _hasError = true;
+          _isImageLoaded = false;
+          _isLoadingImage = false;
+          _lastLoadedUrl = imageUrl;
         });
       }
     }
@@ -411,8 +473,8 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
         ),
         child: Center(
           child: SizedBox(
-            width: widget.radius * 0.5,
-            height: widget.radius * 0.5,
+            width: widget.radius * 0.4,
+            height: widget.radius * 0.4,
             child: const CircularProgressIndicator(
               strokeWidth: 2,
               valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF32BA32)),
@@ -422,7 +484,7 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
       );
     }
 
-    if (_imageProvider != null && !_hasError) {
+    if (_imageProvider != null && !_hasError && _isImageLoaded) {
       return CircleAvatar(
         radius: widget.radius,
         backgroundColor: widget.isDarkMode
@@ -431,15 +493,20 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
         backgroundImage: _imageProvider,
         onBackgroundImageError: (exception, stackTrace) {
           debugPrint('❌ Background image error: $exception');
-          setState(() {
-            _hasError = true;
-            _imageProvider = null;
-          });
+          if (mounted) {
+            setState(() {
+              _hasError = true;
+              _imageProvider = null;
+              _isImageLoaded = false;
+              if (widget.imageUrl.isNotEmpty) {
+                ProfileCubit.clearImageCache(widget.imageUrl);
+              }
+            });
+          }
         },
       );
     }
 
-    // Fallback to placeholder
     return CircleAvatar(
       radius: widget.radius,
       backgroundColor: widget.isDarkMode ? Colors.grey[800] : Colors.grey[300],
@@ -451,6 +518,10 @@ class _ProfileImageWidgetState extends State<ProfileImageWidget> {
     );
   }
 }
+
+// ============================================================
+// PROFILE CONTENT
+// ============================================================
 
 class _ProfileContent extends StatelessWidget {
   final bool isDarkMode;
@@ -613,6 +684,8 @@ class _ProfileContent extends StatelessWidget {
     );
   }
 
+  // ─── FAST Image Picker with Optimized Size ───────────────────────────────
+
   Future<void> _showImagePickerOptions(
     BuildContext context,
     ProfileLoaded state,
@@ -647,7 +720,7 @@ class _ProfileContent extends StatelessWidget {
                 title: const Text('Choose from Gallery'),
                 onTap: () {
                   Navigator.pop(sheetContext);
-                  _pickImageFromGallery(context, state);
+                  _pickImageFromGalleryFast(context, state);
                 },
               ),
               ListTile(
@@ -658,7 +731,7 @@ class _ProfileContent extends StatelessWidget {
                 title: const Text('Take a Photo'),
                 onTap: () {
                   Navigator.pop(sheetContext);
-                  _pickImageFromCamera(context, state);
+                  _pickImageFromCameraFast(context, state);
                 },
               ),
               if (state.user.profileImageUrl.isNotEmpty)
@@ -681,22 +754,19 @@ class _ProfileContent extends StatelessWidget {
     );
   }
 
-  Future<void> _pickImageFromGallery(
+  // FAST: Pick from gallery with optimized size
+  Future<void> _pickImageFromGalleryFast(
     BuildContext context,
     ProfileLoaded state,
   ) async {
     if (!context.mounted) return;
 
     try {
-      // Use ImagePickerService instead of direct ImagePicker
       final imagePickerService = ImagePickerService();
-      final imagePath = await imagePickerService.pickProfileImageFromGallery(
-        quality: 60,
-        maxSize: 300,
-      );
+      final imagePath = await imagePickerService
+          .pickProfileImageFromGalleryFast(quality: 50, maxSize: 200);
 
       if (imagePath != null && context.mounted) {
-        // Update profile image directly - the service already saved it permanently
         context.read<ProfileCubit>().updateProfileImage(imagePath);
       }
     } catch (e) {
@@ -712,22 +782,21 @@ class _ProfileContent extends StatelessWidget {
     }
   }
 
-  Future<void> _pickImageFromCamera(
+  // FAST: Pick from camera with optimized size
+  Future<void> _pickImageFromCameraFast(
     BuildContext context,
     ProfileLoaded state,
   ) async {
     if (!context.mounted) return;
 
     try {
-      // Use ImagePickerService instead of direct ImagePicker
       final imagePickerService = ImagePickerService();
-      final imagePath = await imagePickerService.pickProfileImageFromCamera(
-        quality: 60,
-        maxSize: 300,
+      final imagePath = await imagePickerService.pickProfileImageFromCameraFast(
+        quality: 50,
+        maxSize: 200,
       );
 
       if (imagePath != null && context.mounted) {
-        // Update profile image directly - the service already saved it permanently
         context.read<ProfileCubit>().updateProfileImage(imagePath);
       }
     } catch (e) {
@@ -759,7 +828,6 @@ class _ProfileContent extends StatelessWidget {
           TextButton(
             onPressed: () {
               Navigator.pop(dialogContext);
-              // Remove immediately - NO LOADING
               context.read<ProfileCubit>().updateProfileImage('');
             },
             child: const Text(

@@ -1,3 +1,5 @@
+// screens/receipt_scanner_screen.dart - REMOVED auto-save
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -50,7 +52,6 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
         } else if (state.status == ReceiptStatus.error &&
             state.errorMessage != null) {
           _showErrorSnackBar(context, state.errorMessage!);
-          // Reset error after showing
           Future.delayed(const Duration(seconds: 2), () {
             if (mounted) context.read<ReceiptCubit>().clearError();
           });
@@ -81,6 +82,7 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
           onEdit: () {
             Navigator.pop(sheetContext);
             _sheetOpen = false;
+            // FIXED: Pass receipt to manual entry WITHOUT saving
             _goToManualEntry(context, addExpenseCubit, receipt);
           },
           onScanAgain: () {
@@ -91,8 +93,8 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
           onConfirm: () {
             Navigator.pop(sheetContext);
             _sheetOpen = false;
-            // Save the expense to database
-            _saveExpense(context, addExpenseCubit, receipt);
+            // FIXED: Save ONLY when user confirms directly from scanner
+            _saveExpenseDirectly(context, addExpenseCubit, receipt);
           },
         );
       },
@@ -101,7 +103,8 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     });
   }
 
-  void _saveExpense(
+  // FIXED: Save directly from scanner (user clicked Confirm, not Edit)
+  void _saveExpenseDirectly(
     BuildContext context,
     AddExpenseCubit cubit,
     ReceiptModel receipt,
@@ -139,7 +142,7 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
           ? categories.first
           : 'Others';
 
-      // 1. Save to transactions table (this is what Dashboard and History read from!)
+      // Save to transactions table
       await supabase.from('transactions').insert({
         'id': expenseId,
         'user_id': userId,
@@ -153,9 +156,7 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      print('✅ Saved to transactions table with id: $expenseId');
-
-      // 2. Also save to receipts table for record keeping
+      // Also save to receipts table for record keeping
       await supabase.from('receipts').insert({
         'id': expenseId,
         'user_id': userId,
@@ -169,16 +170,13 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
         'created_at': DateTime.now().toIso8601String(),
       });
 
-      print('✅ Saved to receipts table');
-
-      // 3. Add to recent uploads in cubit
+      // Add to recent uploads in cubit
       cubit.addToRecentUploads(receipt);
 
-      // 4. Refresh the ExpenseCubit to update Dashboard and History
+      // Refresh data
       final expenseCubit = context.read<ExpenseCubit>();
       await expenseCubit.refreshExpenses();
 
-      // 5. Refresh BudgetCubit to update budget tracking
       final budgetCubit = context.read<BudgetCubit>();
       await budgetCubit.loadBudget(forceRefresh: true);
 
@@ -192,7 +190,6 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
           ),
         );
 
-        // Go back with the receipt as success signal
         Future.delayed(const Duration(milliseconds: 500), () {
           if (context.mounted) Navigator.pop(context, receipt);
         });
@@ -212,6 +209,7 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     }
   }
 
+  // FIXED: Go to manual entry WITHOUT saving
   void _goToManualEntry(
     BuildContext context,
     AddExpenseCubit addExpenseCubit,
@@ -489,7 +487,7 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
   }
 }
 
-// Confirmation Sheet Widget
+// Confirmation Sheet Widget - UPDATED to remove auto-save
 class _ConfirmationSheet extends StatefulWidget {
   final ReceiptModel receipt;
   final VoidCallback onEdit;
@@ -516,7 +514,6 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
     _receipt = widget.receipt;
   }
 
-  /// Helper to return specific icons for the establishment types
   IconData _getEstablishmentIcon(String type) {
     final t = type.toLowerCase();
     if (t.contains('restaurant') || t.contains('café') || t.contains('cafe')) {
@@ -547,7 +544,6 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Drag handle
           Container(
             margin: const EdgeInsets.only(top: 12),
             width: 40,
@@ -557,8 +553,6 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
               borderRadius: BorderRadius.circular(2),
             ),
           ),
-
-          // Header
           Padding(
             padding: const EdgeInsets.all(20),
             child: Row(
@@ -589,7 +583,6 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
                         ),
                       ),
                       const SizedBox(height: 4),
-                      // --- VISUAL UI BADGE FOR SUPERVISOR ---
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 8,
@@ -614,15 +607,12 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
               ],
             ),
           ),
-
-          // Content
           Flexible(
             child: SingleChildScrollView(
               padding: const EdgeInsets.symmetric(horizontal: 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Establishment Type Row Card
                   _buildInfoCard(
                     title: 'Establishment Type',
                     value: _receipt.establishmentType,
@@ -630,24 +620,18 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
                     highlightColor: Colors.blue[700],
                   ),
                   const SizedBox(height: 12),
-
-                  // Merchant
                   _buildInfoCard(
                     title: 'Merchant',
                     value: _receipt.merchantName ?? 'Unknown',
                     icon: Icons.store,
                   ),
                   const SizedBox(height: 12),
-
-                  // Date
                   _buildInfoCard(
                     title: 'Date',
                     value: _receipt.formattedDate,
                     icon: Icons.calendar_today,
                   ),
                   const SizedBox(height: 12),
-
-                  // Total Amount
                   _buildInfoCard(
                     title: 'Total Amount',
                     value: 'RM ${totalAmount.toStringAsFixed(2)}',
@@ -655,8 +639,6 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
                     isAmount: true,
                   ),
                   const SizedBox(height: 20),
-
-                  // Items Section
                   if (items.isNotEmpty) ...[
                     const Text(
                       'Items',
@@ -669,8 +651,6 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
                     ...items.map((item) => _buildItemCard(item)),
                     const SizedBox(height: 20),
                   ],
-
-                  // Action Buttons
                   Row(
                     children: [
                       Expanded(
@@ -706,8 +686,6 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
                     ],
                   ),
                   const SizedBox(height: 12),
-
-                  // Confirm Button
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(

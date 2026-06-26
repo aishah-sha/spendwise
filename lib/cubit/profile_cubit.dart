@@ -1,4 +1,3 @@
-// cubit/profile_cubit.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:path/path.dart' as path;
@@ -18,28 +17,42 @@ class ProfileCubit extends Cubit<ProfileState> {
   bool _isLoading = false;
   UserModel? _cachedUser;
 
+  // Public static cache for images
+  static final Map<String, String> imageCache = {};
+
+  // FIXED: Track last loaded image to prevent infinite loops
+  String? _lastLoadedImagePath;
+
   ProfileCubit() : super(ProfileInitial()) {
     _loadProfileDirect();
   }
 
-  // NEW: Direct load - shows UI immediately
+  // Direct load - shows UI immediately from cache
   Future<void> _loadProfileDirect() async {
     // Try to load from cache first
     final cachedUser = await _loadCachedUser();
     if (cachedUser != null) {
       _cachedUser = cachedUser;
-      emit(ProfileLoaded(user: cachedUser, isEditing: false));
+      // Pre-cache image if exists
+      if (cachedUser.profileImageUrl.isNotEmpty) {
+        await _cacheImage(cachedUser.profileImageUrl);
+      }
+      if (!isClosed) {
+        emit(ProfileLoaded(user: cachedUser, isEditing: false));
+      }
       print('✅ Profile loaded from cache');
     } else {
       // If no cache, create default user immediately
       final defaultUser = UserModel.defaultUser();
       _cachedUser = defaultUser;
       await _saveUser(defaultUser);
-      emit(ProfileLoaded(user: defaultUser, isEditing: false));
+      if (!isClosed) {
+        emit(ProfileLoaded(user: defaultUser, isEditing: false));
+      }
       print('✅ Default profile created');
     }
 
-    // Then update from network in background (with timeout)
+    // Then update from network in background (with shorter timeout)
     _updateFromNetwork();
   }
 
@@ -48,13 +61,14 @@ class ProfileCubit extends Cubit<ProfileState> {
       if (!_supabaseService.isUserLoggedIn) return;
 
       final profileData = await _supabaseService.getUserProfile().timeout(
-        const Duration(seconds: 5),
+        const Duration(seconds: 3),
         onTimeout: () => null,
       );
 
       if (profileData != null &&
           profileData.isNotEmpty &&
-          state is ProfileLoaded) {
+          state is ProfileLoaded &&
+          !isClosed) {
         final currentState = state as ProfileLoaded;
         final networkUser = UserModel.fromJson(profileData);
 
@@ -80,12 +94,48 @@ class ProfileCubit extends Cubit<ProfileState> {
 
         _cachedUser = updatedUser;
         await _saveUser(updatedUser);
-        emit(ProfileLoaded(user: updatedUser, isEditing: false));
+
+        // Pre-cache image
+        if (finalImageUrl.isNotEmpty) {
+          await _cacheImage(finalImageUrl);
+        }
+
+        if (!isClosed) {
+          emit(ProfileLoaded(user: updatedUser, isEditing: false));
+        }
         print('✅ Profile updated from network');
       }
     } catch (e) {
       print('Network update failed: $e');
     }
+  }
+
+  // ─── Image Caching ─────────────────────────────────────────────────────────
+
+  Future<void> _cacheImage(String imagePath) async {
+    try {
+      if (imagePath.isEmpty) return;
+
+      // Check if already cached
+      if (imageCache.containsKey(imagePath)) return;
+
+      final file = File(imagePath);
+      if (await file.exists()) {
+        imageCache[imagePath] = imagePath;
+        print('✅ Image cached: $imagePath');
+      }
+    } catch (e) {
+      print('Error caching image: $e');
+    }
+  }
+
+  // Public static methods for cache access
+  static bool isImageCached(String imagePath) {
+    return imageCache.containsKey(imagePath);
+  }
+
+  static void clearImageCache(String imagePath) {
+    imageCache.remove(imagePath);
   }
 
   // Keep existing loadProfile for compatibility
@@ -96,7 +146,12 @@ class ProfileCubit extends Cubit<ProfileState> {
     final cachedUser = await _loadCachedUser();
     if (cachedUser != null && !forceRefresh) {
       _cachedUser = cachedUser;
-      emit(ProfileLoaded(user: cachedUser, isEditing: false));
+      if (cachedUser.profileImageUrl.isNotEmpty) {
+        await _cacheImage(cachedUser.profileImageUrl);
+      }
+      if (!isClosed) {
+        emit(ProfileLoaded(user: cachedUser, isEditing: false));
+      }
       _isLoading = false;
       return;
     }
@@ -104,7 +159,9 @@ class ProfileCubit extends Cubit<ProfileState> {
     final defaultUser = UserModel.defaultUser();
     _cachedUser = defaultUser;
     await _saveUser(defaultUser);
-    emit(ProfileLoaded(user: defaultUser, isEditing: false));
+    if (!isClosed) {
+      emit(ProfileLoaded(user: defaultUser, isEditing: false));
+    }
     _isLoading = false;
   }
 
@@ -131,6 +188,8 @@ class ProfileCubit extends Cubit<ProfileState> {
     }
   }
 
+  // ─── Optimized Profile Image Update ──────────────────────────────────────
+
   Future<void> updateProfileImage(String imagePath) async {
     if (state is ProfileLoaded) {
       final currentState = state as ProfileLoaded;
@@ -147,6 +206,15 @@ class ProfileCubit extends Cubit<ProfileState> {
           return;
         }
         debugPrint('✅ Image file verified, size: ${await file.length()} bytes');
+
+        // Cache the image immediately
+        imageCache[imagePath] = imagePath;
+      } else {
+        // Remove from cache if empty
+        final oldPath = currentState.user.profileImageUrl;
+        if (oldPath.isNotEmpty) {
+          imageCache.remove(oldPath);
+        }
       }
 
       final updatedUser = currentState.user.copyWith(
@@ -156,12 +224,16 @@ class ProfileCubit extends Cubit<ProfileState> {
       _cachedUser = updatedUser;
       await _saveUser(updatedUser);
 
-      // Force a complete rebuild by emitting a new state
-      emit(ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing));
+      // FIXED: Use a single emit with a unique key to force rebuild once
+      if (!isClosed) {
+        emit(
+          ProfileLoaded(user: updatedUser, isEditing: currentState.isEditing),
+        );
+      }
 
-      if (imagePath.isEmpty) {
+      if (imagePath.isEmpty && !isClosed) {
         emit(ProfileUpdateSuccess(message: 'Profile photo removed'));
-      } else {
+      } else if (!isClosed) {
         emit(ProfileUpdateSuccess(message: 'Profile photo updated!'));
       }
 
@@ -171,7 +243,7 @@ class ProfileCubit extends Cubit<ProfileState> {
   }
 
   void togglePushNotifications() {
-    if (state is ProfileLoaded) {
+    if (state is ProfileLoaded && !isClosed) {
       final currentState = state as ProfileLoaded;
       final updatedUser = currentState.user.copyWith(
         pushNotificationsEnabled: !currentState.user.pushNotificationsEnabled,
@@ -186,7 +258,7 @@ class ProfileCubit extends Cubit<ProfileState> {
   }
 
   void toggleDarkMode() {
-    if (state is ProfileLoaded) {
+    if (state is ProfileLoaded && !isClosed) {
       final currentState = state as ProfileLoaded;
       final updatedUser = currentState.user.copyWith(
         isDarkMode: !currentState.user.isDarkMode,
@@ -199,7 +271,7 @@ class ProfileCubit extends Cubit<ProfileState> {
   }
 
   void updateSmallExpensesLimit(double limit) {
-    if (state is ProfileLoaded) {
+    if (state is ProfileLoaded && !isClosed) {
       final currentState = state as ProfileLoaded;
       final updatedUser = currentState.user.copyWith(smallExpensesLimit: limit);
       _cachedUser = updatedUser;
@@ -216,7 +288,7 @@ class ProfileCubit extends Cubit<ProfileState> {
   }
 
   void updateFullName(String fullName) {
-    if (state is ProfileLoaded) {
+    if (state is ProfileLoaded && !isClosed) {
       final currentState = state as ProfileLoaded;
       if (fullName.trim().isEmpty) {
         emit(ProfileError(message: 'Full name cannot be empty'));
@@ -232,7 +304,7 @@ class ProfileCubit extends Cubit<ProfileState> {
   }
 
   void updateEmail(String email) {
-    if (state is ProfileLoaded) {
+    if (state is ProfileLoaded && !isClosed) {
       final currentState = state as ProfileLoaded;
       if (!email.contains('@') || !email.contains('.')) {
         emit(ProfileError(message: 'Please enter a valid email address'));
@@ -248,6 +320,7 @@ class ProfileCubit extends Cubit<ProfileState> {
 
   void clearLocalProfileData() {
     _cachedUser = null;
+    imageCache.clear();
     SharedPreferences.getInstance()
         .then((prefs) => prefs.remove(_userStorageKey))
         .catchError((e) {});
@@ -255,5 +328,10 @@ class ProfileCubit extends Cubit<ProfileState> {
 
   Future<void> forceRefreshProfile() async {
     await _updateFromNetwork();
+  }
+
+  @override
+  Future<void> close() {
+    return super.close();
   }
 }
