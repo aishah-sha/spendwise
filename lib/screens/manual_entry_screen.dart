@@ -61,27 +61,33 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     'Others',
   ];
 
+  // UPDATED: More specific item categories - removed "Groceries" as it's too broad
   final List<String> _categories = [
-    'Groceries',
-    'Food',
+    'Fresh Vegetables',
+    'Fresh Meat & Seafood',
+    'Cooking Ingredients',
+    'Baking Ingredients',
+    'Instant Food & Drinks',
     'Beverages',
-    'Clothes',
+    'Snacks',
+    'Desserts',
+    'Household/Groceries',
+    'Pet Supplies',
+    'Health & Medical',
     'Stationery',
     'Transport',
+    'Food',
+    'Clothes',
     'Entertainment',
     'Shopping',
-    'Household',
-    'Pet Food',
-    'Health',
-    'Snacks & Desserts',
-    'Cooking Ingredients',
-    'Baking',
+    'Bills',
+    'Rent',
     'Others',
   ];
 
   final TextEditingController _newItemNameController = TextEditingController();
   final TextEditingController _newItemPriceController = TextEditingController();
-  String _newItemCategory = 'Food';
+  String _newItemCategory = 'Fresh Vegetables';
 
   File? _receiptImageFile;
 
@@ -125,7 +131,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         _items = List.from(widget.receipt!.items!);
       } else {
         _items = [
-          ReceiptItem(name: '', price: 0.0, quantity: 1, category: 'Food'),
+          ReceiptItem(
+            name: '',
+            price: 0.0,
+            quantity: 1,
+            category: 'Fresh Vegetables',
+          ),
         ];
       }
 
@@ -153,7 +164,12 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
       _selectedDate = widget.expenseToEdit!.date;
     } else {
       _items = [
-        ReceiptItem(name: '', price: 0.0, quantity: 1, category: 'Food'),
+        ReceiptItem(
+          name: '',
+          price: 0.0,
+          quantity: 1,
+          category: 'Fresh Vegetables',
+        ),
       ];
       _amountController.text = '0.00';
       _vendorController.text = '';
@@ -196,7 +212,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
   Future<void> _showAddItemDialog(bool isDarkMode) async {
     _newItemNameController.clear();
     _newItemPriceController.clear();
-    _newItemCategory = 'Food';
+    _newItemCategory = 'Fresh Vegetables';
 
     return showModalBottomSheet(
       context: context,
@@ -973,7 +989,7 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     );
   }
 
-  // IMPROVED ITEM CARD WITH BETTER EDITING
+  // UPDATED: Item card with better category handling
   Widget _buildModernItemCard(int index, bool isDarkMode) {
     final item = _items[index];
 
@@ -1349,6 +1365,98 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
     );
   }
 
+  // UPDATED: Complete category icon mapping
+  IconData _getCategoryIcon(String category) {
+    switch (category) {
+      case 'Fresh Vegetables':
+        return Icons.agriculture_outlined;
+      case 'Fresh Meat & Seafood':
+        return Icons.set_meal_outlined;
+      case 'Cooking Ingredients':
+        return Icons.kitchen_outlined;
+      case 'Baking Ingredients':
+        return Icons.cake_outlined;
+      case 'Instant Food & Drinks':
+        return Icons.fastfood_outlined;
+      case 'Beverages':
+        return Icons.local_cafe_outlined;
+      case 'Snacks':
+        return Icons.cookie_outlined;
+      case 'Desserts':
+        return Icons.icecream_outlined;
+      case 'Household/Groceries':
+        return Icons.home_outlined;
+      case 'Pet Supplies':
+        return Icons.pets_outlined;
+      case 'Health & Medical':
+        return Icons.health_and_safety_outlined;
+      case 'Stationery':
+        return Icons.edit_note_outlined;
+      case 'Transport':
+        return Icons.directions_car_filled_outlined;
+      case 'Food':
+        return Icons.restaurant_outlined;
+      case 'Clothes':
+        return Icons.checkroom_outlined;
+      case 'Entertainment':
+        return Icons.confirmation_number_outlined;
+      case 'Shopping':
+        return Icons.local_mall_outlined;
+      case 'Bills':
+        return Icons.receipt_outlined;
+      case 'Rent':
+        return Icons.home_work_outlined;
+      default:
+        return Icons.category_outlined;
+    }
+  }
+
+  // Update _getCategoryColor:
+  Color _getCategoryColor(String category) {
+    switch (category) {
+      case 'Fresh Vegetables':
+        return const Color(0xFF66BB6A);
+      case 'Fresh Meat & Seafood':
+        return const Color(0xFFEF5350);
+      case 'Cooking Ingredients':
+        return const Color(0xFF4DB6AC);
+      case 'Baking Ingredients':
+        return const Color(0xFFBA68C8);
+      case 'Instant Food & Drinks':
+        return const Color(0xFFFF7043);
+      case 'Beverages':
+        return const Color(0xFF2196F3);
+      case 'Snacks':
+        return const Color(0xFFFF8A80);
+      case 'Desserts':
+        return const Color(0xFFF06292);
+      case 'Household/Groceries':
+        return const Color(0xFF4CAF50);
+      case 'Pet Supplies':
+        return const Color(0xFF8BC34A);
+      case 'Health & Medical':
+        return const Color(0xFFE57373);
+      case 'Stationery':
+        return const Color(0xFF009688);
+      case 'Transport':
+        return const Color(0xFF795548);
+      case 'Food':
+        return const Color(0xFFFF9800);
+      case 'Clothes':
+        return const Color(0xFF9C27B0);
+      case 'Entertainment':
+        return const Color(0xFFE91E63);
+      case 'Shopping':
+        return const Color(0xFF673AB7);
+      case 'Bills':
+        return const Color(0xFF607D8B);
+      case 'Rent':
+        return const Color(0xFF3F51B5);
+      default:
+        return Colors.blueGrey;
+    }
+  }
+
   void _saveForm() async {
     final enteredVendor = _vendorController.text.trim();
     final totalAmount = double.tryParse(_amountController.text) ?? 0.0;
@@ -1558,75 +1666,5 @@ class _ManualEntryScreenState extends State<ManualEntryScreen>
         ),
       ),
     );
-  }
-
-  IconData _getCategoryIcon(String category) {
-    switch (category) {
-      case 'Groceries':
-        return Icons.local_grocery_store_outlined;
-      case 'Food':
-        return Icons.restaurant_outlined;
-      case 'Beverages':
-        return Icons.local_cafe_outlined;
-      case 'Clothes':
-        return Icons.checkroom_outlined;
-      case 'Stationery':
-        return Icons.edit_note_outlined;
-      case 'Transport':
-        return Icons.directions_car_filled_outlined;
-      case 'Entertainment':
-        return Icons.confirmation_number_outlined;
-      case 'Shopping':
-        return Icons.local_mall_outlined;
-      case 'Household':
-        return Icons.home_outlined;
-      case 'Pet Food':
-        return Icons.pets_outlined;
-      case 'Health':
-        return Icons.health_and_safety_outlined;
-      case 'Snacks & Desserts':
-        return Icons.icecream_outlined;
-      case 'Cooking Ingredients':
-        return Icons.kitchen_outlined;
-      case 'Baking':
-        return Icons.cake_outlined;
-      default:
-        return Icons.category_outlined;
-    }
-  }
-
-  Color _getCategoryColor(String category) {
-    switch (category) {
-      case 'Groceries':
-        return const Color(0xFF4CAF50);
-      case 'Food':
-        return const Color(0xFFFF9800);
-      case 'Beverages':
-        return const Color(0xFF2196F3);
-      case 'Clothes':
-        return const Color(0xFF9C27B0);
-      case 'Stationery':
-        return const Color(0xFF009688);
-      case 'Transport':
-        return const Color(0xFF795548);
-      case 'Entertainment':
-        return const Color(0xFFE91E63);
-      case 'Shopping':
-        return const Color(0xFF673AB7);
-      case 'Household':
-        return const Color(0xFF00BCD4);
-      case 'Pet Food':
-        return const Color(0xFF8BC34A);
-      case 'Health':
-        return const Color(0xFFE57373);
-      case 'Snacks & Desserts':
-        return const Color(0xFFFF8A80);
-      case 'Cooking Ingredients':
-        return const Color(0xFF4DB6AC);
-      case 'Baking':
-        return const Color(0xFFBA68C8);
-      default:
-        return Colors.blueGrey;
-    }
   }
 }

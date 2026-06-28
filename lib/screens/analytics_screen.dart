@@ -294,57 +294,68 @@ class AnalyticsScreen extends StatelessWidget {
 
   Color _getCategoryChartColor(String categoryName) {
     switch (categoryName.toLowerCase()) {
-      case 'groceries':
-      case 'grocery':
-      case 'household/groceries':
-      case 'household':
-        return const Color(0xFF4CAF50);
-      case 'food':
-      case 'dining':
-      case 'restaurant':
-        return const Color(0xFFFF9800);
+      case 'fresh vegetables':
+        return const Color(0xFF66BB6A);
+      case 'fresh meat & seafood':
+      case 'fresh meat':
+      case 'seafood':
+        return const Color(0xFFEF5350);
+      case 'cooking ingredients':
+        return const Color(0xFF4DB6AC);
+      case 'baking ingredients':
+      case 'baking':
+        return const Color(0xFFBA68C8);
+      case 'instant food & drinks':
+      case 'instant food':
+        return const Color(0xFFFF7043);
       case 'beverages':
       case 'beverage':
       case 'drinks':
         return const Color(0xFF2196F3);
-      case 'clothes':
-      case 'clothing':
-      case 'fashion':
-        return const Color(0xFF9C27B0);
+      case 'snacks':
+      case 'snack':
+        return const Color(0xFFFF8A80);
+      case 'desserts':
+      case 'dessert':
+        return const Color(0xFFF06292);
+      case 'household/groceries':
+      case 'household':
+      case 'groceries':
+        return const Color(0xFF4CAF50);
+      case 'pet supplies':
+      case 'pet food':
+      case 'pets':
+        return const Color(0xFF8BC34A);
+      case 'health & medical':
+      case 'health':
+      case 'healthcare':
+      case 'medical':
+        return const Color(0xFFE57373);
       case 'stationery':
         return const Color(0xFF009688);
       case 'transport':
       case 'transportation':
       case 'travel':
         return const Color(0xFF795548);
+      case 'food':
+      case 'dining':
+      case 'restaurant':
+        return const Color(0xFFFF9800);
+      case 'clothes':
+      case 'clothing':
+      case 'fashion':
+        return const Color(0xFF9C27B0);
       case 'entertainment':
       case 'fun':
         return const Color(0xFFE91E63);
       case 'shopping':
       case 'retail':
-        return const Color(0xFFFF5722);
-      case 'pet food':
-      case 'pet supplies':
-      case 'pets':
-        return const Color(0xFF8BC34A);
-      case 'health':
-      case 'healthcare':
-      case 'medical':
-        return const Color(0xFFF44336);
-      case 'snacks & desserts':
-      case 'snacks':
-      case 'desserts':
-        return const Color(0xFFFF6B6B);
-      case 'cooking ingredients':
-        return const Color(0xFFFFA726);
-      case 'baking':
-        return const Color(0xFFFFB74D);
-      case 'education':
-      case 'learning':
         return const Color(0xFF673AB7);
       case 'bills':
       case 'utilities':
         return const Color(0xFF607D8B);
+      case 'rent':
+        return const Color(0xFF3F51B5);
       case 'others':
       case 'other':
       case 'misc':
@@ -356,43 +367,44 @@ class AnalyticsScreen extends StatelessWidget {
 
   IconData _getCategoryIconForChart(String categoryName) {
     switch (categoryName.toLowerCase()) {
-      case 'groceries':
-      case 'grocery':
-      case 'household/groceries':
-      case 'household':
-        return Icons.shopping_cart_outlined;
-      case 'food':
-      case 'dining':
-      case 'restaurant':
-        return Icons.restaurant_outlined;
+      case 'fresh vegetables':
+        return Icons.agriculture_outlined;
+      case 'fresh meat & seafood':
+        return Icons.set_meal_outlined;
+      case 'cooking ingredients':
+        return Icons.kitchen_outlined;
+      case 'baking ingredients':
+        return Icons.cake_outlined;
+      case 'instant food & drinks':
+        return Icons.fastfood_outlined;
       case 'beverages':
-      case 'beverage':
         return Icons.local_cafe_outlined;
-      case 'clothes':
-      case 'clothing':
-        return Icons.checkroom_outlined;
+      case 'snacks':
+        return Icons.cookie_outlined;
+      case 'desserts':
+        return Icons.icecream_outlined;
+      case 'household/groceries':
+        return Icons.home_outlined;
+      case 'pet supplies':
+        return Icons.pets_outlined;
+      case 'health & medical':
+        return Icons.favorite_outlined;
       case 'stationery':
         return Icons.edit_note_outlined;
       case 'transport':
-      case 'transportation':
         return Icons.directions_car_outlined;
+      case 'food':
+        return Icons.restaurant_outlined;
+      case 'clothes':
+        return Icons.checkroom_outlined;
       case 'entertainment':
         return Icons.movie_outlined;
       case 'shopping':
         return Icons.shopping_bag_outlined;
-      case 'pet food':
-      case 'pet supplies':
-        return Icons.pets_outlined;
-      case 'health':
-      case 'healthcare':
-        return Icons.favorite_outlined;
-      case 'snacks & desserts':
-        return Icons.icecream_outlined;
-      case 'education':
-        return Icons.school_outlined;
       case 'bills':
-      case 'utilities':
         return Icons.receipt_outlined;
+      case 'rent':
+        return Icons.home_work_outlined;
       case 'others':
         return Icons.category_outlined;
       default:
@@ -402,21 +414,50 @@ class AnalyticsScreen extends StatelessWidget {
 
   String _standardizeCategoryName(String category) {
     final Map<String, String> categoryMap = {
-      'Grocery': 'Groceries',
-      'Groceries': 'Groceries',
-      'Household/Groceries': 'Groceries',
-      'Household': 'Groceries',
-      'Supermarket': 'Groceries',
-      'Food': 'Food',
-      'Foods': 'Food',
-      'Dining': 'Food',
-      'Restaurant': 'Food',
+      'Grocery': 'Household/Groceries',
+      'Groceries': 'Household/Groceries',
+      'Household/Groceries': 'Household/Groceries',
+      'Household': 'Household/Groceries',
+      'Supermarket': 'Household/Groceries',
+      'Fresh Vegetables': 'Fresh Vegetables',
+      'Vegetables': 'Fresh Vegetables',
+      'Fresh Meat & Seafood': 'Fresh Meat & Seafood',
+      'Fresh Meat': 'Fresh Meat & Seafood',
+      'Seafood': 'Fresh Meat & Seafood',
+      'Cooking Ingredients': 'Cooking Ingredients',
+      'Baking Ingredients': 'Baking Ingredients',
+      'Baking': 'Baking Ingredients',
+      'Instant Food & Drinks': 'Instant Food & Drinks',
+      'Instant Food': 'Instant Food & Drinks',
+      'Snacks': 'Snacks',
+      'Snacks & Desserts': 'Snacks',
+      'Desserts': 'Desserts',
       'Beverage': 'Beverages',
       'Beverages': 'Beverages',
       'Drink': 'Beverages',
       'Pet Food': 'Pet Supplies',
       'Pet Supplies': 'Pet Supplies',
       'Pets': 'Pet Supplies',
+      'Health & Medical': 'Health & Medical',
+      'Health': 'Health & Medical',
+      'Healthcare': 'Health & Medical',
+      'Medical': 'Health & Medical',
+      'Stationery': 'Stationery',
+      'Transport': 'Transport',
+      'Transportation': 'Transport',
+      'Travel': 'Transport',
+      'Food': 'Food',
+      'Foods': 'Food',
+      'Dining': 'Food',
+      'Restaurant': 'Food',
+      'Clothes': 'Clothes',
+      'Clothing': 'Clothes',
+      'Fashion': 'Clothes',
+      'Entertainment': 'Entertainment',
+      'Shopping': 'Shopping',
+      'Bills': 'Bills',
+      'Utilities': 'Bills',
+      'Rent': 'Rent',
       'Other': 'Others',
       'Misc': 'Others',
     };
@@ -1310,38 +1351,54 @@ class CategoryCirclePainter extends CustomPainter {
 
   Color _getColorForCategory(String categoryName, int index) {
     switch (categoryName.toLowerCase()) {
-      case 'groceries':
-      case 'grocery':
+      case 'fresh vegetables':
+        return const Color(0xFF66BB6A);
+      case 'fresh meat & seafood':
+        return const Color(0xFFEF5350);
+      case 'cooking ingredients':
+        return const Color(0xFF4DB6AC);
+      case 'baking ingredients':
+        return const Color(0xFFBA68C8);
+      case 'instant food & drinks':
+        return const Color(0xFFFF7043);
+      case 'beverages':
+        return const Color(0xFF2196F3);
+      case 'snacks':
+        return const Color(0xFFFF8A80);
+      case 'desserts':
+        return const Color(0xFFF06292);
       case 'household/groceries':
+      case 'groceries':
       case 'household':
         return const Color(0xFF4CAF50);
-      case 'food':
-      case 'dining':
-      case 'restaurant':
-        return const Color(0xFFFF9800);
-      case 'beverages':
-      case 'beverage':
-        return const Color(0xFF2196F3);
-      case 'clothes':
-      case 'clothing':
-        return const Color(0xFF9C27B0);
+      case 'pet supplies':
+      case 'pet food':
+        return const Color(0xFF8BC34A);
+      case 'health & medical':
+      case 'health':
+      case 'healthcare':
+        return const Color(0xFFE57373);
       case 'stationery':
         return const Color(0xFF009688);
       case 'transport':
       case 'transportation':
         return const Color(0xFF795548);
+      case 'food':
+      case 'dining':
+      case 'restaurant':
+        return const Color(0xFFFF9800);
+      case 'clothes':
+      case 'clothing':
+        return const Color(0xFF9C27B0);
       case 'entertainment':
         return const Color(0xFFE91E63);
       case 'shopping':
-        return const Color(0xFFFF5722);
-      case 'pet food':
-      case 'pet supplies':
-        return const Color(0xFF8BC34A);
-      case 'health':
-      case 'healthcare':
-        return const Color(0xFFF44336);
-      case 'snacks & desserts':
-        return const Color(0xFFFF6B6B);
+        return const Color(0xFF673AB7);
+      case 'bills':
+      case 'utilities':
+        return const Color(0xFF607D8B);
+      case 'rent':
+        return const Color(0xFF3F51B5);
       case 'others':
         return const Color(0xFF9E9E9E);
       default:
