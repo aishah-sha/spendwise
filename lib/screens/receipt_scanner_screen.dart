@@ -82,7 +82,6 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
           onEdit: () {
             Navigator.pop(sheetContext);
             _sheetOpen = false;
-            // FIXED: Pass receipt to manual entry WITHOUT saving
             _goToManualEntry(context, addExpenseCubit, receipt);
           },
           onScanAgain: () {
@@ -93,7 +92,6 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
           onConfirm: () {
             Navigator.pop(sheetContext);
             _sheetOpen = false;
-            // FIXED: Save ONLY when user confirms directly from scanner
             _saveExpenseDirectly(context, addExpenseCubit, receipt);
           },
         );
@@ -103,7 +101,6 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     });
   }
 
-  // FIXED: Save directly from scanner (user clicked Confirm, not Edit)
   void _saveExpenseDirectly(
     BuildContext context,
     AddExpenseCubit cubit,
@@ -209,7 +206,6 @@ class _ReceiptScannerPageState extends State<ReceiptScannerPage> {
     }
   }
 
-  // FIXED: Go to manual entry WITHOUT saving
   void _goToManualEntry(
     BuildContext context,
     AddExpenseCubit addExpenseCubit,
@@ -640,9 +636,9 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
                   ),
                   const SizedBox(height: 20),
                   if (items.isNotEmpty) ...[
-                    const Text(
-                      'Items',
-                      style: TextStyle(
+                    Text(
+                      'Items (${items.length})',
+                      style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
@@ -813,13 +809,23 @@ class _ConfirmationSheetState extends State<_ConfirmationSheet> {
               ],
             ),
           ),
-          Text(
-            'RM ${(item.price).toStringAsFixed(2)}',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-              color: Color(0xFF4CAF50),
-            ),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                'RM ${(item.price).toStringAsFixed(2)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                  color: Color(0xFF4CAF50),
+                ),
+              ),
+              if (item.quantity > 1)
+                Text(
+                  'RM ${(item.effectiveUnitPrice).toStringAsFixed(2)} each',
+                  style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+                ),
+            ],
           ),
         ],
       ),

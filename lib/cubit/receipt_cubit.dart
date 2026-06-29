@@ -100,7 +100,6 @@ class ReceiptCubit extends Cubit<ReceiptState> {
         }
       }
 
-      // FIXED: Use allLines.length instead of lines.length to prevent the null error!
       if (allLines.length < 3) {
         int currentBlurry = state.blurryCount + 1;
         emit(
@@ -173,14 +172,12 @@ class ReceiptCubit extends Cubit<ReceiptState> {
         imagePath: file.path,
       );
 
-      // Update recent history arrays
       // Update recent history arrays safely
       final Map<String, dynamic> historyItem = {
         'id': receipt.id,
         'merchantName': receipt.merchantName,
-        'amount': receipt.amount, // Direct main total balance
+        'amount': receipt.amount,
         'date': receipt.date.toIso8601String(),
-        // FIX: Read total quantity of actual products, fallback to array length
         'itemCount': receipt.totalItemCount > 0
             ? receipt.totalItemCount
             : (receipt.items?.length ?? 0),
@@ -196,8 +193,8 @@ class ReceiptCubit extends Cubit<ReceiptState> {
         state.copyWith(
           status: ReceiptStatus.success,
           isScanning: false,
-          receiptModel: receipt, // Syncs old layouts
-          scannedReceipt: receipt, // Syncs your UI item table lists!
+          receiptModel: receipt,
+          scannedReceipt: receipt,
           detectedTexts: rebuiltFullText.split('\n'),
           scanHistory: updatedHistory,
           scannedTexts: updatedScannedTexts,
@@ -224,7 +221,7 @@ class ReceiptCubit extends Cubit<ReceiptState> {
       state.copyWith(
         status: ReceiptStatus.initial,
         receiptModel: null,
-        scannedReceipt: null, // Clear out
+        scannedReceipt: null,
         errorMessage: null,
         blurryCount: 0,
         isScanning: false,

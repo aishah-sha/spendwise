@@ -55,6 +55,12 @@ class MLKitService {
 
       final String organizedText = _organizeTextLines(recognizedText);
 
+      // Print debug info
+      print('📄 OCR Output Length: ${organizedText.length} characters');
+      print(
+        '📄 First 200 chars: ${organizedText.substring(0, organizedText.length > 200 ? 200 : organizedText.length)}',
+      );
+
       if (enableDebugDialog && context != null && context.mounted) {
         _showDebugDialog(context, organizedText);
       }
@@ -64,9 +70,15 @@ class MLKitService {
         imagePath: imageFile.path,
       );
 
+      print('✅ Parsed Receipt:');
+      print('   Merchant: ${parsedModel.merchantName}');
+      print('   Amount: RM${parsedModel.amount}');
+      print('   Items: ${parsedModel.items?.length ?? 0}');
+      print('   Establishment: ${parsedModel.establishmentType}');
+
       return _validateReceiptModel(parsedModel, imageFile.path);
     } catch (e) {
-      debugPrint('Error processing image via ML Kit: $e');
+      debugPrint('❌ Error processing image via ML Kit: $e');
       return ReceiptModel(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         merchantName: 'Error Reading Receipt',
@@ -76,13 +88,14 @@ class MLKitService {
         imagePath: imageFile.path,
         category: 'Uncategorized',
         items: [],
+        establishmentType: 'General Retail',
       );
     } finally {
       await textRecognizer?.close();
     }
   }
 
-  // FIXED: Center-line adaptive row clustering strategy prevents text fragments from merging out of order
+  // IMPROVED: Center-line adaptive row clustering strategy
   String _organizeTextLines(RecognizedText recognizedText) {
     List<TextLine> allLines = [];
 
@@ -103,7 +116,7 @@ class MLKitService {
       return aCenter.compareTo(bCenter);
     });
 
-    // 2. Classify blocks into layout row rows dynamically
+    // 2. Classify blocks into layout rows dynamically
     List<List<TextLine>> rows = [];
 
     for (var line in allLines) {
@@ -121,8 +134,10 @@ class MLKitService {
         double rowAvgCenter = rowCenterSum / row.length;
         double rowAvgHeight = rowHeightSum / row.length;
 
-        if ((rowAvgCenter - lineCenter).abs() <= (rowAvgHeight * 0.35) ||
-            (rowAvgCenter - lineCenter).abs() <= 6.0) {
+        // Use adaptive tolerance based on text size
+        double tolerance = (rowAvgHeight * 0.35).clamp(4.0, 20.0);
+
+        if ((rowAvgCenter - lineCenter).abs() <= tolerance) {
           row.add(line);
           matchedRow = true;
           break;
@@ -152,15 +167,37 @@ class MLKitService {
     // 4. Join line blocks ordered left-to-right
     StringBuffer rebuiltFullText = StringBuffer();
     for (var row in rows) {
+      // Sort each row left to right
       row.sort((a, b) => a.boundingBox.left.compareTo(b.boundingBox.left));
+
+      // Join text with appropriate spacing
       String combinedRowText = row.map((l) => l.text).join(" ").trim();
-      rebuiltFullText.writeln(combinedRowText);
+
+      // Clean up double spaces
+      combinedRowText = combinedRowText.replaceAll(RegExp(r'\s+'), ' ');
+
+      if (combinedRowText.isNotEmpty) {
+        rebuiltFullText.writeln(combinedRowText);
+      }
     }
 
     return rebuiltFullText.toString();
   }
 
   ReceiptModel _validateReceiptModel(ReceiptModel model, String imagePath) {
+    // Ensure all required fields are set
+    final validatedItems = model.items ?? [];
+
+    // If items exist but total is 0, recalculate from items
+    double calculatedTotal = validatedItems.fold(
+      0.0,
+      (sum, item) => sum + item.price,
+    );
+
+    final validatedTotal = model.amount > 0
+        ? model.amount
+        : (calculatedTotal > 0 ? calculatedTotal : 0.0);
+
     return ReceiptModel(
       id: model.id.isNotEmpty
           ? model.id
@@ -168,19 +205,23 @@ class MLKitService {
       merchantName: model.merchantName?.isNotEmpty == true
           ? model.merchantName
           : 'Unknown Store',
-      amount: model.amount > 0 ? model.amount : 0.0,
-      subtotal: model.subtotal,
-      tax: model.tax,
-      serviceCharge: model.serviceCharge,
+      amount: validatedTotal,
+      subtotal: model.subtotal ?? validatedTotal,
+      tax: model.tax ?? 0.0,
+      serviceCharge: model.serviceCharge ?? 0.0,
       date: model.date,
       receiptType: 'image',
       imagePath: imagePath,
       category: model.category.isNotEmpty == true
           ? model.category
           : 'Uncategorized',
-      items: model.items ?? [],
-      establishmentType: model.establishmentType,
-      currency: model.currency,
+      items: validatedItems,
+      establishmentType: model.establishmentType.isNotEmpty
+          ? model.establishmentType
+          : 'General Retail',
+      currency: model.currency ?? 'RM',
+      ocrStatus: 'SUCCESS',
+      processed: false,
     );
   }
 
